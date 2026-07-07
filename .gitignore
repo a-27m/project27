@@ -1,0 +1,25 @@
+# .NET
+bin/
+obj/
+artifacts/
+*.user
+.vs/
+*.binlog
+
+# Test / coverage
+TestResults/
+coverage/
+*.trx
+
+# Node / web
+node_modules/
+web/dist/
+*.tsbuildinfo
+
+# Local tooling & secrets
+.env
+.env.local
+appsettings.*.local.json
+
+# OS
+.DS_Store
