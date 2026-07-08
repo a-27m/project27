@@ -14,3 +14,4 @@ from MS Project desktop. Entries are added as phases land.
 | 7 | Manual tasks | Manual summary tasks are not supported — summaries always roll up | MSP allows manually scheduled summaries | Rollup consistency; revisit if demanded |
 | 8 | Scheduling display | Dates may land on equivalent working-time boundaries (e.g. finish "Wed 08:00" ≡ "Tue 17:00") when driven by start-of-day bounds | MSP normalizes to interval ends | Zero-width working-time equivalence; cosmetic |
 | 9 | Recurring tasks | Require an end date or occurrence count; capped at 999 occurrences | Same cap; end bound also required | Parity, made explicit |
+| 10 | Fields (CLI/JSON) | `outlineLevel` is 0-based (top level = 0) | OutlineLevel is 1-based | Engine convention; MSPDI interop will emit/consume 1-based |

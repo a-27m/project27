@@ -1,9 +1,11 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Project27.Cli/Project27.Cli.csproj" />
     <Project Path="src/Project27.Core/Project27.Core.csproj" />
     <Project Path="src/Project27.Storage/Project27.Storage.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Project27.Cli.Tests/Project27.Cli.Tests.csproj" />
     <Project Path="tests/Project27.Core.Tests/Project27.Core.Tests.csproj" />
     <Project Path="tests/Project27.Storage.Tests/Project27.Storage.Tests.csproj" />
   </Folder>
