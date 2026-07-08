@@ -3,6 +3,10 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.9" />
+    <!-- Overrides the vulnerable 2.1.11 native lib pinned transitively by Microsoft.Data.Sqlite (GHSA-2m69-gcr7-jv3q). -->
+    <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
+    <PackageVersion Include="System.CommandLine" Version="2.0.9" />
     <!-- Test stack -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />

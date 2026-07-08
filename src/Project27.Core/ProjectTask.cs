@@ -21,14 +21,23 @@ public sealed class ProjectTask
     private bool? _milestoneOverride;
     private int _priority = 500;
 
-    internal ProjectTask(Project project, string name, int uniqueId)
+    internal ProjectTask(Project project, string name, int uniqueId, Guid? id = null)
     {
         Project = project;
         Name = name;
         UniqueId = uniqueId;
-        Id = Guid.NewGuid();
+        Id = id ?? Guid.NewGuid();
         _durationMinutes = _duration.ToMinutes(project.TimeSettings);
     }
+
+    internal bool? MilestoneOverrideRaw
+    {
+        get => _milestoneOverride;
+        set => _milestoneOverride = value;
+    }
+
+    internal void RestoreSplitParts(List<(decimal WorkMinutes, decimal GapMinutes)>? parts)
+        => _splitParts = parts;
 
     public Project Project { get; }
 

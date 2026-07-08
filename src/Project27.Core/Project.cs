@@ -16,9 +16,10 @@ public sealed class Project
     private List<ProjectTask>? _flattened;
     private int _nextUniqueId;
 
-    public Project(string name, DateTime start, WorkCalendar? calendar = null)
+    public Project(string name, DateTime start, WorkCalendar? calendar = null, Guid? id = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        Id = id ?? Guid.NewGuid();
         Name = name;
         StartDate = start;
         Calendar = calendar ?? WorkCalendar.CreateStandard();
@@ -26,7 +27,7 @@ public sealed class Project
         _root = new ProjectTask(this, "<project root>", uniqueId: 0) { OutlineLevel = -1 };
     }
 
-    public Guid Id { get; } = Guid.NewGuid();
+    public Guid Id { get; }
 
     public string Name { get; set; }
 
@@ -284,6 +285,28 @@ public sealed class Project
     internal void InvalidateOutline() => _flattened = null;
 
     internal void EnsureOutline() => _ = Tasks;
+
+    internal ProjectTask RestoreTask(string name, int uniqueId, Guid id, ProjectTask? parent)
+    {
+        var task = new ProjectTask(this, name, uniqueId, id) { Parent = parent ?? _root };
+        task.Parent!.ChildrenList.Add(task);
+        _nextUniqueId = Math.Max(_nextUniqueId, uniqueId);
+        InvalidateOutline();
+        return task;
+    }
+
+    internal TaskDependency RestoreLink(ProjectTask predecessor, ProjectTask successor, DependencyType type, Lag lag)
+    {
+        if (!ReferenceEquals(predecessor.Project, this) || !ReferenceEquals(successor.Project, this))
+        {
+            throw new InvalidOperationException("Restored dependency references foreign tasks.");
+        }
+
+        var dependency = new TaskDependency(predecessor, successor, type, lag);
+        predecessor.SuccessorsList.Add(dependency);
+        successor.PredecessorsList.Add(dependency);
+        return dependency;
+    }
 
     private void RefreshOutline()
     {

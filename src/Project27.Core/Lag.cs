@@ -47,6 +47,9 @@ public readonly record struct Lag
 
     public static Lag Percent(decimal percent) => new(LagKind.Percent, percent);
 
+    /// <summary>Reconstructs a lag from persisted raw values.</summary>
+    public static Lag Restore(LagKind kind, decimal value) => new(kind, value);
+
     public override string ToString() => Kind switch
     {
         LagKind.Percent => string.Create(CultureInfo.InvariantCulture, $"{Value}%"),

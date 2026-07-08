@@ -12,7 +12,7 @@ Phases map 1:1 to the session task list.
 | 2 | CPM scheduler | Outline/WBS, milestones, dependency types + lead/lag, constraints, deadlines, task types × effort-driven, slack, critical path, splits, recurring tasks |
 | 3 | Persistence + CLI | `.p27` SQLite format, `IProjectStore`, project lifecycle, `p27` verbs for the engine surface so far, `--json` |
 | 4 | Resources & costs | Work/material/cost resources, rate tables, assignments, contours, resource calendars in scheduling, cost rollup |
-| 5 | Interop | MSPDI XML import/export with round-trip tests, CSV export |
+| 5 → after 12 | Interop (postponed) | MSPDI XML import/export with round-trip tests, CSV export — runs after phase 12 |
 | 6 | Server | REST API, OIDC + DevAuth, roles, checkout/check-in, Postgres, OpenAPI, CLI `--server` |
 | 7 | Web foundation | App shell, auth flow, virtualized task sheet, custom Gantt with drag/link, split views |
 | 8 | Tracking & EVM | Baselines 0–10, interim plans, status date, actuals, reschedule uncompleted work, earned value fields |
