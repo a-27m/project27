@@ -28,6 +28,24 @@ public static class ProjectDocumentMapper
             },
             Calendars = [.. project.Calendars.Select(ToDocument)],
             Tasks = [.. project.Tasks.Select(ToDocument)],
+            Resources = [.. project.Resources.Select(ToDocument)],
+            Assignments =
+            [
+                .. project.Tasks
+                    .SelectMany(t => t.Assignments)
+                    .Select(a => new AssignmentDocument
+                    {
+                        Id = a.Id,
+                        TaskId = a.Task.Id,
+                        ResourceId = a.Resource.Id,
+                        Units = a.Units,
+                        WorkMinutes = a.WorkMinutes,
+                        Contour = a.Contour,
+                        DelayMinutes = a.DelayMinutes,
+                        RateTable = a.RateTable,
+                        CostInput = a.Resource.Type == ResourceType.Cost ? a.CostInput : 0m,
+                    }),
+            ],
             Dependencies =
             [
                 .. project.Tasks
@@ -47,7 +65,7 @@ public static class ProjectDocumentMapper
     public static Project FromDocument(ProjectDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
-        if (document.SchemaVersion != 1)
+        if (document.SchemaVersion is not (1 or 2))
         {
             throw new NotSupportedException($"Project document schema {document.SchemaVersion} is not supported by this build.");
         }
@@ -112,6 +130,15 @@ public static class ProjectDocumentMapper
             var parent = taskDoc.ParentId is { } parentId ? tasks[parentId] : null;
             var task = project.RestoreTask(taskDoc.Name, taskDoc.UniqueId, taskDoc.Id, parent);
             task.Duration = new Duration(taskDoc.DurationValue, taskDoc.DurationUnit, taskDoc.IsEstimated);
+            task.Type = taskDoc.Type;
+            if (taskDoc.Type != TaskType.FixedWork)
+            {
+                task.IsEffortDriven = taskDoc.IsEffortDriven;
+            }
+
+            task.IgnoresResourceCalendars = taskDoc.IgnoresResourceCalendars;
+            task.FixedCost = taskDoc.FixedCost;
+            task.FixedCostAccrual = taskDoc.FixedCostAccrual;
             task.Mode = taskDoc.Mode;
             task.IsActive = taskDoc.IsActive;
             task.MilestoneOverrideRaw = taskDoc.MilestoneOverride;
@@ -140,8 +167,76 @@ public static class ProjectDocumentMapper
                 Lag.Restore(dependencyDoc.LagKind, dependencyDoc.LagValue));
         }
 
+        var resources = new Dictionary<Guid, Resource>();
+        foreach (var resourceDoc in document.Resources)
+        {
+            var resource = project.RestoreResource(resourceDoc.Name, resourceDoc.Type, resourceDoc.UniqueId, resourceDoc.Id);
+            resource.Initials = resourceDoc.Initials;
+            resource.Group = resourceDoc.Group;
+            resource.MaxUnits = resourceDoc.MaxUnits;
+            resource.MaterialLabel = resourceDoc.MaterialLabel;
+            resource.Accrual = resourceDoc.Accrual;
+            resource.Calendar = resourceDoc.CalendarId is { } resourceCalendarId ? calendars[resourceCalendarId] : null;
+            foreach (var tableDoc in resourceDoc.RateTables)
+            {
+                resource.RateTable(tableDoc.Table).RestoreEntries(
+                    tableDoc.Entries.Select(e => new CostRate(
+                        e.EffectiveFrom,
+                        new Rate(e.StandardRate.Amount, e.StandardRate.Per),
+                        new Rate(e.OvertimeRate.Amount, e.OvertimeRate.Per),
+                        e.CostPerUse)));
+            }
+
+            resources.Add(resourceDoc.Id, resource);
+        }
+
+        foreach (var assignmentDoc in document.Assignments)
+        {
+            var assignment = project.RestoreAssignment(tasks[assignmentDoc.TaskId], resources[assignmentDoc.ResourceId], assignmentDoc.Id);
+            assignment.Units = assignmentDoc.Units;
+            assignment.WorkMinutes = assignmentDoc.WorkMinutes;
+            assignment.Contour = assignmentDoc.Contour;
+            assignment.DelayMinutes = assignmentDoc.DelayMinutes;
+            assignment.RateTable = assignmentDoc.RateTable;
+            assignment.RestoreCostInput(assignmentDoc.CostInput);
+        }
+
         return project;
     }
+
+    private static ResourceDocument ToDocument(Resource resource) => new()
+    {
+        Id = resource.Id,
+        UniqueId = resource.UniqueId,
+        Name = resource.Name,
+        Type = resource.Type,
+        Initials = resource.Initials,
+        Group = resource.Group,
+        MaxUnits = resource.MaxUnits,
+        MaterialLabel = resource.MaterialLabel,
+        Accrual = resource.Accrual,
+        CalendarId = resource.Calendar?.Id,
+        RateTables =
+        [
+            .. Enum.GetValues<CostRateTableId>()
+                .Select(id => (Id: id, Table: resource.RateTable(id)))
+                .Where(t => t.Table.Entries.Count > 1 || t.Table.Entries[0] != new CostRate(DateTime.MinValue, Rate.Zero, Rate.Zero, 0m))
+                .Select(t => new RateTableDocument
+                {
+                    Table = t.Id,
+                    Entries =
+                    [
+                        .. t.Table.Entries.Select(e => new CostRateDocument
+                        {
+                            EffectiveFrom = e.EffectiveFrom,
+                            StandardRate = new RateDocument(e.StandardRate.Amount, e.StandardRate.Per),
+                            OvertimeRate = new RateDocument(e.OvertimeRate.Amount, e.OvertimeRate.Per),
+                            CostPerUse = e.CostPerUse,
+                        }),
+                    ],
+                }),
+        ],
+    };
 
     private static CalendarDocument ToDocument(WorkCalendar calendar) => new()
     {
@@ -197,6 +292,11 @@ public static class ProjectDocumentMapper
         SplitParts = task.IsSplit
             ? [.. task.SplitParts.Select(p => new SplitPartDocument(p.WorkMinutes, p.GapMinutes))]
             : null,
+        Type = task.Type,
+        IsEffortDriven = task.IsEffortDriven,
+        IgnoresResourceCalendars = task.IgnoresResourceCalendars,
+        FixedCost = task.FixedCost,
+        FixedCostAccrual = task.FixedCostAccrual,
     };
 
 #pragma warning disable CA1859

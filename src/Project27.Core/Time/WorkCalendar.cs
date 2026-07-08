@@ -106,7 +106,7 @@ public sealed partial class WorkCalendar
     }
 
     /// <summary>Effective schedule for a date after exception/work-week/inheritance resolution. Cached.</summary>
-    public DaySchedule GetDaySchedule(DateOnly date)
+    public DaySchedule GetDaySchedule(DateOnly day)
     {
         var stamp = ChainStamp;
         if (_dayCacheStamp != stamp)
@@ -115,10 +115,10 @@ public sealed partial class WorkCalendar
             _dayCacheStamp = stamp;
         }
 
-        if (!_dayCache.TryGetValue(date, out var schedule))
+        if (!_dayCache.TryGetValue(day, out var schedule))
         {
-            schedule = Resolve(date);
-            _dayCache[date] = schedule;
+            schedule = Resolve(day);
+            _dayCache[day] = schedule;
         }
 
         return schedule;

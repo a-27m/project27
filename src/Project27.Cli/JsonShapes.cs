@@ -40,7 +40,49 @@ internal sealed record TaskJson(
     DateTime? ManualStart,
     DateTime? ManualFinish,
     IReadOnlyList<SegmentJson> Segments,
-    IReadOnlyList<PredecessorJson> Predecessors);
+    IReadOnlyList<PredecessorJson> Predecessors,
+    TaskType Type,
+    bool EffortDriven,
+    bool IgnoresResourceCalendars,
+    string Work,
+    decimal Cost,
+    decimal FixedCost,
+    CostAccrual FixedCostAccrual,
+    IReadOnlyList<AssignmentJson> Assignments);
+
+internal sealed record AssignmentJson(
+    int TaskUid,
+    int TaskId,
+    string Task,
+    int ResourceUid,
+    string Resource,
+    ResourceType ResourceType,
+    string Units,
+    string? Work,
+    WorkContour Contour,
+    string? Delay,
+    CostRateTableId RateTable,
+    DateTime? Start,
+    DateTime? Finish,
+    decimal Cost);
+
+internal sealed record RateEntryJson(DateTime? From, string StandardRate, string OvertimeRate, decimal CostPerUse);
+
+internal sealed record RateTableJson(CostRateTableId Table, IReadOnlyList<RateEntryJson> Entries);
+
+internal sealed record ResourceJson(
+    int Uid,
+    string Name,
+    ResourceType Type,
+    string? Initials,
+    string? Group,
+    string? MaxUnits,
+    string? MaterialLabel,
+    CostAccrual Accrual,
+    string? Calendar,
+    string Rate,
+    IReadOnlyList<RateTableJson> RateTables,
+    int Assignments);
 
 internal sealed record ProjectJson(
     Guid Id,
@@ -57,7 +99,10 @@ internal sealed record ProjectJson(
     string DayStart,
     string DayEnd,
     int Tasks,
-    IReadOnlyList<string> Calendars);
+    IReadOnlyList<string> Calendars,
+    int Resources,
+    string Work,
+    decimal Cost);
 
 internal sealed record LinkJson(
     int PredecessorUid,
@@ -133,7 +178,60 @@ internal static class JsonShapes
         [
             .. task.Predecessors.Select(d => new PredecessorJson(
                 d.Predecessor.UniqueId, d.Predecessor.RowNumber, d.Type, Render.LagText(d.Lag, settings))),
-        ]);
+        ],
+        Type: task.Type,
+        EffortDriven: task.IsEffortDriven,
+        IgnoresResourceCalendars: task.IgnoresResourceCalendars,
+        Work: Render.WorkHours(task.WorkMinutes),
+        Cost: task.Cost,
+        FixedCost: task.FixedCost,
+        FixedCostAccrual: task.FixedCostAccrual,
+        Assignments: [.. task.Assignments.Select(ForAssignment)]);
+
+    public static AssignmentJson ForAssignment(Assignment assignment) => new(
+        TaskUid: assignment.Task.UniqueId,
+        TaskId: assignment.Task.RowNumber,
+        Task: assignment.Task.Name,
+        ResourceUid: assignment.Resource.UniqueId,
+        Resource: assignment.Resource.Name,
+        ResourceType: assignment.Resource.Type,
+        Units: Render.Units(assignment),
+        Work: assignment.Resource.Type == ResourceType.Work ? Render.WorkHours(assignment.WorkMinutes) : null,
+        Contour: assignment.Contour,
+        Delay: assignment.DelayMinutes > 0 ? Render.WorkHours(assignment.DelayMinutes) : null,
+        RateTable: assignment.RateTable,
+        Start: assignment.Start,
+        Finish: assignment.Finish,
+        Cost: assignment.Cost);
+
+    public static ResourceJson ForResource(Resource resource) => new(
+        Uid: resource.UniqueId,
+        Name: resource.Name,
+        Type: resource.Type,
+        Initials: resource.Initials,
+        Group: resource.Group,
+        MaxUnits: resource.Type == ResourceType.Work ? Render.Num(resource.MaxUnits * 100m) + "%" : null,
+        MaterialLabel: resource.MaterialLabel,
+        Accrual: resource.Accrual,
+        Calendar: resource.Calendar?.Name,
+        Rate: Render.RateText(resource.StandardRate, resource.Type),
+        RateTables:
+        [
+            .. Enum.GetValues<CostRateTableId>()
+                .Select(id => (Id: id, Table: resource.RateTable(id)))
+                .Where(t => t.Table.Entries.Count > 1 || t.Table.Entries[0].StandardRate != Rate.Zero
+                    || t.Table.Entries[0].OvertimeRate != Rate.Zero || t.Table.Entries[0].CostPerUse != 0m)
+                .Select(t => new RateTableJson(
+                    t.Id,
+                    [
+                        .. t.Table.Entries.Select(e => new RateEntryJson(
+                            e.EffectiveFrom == DateTime.MinValue ? null : e.EffectiveFrom,
+                            Render.RateText(e.StandardRate, resource.Type),
+                            Render.RateText(e.OvertimeRate, resource.Type),
+                            e.CostPerUse)),
+                    ])),
+        ],
+        Assignments: resource.Assignments.Count);
 
     public static ProjectJson ForProject(Project project)
     {
@@ -153,7 +251,10 @@ internal static class JsonShapes
             DayStart: Render.Time(settings.DefaultStartTime),
             DayEnd: Render.Time(settings.DefaultEndTime),
             Tasks: project.Tasks.Count,
-            Calendars: [.. project.Calendars.Select(c => c.Name)]);
+            Calendars: [.. project.Calendars.Select(c => c.Name)],
+            Resources: project.Resources.Count,
+            Work: Render.WorkHours(project.TotalWorkMinutes),
+            Cost: project.TotalCost);
     }
 
     public static LinkJson ForLink(TaskDependency dependency, TimeSettings settings) => new(

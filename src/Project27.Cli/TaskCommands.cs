@@ -180,6 +180,10 @@ internal static class TaskCommands
                 ("late finish", Render.Date(task.LateFinish)),
                 ("total slack", Render.MinutesAsDays(task.TotalSlackMinutes, settings) ?? ""),
                 ("free slack", Render.MinutesAsDays(task.FreeSlackMinutes, settings) ?? ""),
+                ("type", Render.TaskTypeName(task.Type) + (task.IsEffortDriven ? ", effort-driven" : "")),
+                ("work", Render.WorkHours(task.WorkMinutes)),
+                ("cost", Render.Num(task.Cost)),
+                ("fixed cost", Render.Num(task.FixedCost)),
                 ("constraint", ConstraintText(task)),
                 ("deadline", Render.Date(task.Deadline)),
                 ("priority", Render.Num(task.Priority)),
@@ -190,6 +194,10 @@ internal static class TaskCommands
                 ("predecessors", string.Join(",", task.Predecessors.Select(d => Render.PredecessorToken(d, settings)))),
                 ("successors", string.Join(",", task.Successors.Select(d =>
                     d.Successor.RowNumber.ToString(CultureInfo.InvariantCulture)))),
+                ("resources", string.Join(", ", task.Assignments.Select(a =>
+                    a.Resource.Name + (a.Resource.Type == ResourceType.Work && a.Units != 1m
+                        ? $"[{Render.Units(a)}]"
+                        : "")))),
             ]);
             return 0;
 
@@ -215,10 +223,16 @@ internal static class TaskCommands
         var wbsOpt = new Option<string?>("--wbs") { HelpName = "code|auto" };
         var manualStartOpt = new Option<string?>("--manual-start") { HelpName = "date|none" };
         var manualFinishOpt = new Option<string?>("--manual-finish") { HelpName = "date|none" };
+        var typeOpt = new Option<string?>("--type") { HelpName = "fixed-units|fixed-duration|fixed-work" };
+        var effortOpt = new Option<string?>("--effort-driven") { HelpName = "bool" };
+        var fixedCostOpt = new Option<string?>("--fixed-cost") { HelpName = "amount" };
+        var accrualOpt = new Option<string?>("--accrual") { HelpName = "start|prorated|end" };
+        var ignoreResCalOpt = new Option<string?>("--ignore-resource-calendars") { HelpName = "bool" };
         var command = new Command("set", "Change task fields; recalculates and saves.")
         {
             refArg, nameOpt, durationOpt, modeOpt, activeOpt, milestoneOpt, priorityOpt, deadlineOpt,
             constraintOpt, constraintDateOpt, calendarOpt, wbsOpt, manualStartOpt, manualFinishOpt,
+            typeOpt, effortOpt, fixedCostOpt, accrualOpt, ignoreResCalOpt,
         };
         command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
         {
@@ -229,6 +243,32 @@ internal static class TaskCommands
             if (parseResult.GetValue(nameOpt) is { } name)
             {
                 task.Name = name;
+            }
+
+            // Type before duration: the type decides what a duration edit recalculates.
+            if (parseResult.GetValue(typeOpt) is { } taskType)
+            {
+                task.Type = Parsers.TaskTypeInput(taskType);
+            }
+
+            if (parseResult.GetValue(effortOpt) is { } effort)
+            {
+                task.IsEffortDriven = Parsers.BoolInput(effort);
+            }
+
+            if (parseResult.GetValue(ignoreResCalOpt) is { } ignoreResCal)
+            {
+                task.IgnoresResourceCalendars = Parsers.BoolInput(ignoreResCal);
+            }
+
+            if (parseResult.GetValue(fixedCostOpt) is { } fixedCost)
+            {
+                task.FixedCost = Parsers.MoneyInput(fixedCost);
+            }
+
+            if (parseResult.GetValue(accrualOpt) is { } accrual)
+            {
+                task.FixedCostAccrual = Parsers.AccrualInput(accrual);
             }
 
             if (parseResult.GetValue(durationOpt) is { } duration)

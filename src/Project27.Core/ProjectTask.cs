@@ -15,6 +15,8 @@ public sealed class ProjectTask
     private readonly List<ProjectTask> _children = [];
     private readonly List<TaskDependency> _predecessors = [];
     private readonly List<TaskDependency> _successors = [];
+    private readonly List<Assignment> _assignments = [];
+    private bool _effortDriven;
     private List<(decimal WorkMinutes, decimal GapMinutes)>? _splitParts;
     private Duration _duration = new(1, DurationUnit.Days, isEstimated: true);
     private decimal _durationMinutes;
@@ -121,7 +123,17 @@ public sealed class ProjectTask
             _duration = value;
             _durationMinutes = value.ToMinutes(Project.TimeSettings);
             _splitParts = null;
+            EffortTriangle.OnDurationEdited(this);
         }
+    }
+
+    /// <summary>Rewrites the duration from the triangle without re-triggering it.</summary>
+    internal void SetDurationFromMinutes(decimal minutes)
+    {
+        var unit = _duration.IsElapsed ? DurationUnit.Days : _duration.Unit;
+        _duration = Duration.FromMinutes(minutes, unit, Project.TimeSettings, _duration.IsEstimated);
+        _durationMinutes = minutes;
+        _splitParts = null;
     }
 
     /// <summary>Duration in working minutes; for summaries this is the rolled-up span.</summary>
@@ -172,6 +184,51 @@ public sealed class ProjectTask
             _priority = value;
         }
     }
+
+    /// <summary>Which corner of the Work = Duration × Units triangle stays fixed on edits.</summary>
+    public TaskType Type { get; set; } = TaskType.FixedUnits;
+
+    /// <summary>
+    /// When set, adding/removing work resources keeps total work constant.
+    /// Fixed-work tasks are inherently effort-driven. Default off (as in MSP 2010+).
+    /// </summary>
+    public bool IsEffortDriven
+    {
+        get => Type == TaskType.FixedWork || _effortDriven;
+        set
+        {
+            if (!value && Type == TaskType.FixedWork)
+            {
+                throw new InvalidOperationException("Fixed-work tasks are always effort-driven.");
+            }
+
+            _effortDriven = value;
+        }
+    }
+
+    /// <summary>When set, assignments are scheduled on the task calendar alone.</summary>
+    public bool IgnoresResourceCalendars { get; set; }
+
+    /// <summary>Task-level cost independent of resources; rolls up alongside assignment costs.</summary>
+    public decimal FixedCost { get; set; }
+
+    public CostAccrual FixedCostAccrual { get; set; } = CostAccrual.Prorated;
+
+    public IReadOnlyList<Assignment> Assignments => _assignments;
+
+    internal List<Assignment> AssignmentsList => _assignments;
+
+    /// <summary>Total work in minutes: Σ work-resource assignments; summaries roll up active children.</summary>
+    public decimal WorkMinutes
+        => IsSummary
+            ? _children.Where(c => c.IsActive).Sum(c => c.WorkMinutes)
+            : _assignments.Where(a => a.Resource.Type == ResourceType.Work).Sum(a => a.WorkMinutes);
+
+    /// <summary>Fixed cost + assignment costs; summaries roll up active children. Assignment costs are outputs of Recalculate.</summary>
+    public decimal Cost
+        => FixedCost + (IsSummary
+            ? _children.Where(c => c.IsActive).Sum(c => c.Cost)
+            : _assignments.Sum(a => a.Cost));
 
     // Manual-mode inputs.
     public DateTime? ManualStart { get; set; }

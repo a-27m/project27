@@ -250,4 +250,108 @@ internal static class Parsers
         "FALSE" or "NO" or "OFF" or "0" => false,
         _ => throw new CliException($"invalid boolean '{text}'; use true or false"),
     };
+
+    /// <summary>Resource by name (case-insensitive, unique per project) or `uid:N`.</summary>
+    public static Resource ResourceRef(Project project, string reference)
+    {
+        var text = reference.Trim();
+        if (text.StartsWith("uid:", StringComparison.OrdinalIgnoreCase)
+            && int.TryParse(text.AsSpan(4), NumberStyles.Integer, CultureInfo.InvariantCulture, out var uid))
+        {
+            return project.Resources.FirstOrDefault(r => r.UniqueId == uid)
+                ?? throw new CliException($"no resource with uid {uid}");
+        }
+
+        return project.Resources.FirstOrDefault(r => string.Equals(r.Name, text, StringComparison.OrdinalIgnoreCase))
+            ?? throw new CliException($"no resource named '{reference}'");
+    }
+
+    public static ResourceType ResourceTypeInput(string text) => text.Trim().ToUpperInvariant() switch
+    {
+        "WORK" => ResourceType.Work,
+        "MATERIAL" => ResourceType.Material,
+        "COST" => ResourceType.Cost,
+        _ => throw new CliException($"invalid resource type '{text}'; use work, material, or cost"),
+    };
+
+    public static TaskType TaskTypeInput(string text) => text.Trim().ToUpperInvariant() switch
+    {
+        "FIXED-UNITS" => TaskType.FixedUnits,
+        "FIXED-DURATION" => TaskType.FixedDuration,
+        "FIXED-WORK" => TaskType.FixedWork,
+        _ => throw new CliException($"invalid task type '{text}'; use fixed-units, fixed-duration, or fixed-work"),
+    };
+
+    public static WorkContour ContourInput(string text) => text.Trim().ToUpperInvariant() switch
+    {
+        "FLAT" => WorkContour.Flat,
+        "BACK-LOADED" => WorkContour.BackLoaded,
+        "FRONT-LOADED" => WorkContour.FrontLoaded,
+        "DOUBLE-PEAK" => WorkContour.DoublePeak,
+        "EARLY-PEAK" => WorkContour.EarlyPeak,
+        "LATE-PEAK" => WorkContour.LatePeak,
+        "BELL" => WorkContour.Bell,
+        "TURTLE" => WorkContour.Turtle,
+        _ => throw new CliException(
+            $"invalid contour '{text}'; use flat, back-loaded, front-loaded, double-peak, early-peak, late-peak, bell, or turtle"),
+    };
+
+    public static CostAccrual AccrualInput(string text) => text.Trim().ToUpperInvariant() switch
+    {
+        "START" => CostAccrual.Start,
+        "PRORATED" => CostAccrual.Prorated,
+        "END" => CostAccrual.End,
+        _ => throw new CliException($"invalid accrual '{text}'; use start, prorated, or end"),
+    };
+
+    public static CostRateTableId RateTableInput(string text) => text.Trim().ToUpperInvariant() switch
+    {
+        "A" => CostRateTableId.A,
+        "B" => CostRateTableId.B,
+        "C" => CostRateTableId.C,
+        "D" => CostRateTableId.D,
+        "E" => CostRateTableId.E,
+        _ => throw new CliException($"invalid rate table '{text}'; use A..E"),
+    };
+
+    /// <summary>`50%` or a plain multiplier `0.5`; both mean half-time.</summary>
+    public static decimal UnitsInput(string text)
+    {
+        var trimmed = text.Trim();
+        var percent = trimmed.EndsWith('%');
+        if (percent)
+        {
+            trimmed = trimmed[..^1];
+        }
+
+        if (!decimal.TryParse(trimmed, NumberStyles.Number, CultureInfo.InvariantCulture, out var value))
+        {
+            throw new CliException($"invalid units '{text}'; examples: 50%, 200%, 1.5");
+        }
+
+        return percent ? value / 100m : value;
+    }
+
+    /// <summary>Rates: `50`, `50/h`, `400/d`… Material resources take a plain per-unit amount.</summary>
+    public static Rate RateInput(string text, ResourceType type)
+    {
+        if (type == ResourceType.Material && text.Contains('/', StringComparison.Ordinal))
+        {
+            throw new CliException($"material rates are per unit; '{text}' must be a plain amount");
+        }
+
+        try
+        {
+            return Rate.Parse(text);
+        }
+        catch (FormatException exception)
+        {
+            throw new CliException(exception.Message, exception);
+        }
+    }
+
+    public static decimal MoneyInput(string text)
+        => decimal.TryParse(text.Trim(), NumberStyles.Number, CultureInfo.InvariantCulture, out var value)
+            ? value
+            : throw new CliException($"invalid amount '{text}'");
 }

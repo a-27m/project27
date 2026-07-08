@@ -9,7 +9,7 @@ namespace Project27.Core.Persistence;
 /// </summary>
 public sealed record ProjectDocument
 {
-    public int SchemaVersion { get; init; } = 1;
+    public int SchemaVersion { get; init; } = 2;
 
     public required Guid Id { get; init; }
 
@@ -32,6 +32,11 @@ public sealed record ProjectDocument
     public required IReadOnlyList<TaskDocument> Tasks { get; init; }
 
     public required IReadOnlyList<DependencyDocument> Dependencies { get; init; }
+
+    /// <summary>Absent in schema-1 documents; defaults keep them loadable.</summary>
+    public IReadOnlyList<ResourceDocument> Resources { get; init; } = [];
+
+    public IReadOnlyList<AssignmentDocument> Assignments { get; init; } = [];
 }
 
 public sealed record TimeSettingsDocument
@@ -157,6 +162,84 @@ public sealed record TaskDocument
     public bool IsRecurring { get; init; }
 
     public IReadOnlyList<SplitPartDocument>? SplitParts { get; init; }
+
+    // Schema 2 (defaults preserve schema-1 semantics).
+    public TaskType Type { get; init; }
+
+    public bool IsEffortDriven { get; init; }
+
+    public bool IgnoresResourceCalendars { get; init; }
+
+    public decimal FixedCost { get; init; }
+
+    public CostAccrual FixedCostAccrual { get; init; } = CostAccrual.Prorated;
+}
+
+public sealed record RateDocument(decimal Amount, RateUnit Per);
+
+public sealed record CostRateDocument
+{
+    public required DateTime EffectiveFrom { get; init; }
+
+    public required RateDocument StandardRate { get; init; }
+
+    public required RateDocument OvertimeRate { get; init; }
+
+    public decimal CostPerUse { get; init; }
+}
+
+public sealed record RateTableDocument
+{
+    public required CostRateTableId Table { get; init; }
+
+    public required IReadOnlyList<CostRateDocument> Entries { get; init; }
+}
+
+public sealed record ResourceDocument
+{
+    public required Guid Id { get; init; }
+
+    public required int UniqueId { get; init; }
+
+    public required string Name { get; init; }
+
+    public ResourceType Type { get; init; }
+
+    public string? Initials { get; init; }
+
+    public string? Group { get; init; }
+
+    public decimal MaxUnits { get; init; } = 1m;
+
+    public string? MaterialLabel { get; init; }
+
+    public CostAccrual Accrual { get; init; } = CostAccrual.Prorated;
+
+    public Guid? CalendarId { get; init; }
+
+    /// <summary>Only tables that differ from the all-zero default are stored.</summary>
+    public IReadOnlyList<RateTableDocument> RateTables { get; init; } = [];
+}
+
+public sealed record AssignmentDocument
+{
+    public required Guid Id { get; init; }
+
+    public required Guid TaskId { get; init; }
+
+    public required Guid ResourceId { get; init; }
+
+    public decimal Units { get; init; } = 1m;
+
+    public decimal WorkMinutes { get; init; }
+
+    public WorkContour Contour { get; init; }
+
+    public decimal DelayMinutes { get; init; }
+
+    public CostRateTableId RateTable { get; init; }
+
+    public decimal CostInput { get; init; }
 }
 
 public sealed record DependencyDocument

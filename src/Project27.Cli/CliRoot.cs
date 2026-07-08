@@ -29,6 +29,8 @@ internal static class CliRoot
         root.Add(TaskCommands.Command());
         root.Add(LinkCommands.Command());
         root.Add(CalendarCommands.Command());
+        root.Add(ResourceCommands.Command());
+        root.Add(AssignCommands.Command());
         return root;
     }
 

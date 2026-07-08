@@ -13,8 +13,10 @@ public sealed class Project
 
     private readonly ProjectTask _root;
     private readonly List<WorkCalendar> _calendars = [];
+    private readonly List<Resource> _resources = [];
     private List<ProjectTask>? _flattened;
     private int _nextUniqueId;
+    private int _nextResourceUniqueId;
 
     public Project(string name, DateTime start, WorkCalendar? calendar = null, Guid? id = null)
     {
@@ -90,8 +92,170 @@ public sealed class Project
             throw new InvalidOperationException($"Calendar '{calendar.Name}' is used by tasks.");
         }
 
+        if (_resources.Any(r => ReferenceEquals(r.Calendar, calendar)))
+        {
+            throw new InvalidOperationException($"Calendar '{calendar.Name}' is used by resources.");
+        }
+
         return _calendars.Remove(calendar);
     }
+
+    // ------------------------------------------------------------- resources
+
+    /// <summary>All resources in creation order.</summary>
+    public IReadOnlyList<Resource> Resources => _resources;
+
+    public Resource AddResource(string name, ResourceType type = ResourceType.Work)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        EnsureResourceNameFree(name);
+        var resource = new Resource(this, name, type, ++_nextResourceUniqueId);
+        _resources.Add(resource);
+        return resource;
+    }
+
+    /// <summary>Removes a resource and drops its assignments (no effort-driven redistribution).</summary>
+    public bool RemoveResource(Resource resource)
+    {
+        ArgumentNullException.ThrowIfNull(resource);
+        if (!_resources.Contains(resource))
+        {
+            return false;
+        }
+
+        foreach (var assignment in resource.AssignmentsList.ToList())
+        {
+            RemoveAssignmentCore(assignment);
+        }
+
+        return _resources.Remove(resource);
+    }
+
+    internal void EnsureResourceNameFree(string name, Resource? except = null)
+    {
+        if (_resources.Any(r => !ReferenceEquals(r, except) && string.Equals(r.Name, name, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new InvalidOperationException($"A resource named '{name}' already exists.");
+        }
+    }
+
+    /// <summary>
+    /// Assigns a resource to a leaf task. For work resources, omitted work defaults to
+    /// Duration × Units; on effort-driven tasks that already have work assignments,
+    /// omitting work redistributes the existing total instead
+    /// (docs/spec/04-resources-costs.md).
+    /// </summary>
+    public Assignment Assign(ProjectTask task, Resource resource, decimal? units = null, Duration? work = null)
+    {
+        EnsureOwned(task);
+        ArgumentNullException.ThrowIfNull(resource);
+        if (!_resources.Contains(resource))
+        {
+            throw new InvalidOperationException($"Resource '{resource.Name}' does not belong to this project.");
+        }
+
+        if (task.IsSummary)
+        {
+            throw new InvalidOperationException($"'{task.Name}' is a summary task; assign resources to its subtasks.");
+        }
+
+        if (task.AssignmentsList.Any(a => ReferenceEquals(a.Resource, resource)))
+        {
+            throw new InvalidOperationException($"'{resource.Name}' is already assigned to '{task.Name}'.");
+        }
+
+        if (work is not null && resource.Type != ResourceType.Work)
+        {
+            throw new ArgumentException($"{resource.Type} resource '{resource.Name}' carries no work.", nameof(work));
+        }
+
+        if (units is { } u)
+        {
+            if (resource.Type == ResourceType.Work)
+            {
+                ArgumentOutOfRangeException.ThrowIfNegativeOrZero(u, nameof(units));
+            }
+            else
+            {
+                ArgumentOutOfRangeException.ThrowIfNegative(u, nameof(units));
+            }
+        }
+
+        var assignment = new Assignment(task, resource) { Units = units ?? 1m };
+        if (resource.Type == ResourceType.Work)
+        {
+            var redistribute = task.IsEffortDriven
+                && work is null
+                && EffortTriangle.WorkAssignments(task).Any(a => a.WorkMinutes > 0);
+            var total = redistribute ? EffortTriangle.WorkAssignments(task).Sum(a => a.WorkMinutes) : 0m;
+
+            task.AssignmentsList.Add(assignment);
+            resource.AssignmentsList.Add(assignment);
+
+            if (work is { } w)
+            {
+                var minutes = w.ToMinutes(TimeSettings);
+                ArgumentOutOfRangeException.ThrowIfNegative(minutes, nameof(work));
+                assignment.WorkMinutes = minutes;
+                if (units is null && task.Type == TaskType.FixedDuration && task.DurationMinutes > 0)
+                {
+                    assignment.Units = minutes / task.DurationMinutes;
+                }
+
+                EffortTriangle.OnAssignmentEdited(assignment, TriangleEdit.Work);
+            }
+            else if (redistribute)
+            {
+                EffortTriangle.Redistribute(task, total);
+            }
+            else
+            {
+                assignment.WorkMinutes = EffortTriangle.ImpliedWork(task, assignment.Units, assignment.Contour);
+            }
+        }
+        else
+        {
+            task.AssignmentsList.Add(assignment);
+            resource.AssignmentsList.Add(assignment);
+        }
+
+        return assignment;
+    }
+
+    /// <summary>Removes an assignment; effort-driven tasks keep their total work.</summary>
+    public void Unassign(Assignment assignment)
+    {
+        ArgumentNullException.ThrowIfNull(assignment);
+        if (!ReferenceEquals(assignment.Task.Project, this) || !assignment.Task.AssignmentsList.Contains(assignment))
+        {
+            throw new InvalidOperationException("The assignment does not belong to this project.");
+        }
+
+        var task = assignment.Task;
+        var redistribute = assignment.Resource.Type == ResourceType.Work
+            && task.IsEffortDriven
+            && assignment.WorkMinutes > 0;
+        var total = redistribute ? EffortTriangle.WorkAssignments(task).Sum(a => a.WorkMinutes) : 0m;
+
+        RemoveAssignmentCore(assignment);
+
+        if (redistribute && EffortTriangle.WorkAssignments(task).Any())
+        {
+            EffortTriangle.Redistribute(task, total);
+        }
+    }
+
+    private static void RemoveAssignmentCore(Assignment assignment)
+    {
+        assignment.Task.AssignmentsList.Remove(assignment);
+        assignment.Resource.AssignmentsList.Remove(assignment);
+    }
+
+    /// <summary>Total cost over active top-level tasks (assignment costs are outputs of Recalculate).</summary>
+    public decimal TotalCost => _root.ChildrenList.Where(t => t.IsActive).Sum(t => t.Cost);
+
+    /// <summary>Total work in minutes over active top-level tasks.</summary>
+    public decimal TotalWorkMinutes => _root.ChildrenList.Where(t => t.IsActive).Sum(t => t.WorkMinutes);
 
     public ProjectTask AddTask(string name, Duration? duration = null, ProjectTask? parent = null, int? at = null)
     {
@@ -131,6 +295,11 @@ public sealed class Project
             foreach (var dependency in member.PredecessorsList.Concat(member.SuccessorsList).ToList())
             {
                 Unlink(dependency);
+            }
+
+            foreach (var assignment in member.AssignmentsList.ToList())
+            {
+                RemoveAssignmentCore(assignment);
             }
         }
 
@@ -293,6 +462,28 @@ public sealed class Project
         _nextUniqueId = Math.Max(_nextUniqueId, uniqueId);
         InvalidateOutline();
         return task;
+    }
+
+    internal Resource RestoreResource(string name, ResourceType type, int uniqueId, Guid id)
+    {
+        var resource = new Resource(this, name, type, uniqueId, id);
+        _resources.Add(resource);
+        _nextResourceUniqueId = Math.Max(_nextResourceUniqueId, uniqueId);
+        return resource;
+    }
+
+    /// <summary>Reattaches an assignment without triangle recalculation (documents store all corners).</summary>
+    internal Assignment RestoreAssignment(ProjectTask task, Resource resource, Guid id)
+    {
+        if (!ReferenceEquals(task.Project, this) || !_resources.Contains(resource))
+        {
+            throw new InvalidOperationException("Restored assignment references foreign members.");
+        }
+
+        var assignment = new Assignment(task, resource, id);
+        task.AssignmentsList.Add(assignment);
+        resource.AssignmentsList.Add(assignment);
+        return assignment;
     }
 
     internal TaskDependency RestoreLink(ProjectTask predecessor, ProjectTask successor, DependencyType type, Lag lag)

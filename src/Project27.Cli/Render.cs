@@ -135,6 +135,40 @@ internal static class Render
             => writer.WriteLine(string.Join("  ", cells.Select((cell, i) => cell.PadRight(widths[i]))).TrimEnd());
     }
 
+    /// <summary>Work-resource units as a percentage (`100%`); material quantities as plain numbers.</summary>
+    public static string Units(Assignment assignment)
+        => assignment.Resource.Type == ResourceType.Work
+            ? Num(assignment.Units * 100m) + "%"
+            : Num(assignment.Units);
+
+    /// <summary>Work in hours, MSP's display unit: `16h`.</summary>
+    public static string WorkHours(decimal minutes) => Num(minutes / 60m) + "h";
+
+    public static string ContourName(WorkContour contour) => contour switch
+    {
+        WorkContour.Flat => "flat",
+        WorkContour.BackLoaded => "back-loaded",
+        WorkContour.FrontLoaded => "front-loaded",
+        WorkContour.DoublePeak => "double-peak",
+        WorkContour.EarlyPeak => "early-peak",
+        WorkContour.LatePeak => "late-peak",
+        WorkContour.Bell => "bell",
+        WorkContour.Turtle => "turtle",
+        _ => throw new ArgumentOutOfRangeException(nameof(contour)),
+    };
+
+    /// <summary>Rate for humans: `50/h` for work resources, plain amount per unit for material.</summary>
+    public static string RateText(Rate rate, ResourceType type)
+        => type == ResourceType.Material ? Num(rate.Amount) : rate.ToString();
+
+    public static string TaskTypeName(TaskType type) => type switch
+    {
+        TaskType.FixedUnits => "fixed-units",
+        TaskType.FixedDuration => "fixed-duration",
+        TaskType.FixedWork => "fixed-work",
+        _ => throw new ArgumentOutOfRangeException(nameof(type)),
+    };
+
     public static void KeyValues(TextWriter writer, IReadOnlyList<(string Key, string Value)> pairs)
     {
         var width = pairs.Max(p => p.Key.Length) + 1;

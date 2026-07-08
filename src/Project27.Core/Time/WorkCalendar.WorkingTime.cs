@@ -2,21 +2,25 @@ using System.Diagnostics;
 
 namespace Project27.Core.Time;
 
+public sealed partial class WorkCalendar : IWorkSchedule;
+
 /// <summary>
-/// Working-time arithmetic. All operations are time-zone-naive and minute-interval
-/// based but preserve sub-minute precision of inputs (tick granularity).
+/// Working-time arithmetic over any <see cref="IWorkSchedule"/>. All operations are
+/// time-zone-naive and minute-interval based but preserve sub-minute precision of
+/// inputs (tick granularity).
 /// </summary>
-public sealed partial class WorkCalendar
+public static class WorkScheduleArithmetic
 {
-    // Consecutive non-working days scanned before concluding the calendar is dead.
+    // Consecutive non-working days scanned before concluding the schedule is dead.
     private const int MaxNonWorkingScanDays = 3653;
 
     /// <summary>True if <paramref name="time"/> lies inside a working interval (start-inclusive, end-exclusive).</summary>
-    public bool IsWorkingTime(DateTime time)
+    public static bool IsWorkingTime(this IWorkSchedule schedule, DateTime time)
     {
-        var schedule = GetDaySchedule(DateOnly.FromDateTime(time));
+        ArgumentNullException.ThrowIfNull(schedule);
+        var day = schedule.GetDaySchedule(DateOnly.FromDateTime(time));
         var ticksOfDay = time.TimeOfDay.Ticks;
-        foreach (var interval in schedule.Intervals)
+        foreach (var interval in day.Intervals)
         {
             if (ticksOfDay >= interval.StartMinute * TimeSpan.TicksPerMinute
                 && ticksOfDay < interval.EndMinute * TimeSpan.TicksPerMinute)
@@ -29,40 +33,43 @@ public sealed partial class WorkCalendar
     }
 
     /// <summary>Earliest working instant at or after <paramref name="time"/>.</summary>
-    public DateTime NextWorkingTime(DateTime time)
+    public static DateTime NextWorkingTime(this IWorkSchedule schedule, DateTime time)
     {
-        foreach (var (start, _) in IntervalsOnward(time, until: null))
+        ArgumentNullException.ThrowIfNull(schedule);
+        foreach (var (start, _) in IntervalsOnward(schedule, time, until: null))
         {
             return start > time ? start : time;
         }
 
-        throw NoWorkingTime();
+        throw NoWorkingTime(schedule);
     }
 
     /// <summary>
     /// Latest working instant at or before <paramref name="time"/>. Interval ends count
     /// as working here (a task may finish exactly at 17:00).
     /// </summary>
-    public DateTime PreviousWorkingTime(DateTime time)
+    public static DateTime PreviousWorkingTime(this IWorkSchedule schedule, DateTime time)
     {
-        foreach (var (_, end) in IntervalsBackward(time, until: null))
+        ArgumentNullException.ThrowIfNull(schedule);
+        foreach (var (_, end) in IntervalsBackward(schedule, time, until: null))
         {
             return end < time ? end : time;
         }
 
-        throw NoWorkingTime();
+        throw NoWorkingTime(schedule);
     }
 
     /// <summary>
     /// Adds working minutes (signed; negative walks backward). A forward result may land
     /// exactly on an interval end, a backward result exactly on an interval start.
     /// </summary>
-    public DateTime AddWork(DateTime start, decimal minutes)
+    public static DateTime AddWork(this IWorkSchedule schedule, DateTime start, decimal minutes)
     {
+        ArgumentNullException.ThrowIfNull(schedule);
         var ticks = (long)Math.Round(minutes * TimeSpan.TicksPerMinute);
         if (ticks > 0)
         {
-            foreach (var (intervalStart, intervalEnd) in IntervalsOnward(start, until: null))
+            foreach (var (intervalStart, intervalEnd) in IntervalsOnward(schedule, start, until: null))
             {
                 var begin = intervalStart > start ? intervalStart : start;
                 var available = (intervalEnd - begin).Ticks;
@@ -77,7 +84,7 @@ public sealed partial class WorkCalendar
         else if (ticks < 0)
         {
             ticks = -ticks;
-            foreach (var (intervalStart, intervalEnd) in IntervalsBackward(start, until: null))
+            foreach (var (intervalStart, intervalEnd) in IntervalsBackward(schedule, start, until: null))
             {
                 var end = intervalEnd < start ? intervalEnd : start;
                 var available = (end - intervalStart).Ticks;
@@ -94,19 +101,20 @@ public sealed partial class WorkCalendar
             return start;
         }
 
-        throw new UnreachableException("Interval enumeration is unbounded and throws on dead calendars.");
+        throw new UnreachableException("Interval enumeration is unbounded and throws on dead schedules.");
     }
 
     /// <summary>Signed working minutes between two instants.</summary>
-    public decimal WorkBetween(DateTime from, DateTime to)
+    public static decimal WorkBetween(this IWorkSchedule schedule, DateTime from, DateTime to)
     {
+        ArgumentNullException.ThrowIfNull(schedule);
         if (to < from)
         {
-            return -WorkBetween(to, from);
+            return -WorkBetween(schedule, to, from);
         }
 
         var totalTicks = 0L;
-        foreach (var (start, end) in IntervalsOnward(from, until: to))
+        foreach (var (start, end) in IntervalsOnward(schedule, from, until: to))
         {
             if (start >= to)
             {
@@ -129,19 +137,19 @@ public sealed partial class WorkCalendar
     /// at or before it. Bounded by <paramref name="until"/>'s day if given, otherwise
     /// throws after <see cref="MaxNonWorkingScanDays"/> consecutive non-working days.
     /// </summary>
-    private IEnumerable<(DateTime Start, DateTime End)> IntervalsOnward(DateTime from, DateTime? until)
+    private static IEnumerable<(DateTime Start, DateTime End)> IntervalsOnward(IWorkSchedule schedule, DateTime from, DateTime? until)
     {
         var date = DateOnly.FromDateTime(from);
         var lastDate = until is { } u ? DateOnly.FromDateTime(u) : DateOnly.MaxValue;
         var idleDays = 0;
         while (date <= lastDate)
         {
-            var schedule = GetDaySchedule(date);
-            if (schedule.IsWorking)
+            var day = schedule.GetDaySchedule(date);
+            if (day.IsWorking)
             {
                 idleDays = 0;
                 var midnight = date.ToDateTime(System.TimeOnly.MinValue);
-                foreach (var interval in schedule.Intervals)
+                foreach (var interval in day.Intervals)
                 {
                     var end = midnight.AddMinutes(interval.EndMinute);
                     if (end > from)
@@ -152,7 +160,7 @@ public sealed partial class WorkCalendar
             }
             else if (until is null && ++idleDays > MaxNonWorkingScanDays)
             {
-                throw NoWorkingTime();
+                throw NoWorkingTime(schedule);
             }
 
             if (date == DateOnly.MaxValue)
@@ -165,19 +173,19 @@ public sealed partial class WorkCalendar
     }
 
     /// <summary>Working intervals from <paramref name="from"/> backward, skipping intervals that start at or after it.</summary>
-    private IEnumerable<(DateTime Start, DateTime End)> IntervalsBackward(DateTime from, DateTime? until)
+    private static IEnumerable<(DateTime Start, DateTime End)> IntervalsBackward(IWorkSchedule schedule, DateTime from, DateTime? until)
     {
         var date = DateOnly.FromDateTime(from);
         var lastDate = until is { } u ? DateOnly.FromDateTime(u) : DateOnly.MinValue;
         var idleDays = 0;
         while (date >= lastDate)
         {
-            var schedule = GetDaySchedule(date);
-            if (schedule.IsWorking)
+            var day = schedule.GetDaySchedule(date);
+            if (day.IsWorking)
             {
                 idleDays = 0;
                 var midnight = date.ToDateTime(System.TimeOnly.MinValue);
-                var intervals = schedule.Intervals;
+                var intervals = day.Intervals;
                 for (var i = intervals.Length - 1; i >= 0; i--)
                 {
                     var start = midnight.AddMinutes(intervals[i].StartMinute);
@@ -189,7 +197,7 @@ public sealed partial class WorkCalendar
             }
             else if (until is null && ++idleDays > MaxNonWorkingScanDays)
             {
-                throw NoWorkingTime();
+                throw NoWorkingTime(schedule);
             }
 
             if (date == DateOnly.MinValue)
@@ -201,6 +209,6 @@ public sealed partial class WorkCalendar
         }
     }
 
-    private InvalidOperationException NoWorkingTime()
-        => new($"Calendar '{Name}' has no working time within {MaxNonWorkingScanDays} days of the requested date.");
+    private static InvalidOperationException NoWorkingTime(IWorkSchedule schedule)
+        => new($"Schedule '{schedule.Name}' has no working time within {MaxNonWorkingScanDays} days of the requested date.");
 }

@@ -15,3 +15,11 @@ from MS Project desktop. Entries are added as phases land.
 | 8 | Scheduling display | Dates may land on equivalent working-time boundaries (e.g. finish "Wed 08:00" ≡ "Tue 17:00") when driven by start-of-day bounds | MSP normalizes to interval ends | Zero-width working-time equivalence; cosmetic |
 | 9 | Recurring tasks | Require an end date or occurrence count; capped at 999 occurrences | Same cap; end bound also required | Parity, made explicit |
 | 10 | Fields (CLI/JSON) | `outlineLevel` is 0-based (top level = 0) | OutlineLevel is 1-based | Engine convention; MSPDI interop will emit/consume 1-based |
+| 11 | Resources | Names are unique per project (case-insensitive) | Duplicate names allowed | Unambiguous CLI/JSON addressing by name |
+| 12 | Assignments | Only leaf tasks can be assigned | Summary assignments allowed (discouraged) | Rollup consistency; revisit if demanded |
+| 13 | Material resources | Assignment units are a fixed quantity | Also variable per-time consumption ("10/day") | Time-phased consumption needs usage views (phase 9) |
+| 14 | Work contours | Clean-room decile averages; scheduling uses average utilization only (flat 1.0, back/front-loaded 0.60, double-peak/bell 0.50, early/late-peak 0.45, turtle 0.70) | Per-decile time-phased distribution | Distribution becomes observable with usage views (phase 9) |
+| 15 | Rates | Yearly rates convert at 52 × MinutesPerWeek | Believed equivalent; under-documented | Deterministic, documented rule |
+| 16 | Assignments | Split and manual tasks pin assignment dates to task dates (resource calendars not applied) | Resource calendars also shape split-task assignments | Complexity deferred; splits + assignments is a rare combination |
+| 17 | Costs | The rate band in force at the assignment start prices the whole assignment | Prorates across bands per time-phased bucket | Needs time-phased work (phase 8); flagged for revisit |
+| 18 | Scheduling | A restrictive resource calendar extends the task finish but the entered duration field is not rewritten | Duration is recalculated from the assignment span | Inputs stay inputs; the bar and slack reflect the real span |

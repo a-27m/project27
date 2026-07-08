@@ -49,7 +49,131 @@ internal static class ProjectScheduler
         }
 
         FinalizeDates(project, tasks);
+        FinalizeAssignments(project, tasks);
         ComputeSlack(project, tasks);
+    }
+
+    // ------------------------------------------------------------ assignments
+
+    /// <summary>
+    /// True when assignment walks (resource calendars, contours, delays) drive the
+    /// task finish: auto-scheduled, unsplit, non-milestone leaves with real work.
+    /// </summary>
+    private static bool UsesAssignmentScheduling(ProjectTask task)
+        => task.Mode == TaskMode.Auto
+            && !task.IsSplit
+            && task.DurationMinutes > 0
+            && task.AssignmentsList.Any(a => a.Resource.Type == ResourceType.Work && a.WorkMinutes > 0);
+
+    /// <summary>The schedule an assignment works on (docs/spec/04-resources-costs.md).</summary>
+    private static IWorkSchedule ScheduleFor(Project project, ProjectTask task, Assignment assignment)
+    {
+        var resourceCalendar = !task.IgnoresResourceCalendars && assignment.Resource.Type == ResourceType.Work
+            ? assignment.Resource.Calendar
+            : null;
+        if (resourceCalendar is null)
+        {
+            return task.Calendar ?? project.Calendar;
+        }
+
+        return task.Calendar is { } taskCalendar
+            ? new ScheduleIntersection(taskCalendar, resourceCalendar)
+            : resourceCalendar;
+    }
+
+    private static IEnumerable<Assignment> DrivingAssignments(ProjectTask task)
+        => task.AssignmentsList.Where(a => a.Resource.Type == ResourceType.Work && a.WorkMinutes > 0);
+
+    /// <summary>Task finish from a start: the latest of the duration walk and every assignment walk.</summary>
+    private static DateTime ForwardFinish(Project project, ProjectTask task, WorkCalendar calendar, DateTime start)
+    {
+        var finish = ScheduleForward(calendar, task, start).Finish;
+        if (!UsesAssignmentScheduling(task))
+        {
+            return finish;
+        }
+
+        foreach (var assignment in DrivingAssignments(task))
+        {
+            var candidate = AssignmentForward(project, task, assignment, start).Finish;
+            finish = Max(finish, candidate)!.Value;
+        }
+
+        return finish;
+    }
+
+    /// <summary>Task start from a finish: the earliest of the inverse duration walk and inverse assignment walks.</summary>
+    private static DateTime BackwardStart(Project project, ProjectTask task, WorkCalendar calendar, DateTime finish)
+    {
+        var start = ScheduleBackward(calendar, task, finish).Start;
+        if (!UsesAssignmentScheduling(task))
+        {
+            return start;
+        }
+
+        foreach (var assignment in DrivingAssignments(task))
+        {
+            var schedule = ScheduleFor(project, task, assignment);
+            var assignmentFinish = schedule.PreviousWorkingTime(finish);
+            var assignmentStart = schedule.AddWork(assignmentFinish, -EffortTriangle.AssignmentDurationMinutes(assignment));
+            var candidate = assignment.DelayMinutes > 0
+                ? schedule.AddWork(assignmentStart, -assignment.DelayMinutes)
+                : assignmentStart;
+            start = Min(start, candidate)!.Value;
+        }
+
+        return start;
+    }
+
+    private static (DateTime Start, DateTime Finish) AssignmentForward(Project project, ProjectTask task, Assignment assignment, DateTime taskStart)
+    {
+        var schedule = ScheduleFor(project, task, assignment);
+        var start = schedule.NextWorkingTime(taskStart);
+        if (assignment.DelayMinutes > 0)
+        {
+            // A delay may land exactly on an interval end; a start belongs at the next interval.
+            start = schedule.NextWorkingTime(schedule.AddWork(start, assignment.DelayMinutes));
+        }
+
+        var duration = EffortTriangle.AssignmentDurationMinutes(assignment);
+        var finish = duration == 0 ? start : schedule.AddWork(start, duration);
+        return (start, finish);
+    }
+
+    /// <summary>Assignment dates and costs, once task dates are final.</summary>
+    private static void FinalizeAssignments(Project project, IReadOnlyList<ProjectTask> tasks)
+    {
+        foreach (var task in tasks)
+        {
+            var walk = UsesAssignmentScheduling(task);
+            foreach (var assignment in task.AssignmentsList)
+            {
+                if (walk && assignment.Resource.Type == ResourceType.Work && assignment.WorkMinutes > 0 && task.Start is { } taskStart)
+                {
+                    (assignment.Start, assignment.Finish) = AssignmentForward(project, task, assignment, taskStart);
+                }
+                else
+                {
+                    assignment.Start = task.Start;
+                    assignment.Finish = task.Finish;
+                }
+
+                assignment.Cost = ComputeCost(project, assignment);
+            }
+        }
+    }
+
+    private static decimal ComputeCost(Project project, Assignment assignment)
+    {
+        if (assignment.Resource.Type == ResourceType.Cost)
+        {
+            return assignment.CostInput;
+        }
+
+        var rate = assignment.Resource.RateTable(assignment.RateTable).RateAt(assignment.Start ?? project.StartDate);
+        return assignment.Resource.Type == ResourceType.Work
+            ? rate.StandardRate.CostForMinutes(assignment.WorkMinutes, project.TimeSettings) + rate.CostPerUse
+            : (assignment.Units * rate.StandardRate.Amount) + rate.CostPerUse;
     }
 
     private static long ComputeGuard(IReadOnlyList<ProjectTask> tasks)
@@ -225,20 +349,19 @@ internal static class ProjectScheduler
         }
         else if (forcedFinish is { } ff)
         {
-            earlyStart = ScheduleBackward(calendar, task, SnapToWorkingPoint(calendar, ff)).Start;
+            earlyStart = BackwardStart(project, task, calendar, SnapToWorkingPoint(calendar, ff));
         }
         else
         {
             earlyStart = calendar.NextWorkingTime(startBound!.Value);
             if (finishBound is { } fb)
             {
-                var fromFinish = ScheduleBackward(calendar, task, SnapToWorkingPoint(calendar, fb)).Start;
+                var fromFinish = BackwardStart(project, task, calendar, SnapToWorkingPoint(calendar, fb));
                 earlyStart = Max(earlyStart, fromFinish)!.Value;
             }
         }
 
-        var (finish, _) = ScheduleForward(calendar, task, earlyStart);
-        return (earlyStart, finish);
+        return (earlyStart, ForwardFinish(project, task, calendar, earlyStart));
     }
 
     // --------------------------------------------------------------- backward
@@ -405,20 +528,19 @@ internal static class ProjectScheduler
         }
         else if (forcedStart is { } fs)
         {
-            lateFinish = ScheduleForward(calendar, task, calendar.NextWorkingTime(fs)).Finish;
+            lateFinish = ForwardFinish(project, task, calendar, calendar.NextWorkingTime(fs));
         }
         else
         {
             lateFinish = SnapToWorkingPoint(calendar, finishBound!.Value, backward: true);
             if (startBound is { } sb)
             {
-                var fromStart = ScheduleForward(calendar, task, SnapStartLimit(calendar, sb)).Finish;
+                var fromStart = ForwardFinish(project, task, calendar, SnapStartLimit(calendar, sb));
                 lateFinish = Min(lateFinish, fromStart)!.Value;
             }
         }
 
-        var (lateStart, _) = ScheduleBackward(calendar, task, lateFinish);
-        return (lateStart, lateFinish);
+        return (BackwardStart(project, task, calendar, lateFinish), lateFinish);
     }
 
     private static (DateTime? Start, DateTime? Finish) MinLeafLate(ProjectTask task)
@@ -483,17 +605,27 @@ internal static class ProjectScheduler
                 task.Finish = task.EarlyFinish;
                 if (task.EarlyStart is { } es)
                 {
-                    task.Segments = task.Mode == TaskMode.Manual
+                    task.Segments = task.Mode == TaskMode.Manual || UsesAssignmentScheduling(task)
                         ? [new TaskSegment(es, task.EarlyFinish!.Value)]
                         : ScheduleForward(calendar, task, es).Segments;
                 }
             }
             else if (task.LateFinish is { } lf)
             {
-                var (start, segments) = ScheduleBackward(calendar, task, lf);
-                task.Start = start;
-                task.Finish = lf;
-                task.Segments = segments;
+                if (UsesAssignmentScheduling(task))
+                {
+                    var start = BackwardStart(project, task, calendar, lf);
+                    task.Start = start;
+                    task.Finish = lf;
+                    task.Segments = [new TaskSegment(start, lf)];
+                }
+                else
+                {
+                    var (start, segments) = ScheduleBackward(calendar, task, lf);
+                    task.Start = start;
+                    task.Finish = lf;
+                    task.Segments = segments;
+                }
             }
         }
 

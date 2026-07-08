@@ -205,6 +205,9 @@ internal static class ProjectCommands
             ("default day", $"{Render.Time(settings.DefaultStartTime)}-{Render.Time(settings.DefaultEndTime)}"),
             ("tasks", Render.Num(project.Tasks.Count)),
             ("calendars", string.Join(", ", project.Calendars.Select(c => c.Name))),
+            ("resources", Render.Num(project.Resources.Count)),
+            ("work", Render.WorkHours(project.TotalWorkMinutes)),
+            ("cost", Render.Num(project.TotalCost)),
         ]);
     }
 }
