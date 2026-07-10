@@ -12,8 +12,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Project27.Cli\Project27.Cli.csproj" />
-    <ProjectReference Include="..\..\src\Project27.Server\Project27.Server.csproj" Aliases="server" />
+    <ProjectReference Include="..\..\src\Project27.Server\Project27.Server.csproj" />
   </ItemGroup>
 
 </Project>

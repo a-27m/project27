@@ -1,6 +1,4 @@
 using System.Globalization;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Microsoft.Data.Sqlite;
 using Project27.Core;
 using Project27.Core.Persistence;
@@ -17,12 +15,6 @@ public sealed class SqliteProjectStore : IProjectStore
     public const string FileExtension = ".p27";
 
     private const int FormatVersion = 1;
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        Converters = { new JsonStringEnumConverter() },
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
 
     private SqliteProjectStore(string path) => Path = path;
 
@@ -69,8 +61,7 @@ public sealed class SqliteProjectStore : IProjectStore
         command.CommandText = "SELECT json FROM snapshot WHERE id = 1";
         var json = command.ExecuteScalar() as string
             ?? throw new InvalidDataException($"'{Path}' contains no project snapshot.");
-        var document = JsonSerializer.Deserialize<ProjectDocument>(json, JsonOptions)
-            ?? throw new InvalidDataException($"'{Path}' contains an empty project snapshot.");
+        var document = ProjectDocumentSerializer.Deserialize(json);
         var project = ProjectDocumentMapper.FromDocument(document);
         project.Recalculate();
         return project;
@@ -79,7 +70,7 @@ public sealed class SqliteProjectStore : IProjectStore
     public void Save(Project project)
     {
         ArgumentNullException.ThrowIfNull(project);
-        var json = JsonSerializer.Serialize(ProjectDocumentMapper.ToDocument(project), JsonOptions);
+        var json = ProjectDocumentSerializer.Serialize(ProjectDocumentMapper.ToDocument(project));
 
         using var connection = OpenConnection();
         using var transaction = connection.BeginTransaction();

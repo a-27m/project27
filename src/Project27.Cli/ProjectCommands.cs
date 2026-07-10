@@ -18,6 +18,11 @@ internal static class ProjectCommands
         var command = new Command("init", "Create a new .p27 project file.") { nameArg, startOpt };
         command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
         {
+            if (context.IsRemote)
+            {
+                throw new CliException("init creates local files; with --server use `p27 project create`");
+            }
+
             var name = parseResult.GetRequiredValue(nameArg);
             var settings = new TimeSettings();
             var startText = parseResult.GetValue(startOpt);
@@ -40,6 +45,9 @@ internal static class ProjectCommands
         var command = new Command("project", "Show or change project settings.");
         command.Add(Show());
         command.Add(Set());
+        command.Add(ServerCommands.ProjectList());
+        command.Add(ServerCommands.ProjectCreate());
+        command.Add(ServerCommands.ProjectDelete());
         return command;
     }
 

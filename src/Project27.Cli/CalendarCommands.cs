@@ -311,7 +311,7 @@ internal static class CalendarCommands
 
     private static void SaveAndReport(
         CliContext context,
-        Storage.SqliteProjectStore store,
+        IProjectSession store,
         Project project,
         WorkCalendar calendar,
         string message)

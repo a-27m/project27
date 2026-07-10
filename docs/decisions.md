@@ -51,6 +51,14 @@ One editor per project at a time. Explicit checkout to edit, check-in to release
 lock owner (or project owner) may steal a stale lock. Readers are never blocked.
 Chosen for correctness-per-cost over optimistic merging or real-time co-editing.
 
+### D6a — Amendment (2026-07-11): API v1 is snapshot-oriented
+
+Phase 6 ships checkout → `PUT` document → check-in (whole-snapshot writes). The
+command-oriented write surface (`POST /projects/{id}/commands`) and the Core
+command layer it rides on arrive with the web client in phase 7, which is the
+first consumer that needs fine-grained edits. The CLI embeds the engine, so
+snapshot writes give it full server parity today.
+
 ## D7 — Engine semantics: clean-room
 
 A principled CPM engine using MS Project's *concepts* (task types, effort-driven,

@@ -18,11 +18,43 @@ internal static class CliRoot
         Recursive = true,
     };
 
+    internal static readonly Option<string?> ServerOption = new("--server")
+    {
+        Description = "Server base URL (or P27_SERVER); switches from local files to the REST API.",
+        HelpName = "url",
+        Recursive = true,
+    };
+
+    internal static readonly Option<string?> ProjectOption = new("--project", "-p")
+    {
+        Description = "Server project by name or id (server mode).",
+        HelpName = "name|id",
+        Recursive = true,
+    };
+
+    internal static readonly Option<string?> TokenOption = new("--token")
+    {
+        Description = "Bearer token for the server (or P27_TOKEN).",
+        HelpName = "jwt",
+        Recursive = true,
+    };
+
+    internal static readonly Option<string?> DevUserOption = new("--dev-user")
+    {
+        Description = "DevAuth user for a Development server.",
+        HelpName = "id",
+        Recursive = true,
+    };
+
     public static RootCommand Build()
     {
         var root = new RootCommand("Project27 command-line client: plan, schedule, and inspect .p27 project files.");
         root.Add(FileOption);
         root.Add(JsonOption);
+        root.Add(ServerOption);
+        root.Add(ProjectOption);
+        root.Add(TokenOption);
+        root.Add(DevUserOption);
         root.Add(ProjectCommands.Init());
         root.Add(ProjectCommands.Project());
         root.Add(ProjectCommands.Schedule());
@@ -31,6 +63,9 @@ internal static class CliRoot
         root.Add(CalendarCommands.Command());
         root.Add(ResourceCommands.Command());
         root.Add(AssignCommands.Command());
+        root.Add(ServerCommands.Checkout());
+        root.Add(ServerCommands.Checkin());
+        root.Add(ServerCommands.Unlock());
         return root;
     }
 
