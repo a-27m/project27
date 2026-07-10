@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Project27.Core;
+using Project27.Core.Commands;
 using Project27.Core.Persistence;
 using Project27.Server.Storage;
 using Project27.Storage;
@@ -81,6 +82,64 @@ public static class ProjectEndpoints
             response.Headers.ETag = $"\"{access!.Project.Version}\"";
             response.Headers["X-Project-Version"] = access.Project.Version.ToString(System.Globalization.CultureInfo.InvariantCulture);
             return Results.Text(json, "application/json");
+        });
+
+        projects.MapGet("/{id:guid}/schedule", async (Guid id, ClaimsPrincipal user, IServerStore store, CancellationToken cancellationToken) =>
+        {
+            var (access, error) = await Authorize(store, id, user, ProjectRole.Reader, cancellationToken);
+            if (error is not null)
+            {
+                return error;
+            }
+
+            var json = await store.GetDocument(id, cancellationToken)
+                ?? throw new InvalidOperationException($"Project {id:D} has no snapshot; the store is corrupt.");
+            var project = ProjectDocumentMapper.FromDocument(ProjectDocumentSerializer.Deserialize(json));
+            project.Recalculate();
+            return Results.Ok(ScheduleProjection.From(project, access!.Project.Version));
+        });
+
+        projects.MapPost("/{id:guid}/commands", async (Guid id, List<ProjectCommand> commands, ClaimsPrincipal user, IServerStore store, ProjectEventBroker broker, CancellationToken cancellationToken) =>
+        {
+            var (access, error) = await Authorize(store, id, user, ProjectRole.Editor, cancellationToken);
+            if (error is not null)
+            {
+                return error;
+            }
+
+            var userId = UserId(user);
+            var held = await store.GetLock(id, cancellationToken);
+            if (held is null || held.UserId != userId)
+            {
+                return Problem(409, held is null
+                    ? "Check the project out before sending commands."
+                    : $"The lock is held by '{held.UserId}'.");
+            }
+
+            var json = await store.GetDocument(id, cancellationToken)
+                ?? throw new InvalidOperationException($"Project {id:D} has no snapshot; the store is corrupt.");
+            var project = ProjectDocumentMapper.FromDocument(ProjectDocumentSerializer.Deserialize(json));
+            IReadOnlyList<int?> createdUids;
+            try
+            {
+                createdUids = CommandExecutor.ApplyAll(project, commands);
+                project.Recalculate();
+            }
+            catch (Exception exception) when (exception is CommandException or InvalidOperationException)
+            {
+                return Problem(422, exception.Message);
+            }
+
+            var updated = ProjectDocumentSerializer.Serialize(ProjectDocumentMapper.ToDocument(project));
+            var newVersion = await store.SaveSnapshot(id, access!.Project.Version, updated, project.Name, userId, DateTime.UtcNow, cancellationToken);
+            if (newVersion is null)
+            {
+                return Problem(409, "Version conflict: the project changed concurrently.");
+            }
+
+            await store.TryAcquireLock(id, userId, DateTime.UtcNow, cancellationToken);
+            broker.Publish(id, "checkin", new { version = newVersion.Value, user = userId });
+            return Results.Ok(new CommandsResponse(newVersion.Value, createdUids, ScheduleProjection.From(project, newVersion.Value)));
         });
 
         projects.MapPost("/{id:guid}/checkout", async (Guid id, ClaimsPrincipal user, IServerStore store, LockingOptions locking, ProjectEventBroker broker, CancellationToken cancellationToken) =>
