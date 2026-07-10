@@ -15,10 +15,11 @@ expensive to re-derive; conventions live in `decisions.md` (D1–D9 + D6a).
 | 4 | Resources & costs | done | f269ad9 |
 | 5 | Interop (MSPDI/CSV) | **postponed → after 12** | — |
 | 6 | Server | done | 2bfdc88 |
-| 7 | Web foundation | next | — |
-| 8–12 | Tracking/EVM · Views · Advanced scheduling · Reports · Polish | pending | — |
+| 7 | Web foundation | done | dd99a46 + cd38b54 |
+| 8 | Tracking & EVM | next | — |
+| 9–12 | Views · Advanced scheduling · Reports · Polish | pending | — |
 
-Specs: `docs/spec/01…04, 06`. Deviations from MS Project: `docs/spec/deviations.md` (#1–#18).
+Specs: `docs/spec/01…04, 06, 07`. Deviations from MS Project: `docs/spec/deviations.md` (#1–#18).
 
 ## Build & test
 
@@ -57,11 +58,32 @@ Specs: `docs/spec/01…04, 06`. Deviations from MS Project: `docs/spec/deviation
 - Remote mutating verbs: fetch → mutate in-process → checkout+PUT; a lock whose `AcquiredAt != RefreshedAt` pre-existed (explicit `p27 checkout`) and is kept.
 - Test seams: in-process invoke via `InvocationConfiguration{Output,Error}` (`CliHarness`); `RemoteClient.HandlerFactory` routes to a `WebApplicationFactory` TestServer (extern alias `server` — both hosts define `Program`).
 
-## Phase 7 pointers (next)
+## Web / command layer (phase 7) essentials
 
-- Scope: React+TS (Vite) app shell, auth flow, virtualized task sheet, custom
-  SVG Gantt with drag/link, split views (`web/`, decision D2).
-- Brings the **Core command layer** + `POST /projects/{id}/commands` (D6a) for
-  fine-grained edits; web state = snapshot + command queue while holding the lock.
-- Server already publishes SSE for live refresh; OpenAPI at `/openapi/v1.json` (Development).
-- Web tests: component tests for grid/Gantt logic, Playwright smoke (architecture.md).
+- `Project27.Core.Commands`: op-discriminated command records +
+  `CommandExecutor` (throws `CommandException`; **no** implicit Recalculate).
+  Undo/redo inverses deferred to phase 12.
+- Server: `GET /{id}/schedule` (computed projection, server-owned DTOs — Core
+  field catalog unifies projections in phase 9) and `POST /{id}/commands`
+  (lock-held; returns `{version, createdUids, schedule}`, keeps the lock).
+- `web/`: Vite + React 19 + TS 6, no UI deps. `npm run build` / `npm test`
+  (Vitest, 21) / `npm run lint` (oxlint) — all part of "done". Dev proxy `/api`
+  → `P27_SERVER` or `http://localhost:5240`.
+- Pure logic in `web/src/lib/` (timescale, virtualize, drag, format) is
+  unit-tested; components are thin over it. SSE via fetch-stream (EventSource
+  can't carry auth headers). Both split panes scroll-synced; sticky headers.
+- Playwright browser smoke deferred (no browsers in this environment) —
+  tracked for phase 12.
+
+## Phase 8 pointers (next)
+
+- Scope (roadmap): baselines 0–10, interim plans, status date, actuals
+  (percent complete, actual start/finish/duration/work/cost), reschedule
+  uncompleted work, earned value fields (BCWS/BCWP/ACWP, SV/CV, SPI/CPI…).
+- Engine work first (Core: baseline storage per task/assignment + EVM
+  calculators + actuals interplay with the triangle), then persistence schema
+  v3 (additive), CLI verbs (`baseline set/clear`, `task set --percent-complete
+  --actual-start …`, `project set --status-date`), commands + schedule
+  projection fields, web columns later (phase 9 usage views).
+- The snapshots table already keeps history per version — interim plans can
+  reference stored versions.
