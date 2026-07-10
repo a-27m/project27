@@ -3,7 +3,8 @@
 Thirteen phases; each ships working, tested functionality and keeps the solution
 green. Order optimizes for de-risking the scheduling engine first (everything else
 hangs off it), then putting hosts around it, then broadening feature parity.
-Phases map 1:1 to the session task list.
+Phases map 1:1 to the session task list. **Current status: see `progress.md`**
+(phases 0–4 and 6 done; 5 postponed to after 12; next up: 7).
 
 | # | Phase | Delivers |
 |---|-------|----------|
