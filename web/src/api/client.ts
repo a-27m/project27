@@ -1,0 +1,152 @@
+import type { Checkout, Command, CommandsResponse, Me, ProjectEvent, ProjectInfo, Schedule } from './types'
+
+export interface Credentials {
+  /** Server base URL; empty string = same origin (Vite dev proxy). */
+  serverUrl: string
+  token?: string
+  devUser?: string
+}
+
+export class ApiError extends Error {
+  readonly status: number
+
+  constructor(status: number, message: string) {
+    super(message)
+    this.status = status
+  }
+}
+
+/** Thin fetch wrapper: auth headers on every call, problem-detail errors. */
+export class ApiClient {
+  private readonly credentials: Credentials
+
+  constructor(credentials: Credentials) {
+    this.credentials = credentials
+  }
+
+  me(): Promise<Me> {
+    return this.request('GET', '/api/me')
+  }
+
+  listProjects(): Promise<ProjectInfo[]> {
+    return this.request('GET', '/api/projects')
+  }
+
+  createProject(name: string, start?: string): Promise<ProjectInfo> {
+    return this.request('POST', '/api/projects', { name, start: start ?? null })
+  }
+
+  deleteProject(id: string): Promise<void> {
+    return this.request('DELETE', `/api/projects/${id}`)
+  }
+
+  getProject(id: string): Promise<ProjectInfo> {
+    return this.request('GET', `/api/projects/${id}`)
+  }
+
+  schedule(id: string): Promise<Schedule> {
+    return this.request('GET', `/api/projects/${id}/schedule`)
+  }
+
+  checkout(id: string): Promise<Checkout> {
+    return this.request('POST', `/api/projects/${id}/checkout`)
+  }
+
+  unlock(id: string): Promise<void> {
+    return this.request('DELETE', `/api/projects/${id}/lock`)
+  }
+
+  commands(id: string, batch: Command[]): Promise<CommandsResponse> {
+    return this.request('POST', `/api/projects/${id}/commands`, batch)
+  }
+
+  /**
+   * Server-sent events via fetch (EventSource cannot carry auth headers).
+   * Returns an abort function; invokes onEvent per parsed event.
+   */
+  subscribe(id: string, onEvent: (event: ProjectEvent) => void): () => void {
+    const controller = new AbortController()
+    void this.stream(`/api/projects/${id}/events`, controller.signal, onEvent).catch(() => {
+      /* subscription ended (abort or network); readers refresh on next action */
+    })
+    return () => controller.abort()
+  }
+
+  private async stream(path: string, signal: AbortSignal, onEvent: (event: ProjectEvent) => void): Promise<void> {
+    const response = await fetch(this.credentials.serverUrl + path, { headers: this.headers(), signal })
+    if (!response.ok || response.body === null) return
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      let separator = buffer.indexOf('\n\n')
+      while (separator >= 0) {
+        const chunk = buffer.slice(0, separator)
+        buffer = buffer.slice(separator + 2)
+        const event = parseSse(chunk)
+        if (event !== null) onEvent(event)
+        separator = buffer.indexOf('\n\n')
+      }
+    }
+  }
+
+  private headers(): Record<string, string> {
+    const headers: Record<string, string> = { Accept: 'application/json' }
+    if (this.credentials.token) headers.Authorization = `Bearer ${this.credentials.token}`
+    if (this.credentials.devUser) headers['X-Dev-User'] = this.credentials.devUser
+    return headers
+  }
+
+  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+    const headers = this.headers()
+    if (body !== undefined) headers['Content-Type'] = 'application/json'
+    let response: Response
+    try {
+      response = await fetch(this.credentials.serverUrl + path, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+      })
+    } catch (error) {
+      throw new ApiError(0, `cannot reach the server: ${error instanceof Error ? error.message : String(error)}`)
+    }
+    if (!response.ok) {
+      throw new ApiError(response.status, await problemDetail(response))
+    }
+    if (response.status === 204) return undefined as T
+    return (await response.json()) as T
+  }
+}
+
+async function problemDetail(response: Response): Promise<string> {
+  try {
+    const body: unknown = await response.json()
+    if (typeof body === 'object' && body !== null && 'detail' in body && typeof body.detail === 'string') {
+      return body.detail
+    }
+  } catch {
+    /* not a problem document */
+  }
+  return response.status === 401 ? 'authentication required' : `request failed (${response.status})`
+}
+
+/** Parses one SSE chunk ("event: kind\ndata: json"). Exported for tests. */
+export function parseSse(chunk: string): ProjectEvent | null {
+  let kind: string | null = null
+  let data = ''
+  for (const line of chunk.split('\n')) {
+    if (line.startsWith('event: ')) kind = line.slice(7).trim()
+    else if (line.startsWith('data: ')) data += line.slice(6)
+  }
+  if (kind === null) return null
+  let parsed: unknown = null
+  try {
+    parsed = data === '' ? null : JSON.parse(data)
+  } catch {
+    parsed = data
+  }
+  return { kind: kind as ProjectEvent['kind'], data: parsed }
+}
