@@ -111,27 +111,122 @@ public static class FieldCatalog
     private static void Add(string key, string caption, FieldKind kind, Func<ProjectTask, object?> accessor)
         => Fields.Add(key, new FieldDefinition(key, caption, kind, accessor));
 
-    /// <summary>Built-in field by key; custom fields and aliases join in phase 9b.</summary>
+    /// <summary>
+    /// Field by key: built-ins, custom field slot ids, custom aliases, and the
+    /// virtual `<field>.icon` indicator projection.
+    /// </summary>
     public static FieldDefinition Resolve(Project project, string key)
     {
         ArgumentNullException.ThrowIfNull(project);
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
-        return Fields.TryGetValue(key.Trim(), out var definition)
-            ? definition
-            : throw new KeyNotFoundException($"Unknown field '{key}'.");
-    }
-
-    public static bool TryResolve(Project project, string key, out FieldDefinition definition)
-    {
-        ArgumentNullException.ThrowIfNull(project);
-        if (!string.IsNullOrWhiteSpace(key) && Fields.TryGetValue(key.Trim(), out var found))
+        var trimmed = key.Trim();
+        if (Fields.TryGetValue(trimmed, out var definition))
         {
-            definition = found;
-            return true;
+            return definition;
         }
 
-        definition = null!;
-        return false;
+        if (trimmed.EndsWith(".icon", StringComparison.OrdinalIgnoreCase)
+            && project.FindCustomField(trimmed[..^5]) is { } indicatorField)
+        {
+            return new FieldDefinition(
+                trimmed,
+                indicatorField.Caption + " Icon",
+                FieldKind.Text,
+                task => EvaluateIndicator(indicatorField, task));
+        }
+
+        if (project.FindCustomField(trimmed) is { } custom)
+        {
+            return ToDefinition(custom);
+        }
+
+        throw new KeyNotFoundException($"Unknown field '{key}'.");
+    }
+
+    /// <summary>True when the key names a built-in field (aliases must not shadow these).</summary>
+    public static bool IsBuiltin(string key) => Fields.ContainsKey(key.Trim());
+
+    internal static FieldDefinition ToDefinition(CustomFieldDefinition custom)
+        => new(custom.Id, custom.Caption, custom.Kind, task => CustomValue(custom, task));
+
+    /// <summary>The stored or formula-computed value of a custom field for one task.</summary>
+    public static object? CustomValue(CustomFieldDefinition field, ProjectTask task)
+    {
+        ArgumentNullException.ThrowIfNull(field);
+        ArgumentNullException.ThrowIfNull(task);
+        if (field.ParsedFormula is not { } formula)
+        {
+            return task.GetCustomValue(field.Id);
+        }
+
+        var result = FormulaEvaluator.Evaluate(formula, task);
+        return Coerce(field.Kind, result, field.Id);
+    }
+
+    /// <summary>First matching indicator rule's icon, or null.</summary>
+    public static string? EvaluateIndicator(CustomFieldDefinition field, ProjectTask task)
+    {
+        ArgumentNullException.ThrowIfNull(field);
+        var value = CustomValue(field, task);
+        foreach (var rule in field.Indicators)
+        {
+            if (rule.Operator == Views.FilterOperator.Contains)
+            {
+                if (value?.ToString()?.Contains((string)rule.Value, StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    return rule.Icon;
+                }
+
+                continue;
+            }
+
+            if (value is null)
+            {
+                continue;
+            }
+
+            var order = Compare(field.Kind, value, rule.Value);
+            var matches = rule.Operator switch
+            {
+                Views.FilterOperator.Equals => order == 0,
+                Views.FilterOperator.NotEquals => order != 0,
+                Views.FilterOperator.GreaterThan => order > 0,
+                Views.FilterOperator.GreaterOrEqual => order >= 0,
+                Views.FilterOperator.LessThan => order < 0,
+                Views.FilterOperator.LessOrEqual => order <= 0,
+                _ => false,
+            };
+            if (matches)
+            {
+                return rule.Icon;
+            }
+        }
+
+        return null;
+    }
+
+    private static object? Coerce(FieldKind kind, object? value, string fieldId)
+    {
+        if (value is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return kind switch
+            {
+                FieldKind.Text => value as string ?? value.ToString(),
+                FieldKind.Flag => (bool)value,
+                FieldKind.Date => (DateTime)value,
+                _ => Convert.ToDecimal(value, CultureInfo.InvariantCulture),
+            };
+        }
+        catch (Exception exception) when (exception is InvalidCastException or FormatException or OverflowException)
+        {
+            throw new InvalidOperationException(
+                $"The formula of '{fieldId}' produced '{value}', which is not a {kind} value.", exception);
+        }
     }
 
     /// <summary>Signed working minutes between baseline and current date (positive = later than planned).</summary>

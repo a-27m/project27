@@ -64,6 +64,7 @@ internal static class CliRoot
         root.Add(ResourceCommands.Command());
         root.Add(AssignCommands.Command());
         root.Add(BaselineCommands.Command());
+        root.Add(CustomFieldCommands.Command());
         root.Add(ViewCommands.View());
         root.Add(ViewCommands.FieldList());
         root.Add(ServerCommands.Checkout());

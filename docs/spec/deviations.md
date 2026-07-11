@@ -30,3 +30,4 @@ from MS Project desktop. Entries are added as phases land.
 | 23 | Rescheduling | Already-split in-progress tasks are left alone by reschedule-uncompleted-work | Moves remaining segments | Split-of-split complexity deferred until demanded |
 | 24 | Tables | Built-in tables (entry, schedule, cost, work, tracking, variance, evm, summary) are clean-room field selections | Table definitions differ in detail | Selections chosen for coherence; users can pass --fields |
 | 25 | Views | Sorting or grouping flattens the view to leaf tasks | Optional "keep outline structure" reorders within the hierarchy | Deterministic and simple; hierarchy-preserving sort deferred |
+| 26 | Custom fields | Formula language is a clean-room subset: [field] refs, arithmetic, comparisons, and/or/not, IIf/Abs/Min/Max/Round, Now/StatusDate, duration literals | VBA-flavored expression set with dozens of functions | Function set grows on demand; duration literals are an extension |

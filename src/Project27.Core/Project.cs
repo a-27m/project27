@@ -451,6 +451,102 @@ public sealed class Project
     /// <summary>Runs the full forward/backward scheduling passes. Deterministic.</summary>
     public void Recalculate() => ProjectScheduler.Recalculate(this);
 
+    // --------------------------------------------------------- custom fields
+
+    private readonly Dictionary<string, Fields.CustomFieldDefinition> _customFields = new(StringComparer.OrdinalIgnoreCase);
+
+    public IReadOnlyCollection<Fields.CustomFieldDefinition> CustomFields => _customFields.Values;
+
+    /// <summary>
+    /// Defines (or redefines) a custom field slot with an optional alias, formula,
+    /// and indicator rules. Formulas are parsed eagerly; aliases must be unique and
+    /// must not shadow built-in fields or other slots.
+    /// </summary>
+    public Fields.CustomFieldDefinition DefineCustomField(
+        string id,
+        string? alias = null,
+        string? formula = null,
+        IEnumerable<Fields.IndicatorRule>? indicators = null)
+    {
+        var kind = Fields.CustomFieldDefinition.KindOfSlot(id);
+        var slotId = id.Trim().ToLowerInvariant();
+        if (alias is not null)
+        {
+            alias = alias.Trim();
+            ArgumentException.ThrowIfNullOrWhiteSpace(alias);
+            var collides = Fields.FieldCatalog.IsBuiltin(alias)
+                || IsSlotId(alias)
+                || _customFields.Values.Any(f => f.Id != slotId && string.Equals(f.Alias, alias, StringComparison.OrdinalIgnoreCase));
+            if (collides)
+            {
+                throw new ArgumentException($"Alias '{alias}' collides with an existing field.", nameof(alias));
+            }
+        }
+
+        Fields.FormulaNode? parsed = null;
+        if (formula is not null)
+        {
+            try
+            {
+                parsed = Fields.FormulaEvaluator.Parse(formula);
+            }
+            catch (FormatException exception)
+            {
+                throw new ArgumentException($"Invalid formula: {exception.Message}", nameof(formula), exception);
+            }
+        }
+
+        var definition = _customFields.TryGetValue(slotId, out var existing)
+            ? existing
+            : new Fields.CustomFieldDefinition(slotId, kind);
+        definition.Alias = alias;
+        definition.Formula = formula;
+        definition.ParsedFormula = parsed;
+        definition.Indicators = indicators is null ? [] : [.. indicators];
+        _customFields[slotId] = definition;
+        return definition;
+
+        static bool IsSlotId(string candidate)
+        {
+            try
+            {
+                Fields.CustomFieldDefinition.KindOfSlot(candidate);
+                return true;
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
+        }
+    }
+
+    /// <summary>Removes a definition and every task's stored values for its slot.</summary>
+    public bool RemoveCustomField(string idOrAlias)
+    {
+        if (FindCustomField(idOrAlias) is not { } definition)
+        {
+            return false;
+        }
+
+        _customFields.Remove(definition.Id);
+        foreach (var task in Tasks)
+        {
+            task.ClearCustomValue(definition.Id);
+        }
+
+        return true;
+    }
+
+    /// <summary>Definition by slot id or alias (case-insensitive); null when absent.</summary>
+    public Fields.CustomFieldDefinition? FindCustomField(string idOrAlias)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(idOrAlias);
+        var key = idOrAlias.Trim();
+        return _customFields.TryGetValue(key, out var byId)
+            ? byId
+            : _customFields.Values.FirstOrDefault(f => string.Equals(f.Alias, key, StringComparison.OrdinalIgnoreCase));
+    }
+
     // -------------------------------------------------------------- tracking
 
     public const int BaselineSlots = 11;

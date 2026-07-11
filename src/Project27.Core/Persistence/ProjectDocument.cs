@@ -9,7 +9,7 @@ namespace Project27.Core.Persistence;
 /// </summary>
 public sealed record ProjectDocument
 {
-    public int SchemaVersion { get; init; } = 3;
+    public int SchemaVersion { get; init; } = 4;
 
     public required Guid Id { get; init; }
 
@@ -40,7 +40,26 @@ public sealed record ProjectDocument
 
     // Schema 3.
     public DateTime? StatusDate { get; init; }
+
+    // Schema 4.
+    public IReadOnlyList<CustomFieldDocument> CustomFields { get; init; } = [];
 }
+
+public sealed record IndicatorRuleDocument(string Operator, string Value, string Icon);
+
+public sealed record CustomFieldDocument
+{
+    public required string Id { get; init; }
+
+    public string? Alias { get; init; }
+
+    public string? Formula { get; init; }
+
+    public IReadOnlyList<IndicatorRuleDocument>? Indicators { get; init; }
+}
+
+/// <summary>A stored custom value; <c>Value</c> is invariant text parsed by the slot's kind.</summary>
+public sealed record CustomValueDocument(string Field, string Value);
 
 public sealed record TaskBaselineDocument(
     int Slot,
@@ -195,6 +214,9 @@ public sealed record TaskDocument
     public DateTime? ActualFinish { get; init; }
 
     public IReadOnlyList<TaskBaselineDocument>? Baselines { get; init; }
+
+    // Schema 4.
+    public IReadOnlyList<CustomValueDocument>? CustomValues { get; init; }
 }
 
 public sealed record RateDocument(decimal Amount, RateUnit Per);

@@ -390,6 +390,50 @@ public sealed class ProjectTask
         }
     }
 
+    // --------------------------------------------------------- custom fields
+
+    private Dictionary<string, object?>? _customValues;
+
+    /// <summary>Raw stored value of a custom field slot; null when unset (or the field is a formula).</summary>
+    public object? GetCustomValue(string slotId)
+        => _customValues is not null && _customValues.TryGetValue(slotId, out var value) ? value : null;
+
+    /// <summary>Stores a typed value (string/decimal/DateTime/bool per the field's kind); null clears.</summary>
+    public void SetCustomValue(Fields.CustomFieldDefinition field, object? value)
+    {
+        ArgumentNullException.ThrowIfNull(field);
+        if (field.Formula is not null)
+        {
+            throw new InvalidOperationException($"'{field.Caption}' is computed by a formula; its values cannot be set.");
+        }
+
+        if (value is null)
+        {
+            ClearCustomValue(field.Id);
+            return;
+        }
+
+        var valid = field.Kind switch
+        {
+            Fields.FieldKind.Text => value is string,
+            Fields.FieldKind.Flag => value is bool,
+            Fields.FieldKind.Date => value is DateTime,
+            _ => value is decimal or int,
+        };
+        if (!valid)
+        {
+            throw new ArgumentException($"'{value}' is not a {field.Kind} value for '{field.Caption}'.", nameof(value));
+        }
+
+        (_customValues ??= new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase))[field.Id]
+            = value is int whole ? (decimal)whole : value;
+    }
+
+    internal void ClearCustomValue(string slotId) => _customValues?.Remove(slotId);
+
+    internal IReadOnlyDictionary<string, object?> CustomValues
+        => _customValues ?? (IReadOnlyDictionary<string, object?>)System.Collections.Immutable.ImmutableDictionary<string, object?>.Empty;
+
     /// <summary>The captured plan in a baseline slot; null when never baselined.</summary>
     public TaskBaseline? Baseline(int slot = 0)
         => _baselines is not null && _baselines.TryGetValue(slot, out var baseline) ? baseline : null;

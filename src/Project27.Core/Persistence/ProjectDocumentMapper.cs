@@ -18,6 +18,21 @@ public static class ProjectDocumentMapper
             CalendarId = project.Calendar.Id,
             CriticalSlackThresholdMinutes = project.CriticalSlackThresholdMinutes,
             StatusDate = project.StatusDate,
+            CustomFields =
+            [
+                .. project.CustomFields.OrderBy(f => f.Id, StringComparer.Ordinal).Select(f => new CustomFieldDocument
+                {
+                    Id = f.Id,
+                    Alias = f.Alias,
+                    Formula = f.Formula,
+                    Indicators = f.Indicators.Count == 0
+                        ? null
+                        : [.. f.Indicators.Select(r => new IndicatorRuleDocument(
+                            r.Operator.ToString(),
+                            CustomValueText(r.Value),
+                            r.Icon))],
+                }),
+            ],
             TimeSettings = new TimeSettingsDocument
             {
                 MinutesPerDay = project.TimeSettings.MinutesPerDay,
@@ -69,7 +84,7 @@ public static class ProjectDocumentMapper
     public static Project FromDocument(ProjectDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
-        if (document.SchemaVersion is not (1 or 2 or 3))
+        if (document.SchemaVersion is not (>= 1 and <= 4))
         {
             throw new NotSupportedException($"Project document schema {document.SchemaVersion} is not supported by this build.");
         }
@@ -128,6 +143,23 @@ public static class ProjectDocumentMapper
         project.TimeSettings.DefaultStartTime = settings.DefaultStartTime;
         project.TimeSettings.DefaultEndTime = settings.DefaultEndTime;
         project.StatusDate = document.StatusDate;
+        foreach (var fieldDoc in document.CustomFields)
+        {
+            var slotKind = Fields.CustomFieldDefinition.KindOfSlot(fieldDoc.Id);
+            project.DefineCustomField(
+                fieldDoc.Id,
+                fieldDoc.Alias,
+                fieldDoc.Formula,
+                fieldDoc.Indicators?.Select(r =>
+                {
+                    var op = Enum.Parse<Views.FilterOperator>(r.Operator, ignoreCase: true);
+                    var value = op == Views.FilterOperator.Contains
+                        ? r.Value
+                        : ParseCustomValue(slotKind, r.Value);
+                    return new Fields.IndicatorRule(op, value, r.Icon);
+                }));
+        }
+
 
         var tasks = new Dictionary<Guid, ProjectTask>();
         foreach (var taskDoc in document.Tasks)
@@ -161,6 +193,13 @@ public static class ProjectDocumentMapper
             }
 
             task.RestoreTracking(taskDoc.PercentComplete, taskDoc.ActualStart, taskDoc.ActualFinish);
+            foreach (var valueDoc in taskDoc.CustomValues ?? [])
+            {
+                var field = project.FindCustomField(valueDoc.Field)
+                    ?? throw new InvalidDataException($"Task custom value references undefined field '{valueDoc.Field}'.");
+                task.SetCustomValue(field, ParseCustomValue(field.Kind, valueDoc.Value));
+            }
+
             foreach (var baselineDoc in taskDoc.Baselines ?? [])
             {
                 task.SetBaselineSlot(baselineDoc.Slot, new TaskBaseline(
@@ -313,6 +352,10 @@ public static class ProjectDocumentMapper
         IgnoresResourceCalendars = task.IgnoresResourceCalendars,
         FixedCost = task.FixedCost,
         FixedCostAccrual = task.FixedCostAccrual,
+        CustomValues = task.CustomValues.Count == 0
+            ? null
+            : [.. task.CustomValues.OrderBy(pair => pair.Key, StringComparer.Ordinal)
+                .Select(pair => new CustomValueDocument(pair.Key, CustomValueText(pair.Value!)))],
         PercentComplete = task.IsSummary ? 0 : task.PercentComplete,
         ActualStart = task.ActualStartRaw,
         ActualFinish = task.IsSummary ? null : task.ActualFinish,
@@ -384,5 +427,22 @@ public static class ProjectDocumentMapper
         "yearlyDate" => new YearlyDateRecurrence(document.Month, document.Day),
         "yearlyWeekday" => new YearlyWeekdayRecurrence(document.Ordinal, document.Weekday, document.Month),
         _ => throw new InvalidDataException($"Unknown recurrence kind '{document.Kind}'."),
+    };
+
+    private static string CustomValueText(object value) => value switch
+    {
+        string text => text,
+        decimal number => number.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        DateTime date => date.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
+        bool flag => flag ? "true" : "false",
+        _ => throw new NotSupportedException($"Custom value type {value.GetType().Name} is not serializable."),
+    };
+
+    private static object ParseCustomValue(Fields.FieldKind kind, string text) => kind switch
+    {
+        Fields.FieldKind.Text => text,
+        Fields.FieldKind.Flag => string.Equals(text, "true", StringComparison.OrdinalIgnoreCase),
+        Fields.FieldKind.Date => DateTime.Parse(text, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind),
+        _ => decimal.Parse(text, System.Globalization.CultureInfo.InvariantCulture),
     };
 }

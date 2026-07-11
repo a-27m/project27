@@ -240,12 +240,18 @@ internal static class TaskCommands
         var actualStartOpt = new Option<string?>("--actual-start") { HelpName = "date|none" };
         var actualFinishOpt = new Option<string?>("--actual-finish") { HelpName = "date|none" };
         var remainingOpt = new Option<string?>("--remaining-duration") { HelpName = "duration" };
+        var fieldOpt = new Option<string[]>("--field")
+        {
+            HelpName = "name=value",
+            Description = "Set a custom field value ('none' clears); repeatable.",
+            Arity = ArgumentArity.ZeroOrMore,
+        };
         var command = new Command("set", "Change task fields; recalculates and saves.")
         {
             refArg, nameOpt, durationOpt, modeOpt, activeOpt, milestoneOpt, priorityOpt, deadlineOpt,
             constraintOpt, constraintDateOpt, calendarOpt, wbsOpt, manualStartOpt, manualFinishOpt,
             typeOpt, effortOpt, fixedCostOpt, accrualOpt, ignoreResCalOpt,
-            percentOpt, actualStartOpt, actualFinishOpt, remainingOpt,
+            percentOpt, actualStartOpt, actualFinishOpt, remainingOpt, fieldOpt,
         };
         command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
         {
@@ -370,6 +376,24 @@ internal static class TaskCommands
             if (parseResult.GetValue(remainingOpt) is { } remaining)
             {
                 task.SetRemainingDuration(Parsers.DurationInput(remaining));
+            }
+
+            foreach (var assignmentText in parseResult.GetValue(fieldOpt) ?? [])
+            {
+                var separator = assignmentText.IndexOf('=', StringComparison.Ordinal);
+                if (separator <= 0)
+                {
+                    throw new CliException($"invalid --field '{assignmentText}'; use name=value");
+                }
+
+                var fieldName = assignmentText[..separator].Trim();
+                var valueText = assignmentText[(separator + 1)..].Trim();
+                var customField = project.FindCustomField(fieldName)
+                    ?? throw new CliException($"no custom field '{fieldName}'");
+                object? value = string.Equals(valueText, "none", StringComparison.OrdinalIgnoreCase)
+                    ? null
+                    : Core.Fields.FieldCatalog.ParseLiteral(customField.Kind, valueText, settings);
+                task.SetCustomValue(customField, value);
             }
 
             if (parseResult.GetValue(manualStartOpt) is { } manualStart)
