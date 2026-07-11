@@ -18,8 +18,9 @@ expensive to re-derive; conventions live in `decisions.md` (D1–D9 + D6a).
 | 7 | Web foundation | done | dd99a46 + cd38b54 |
 | 8 | Tracking & EVM | done | ed5944d |
 | 9 | Views & fields | **done** (a92e84e, 75ae639, 9cabb8d, f3e1edf) | — |
-| 10 | Advanced scheduling | next — leveling, inactive tasks (exists), pools, task drivers; **subprojects = extension point only** (user decision 2026-07-11; revisit at the very end) | — |
-| 11–12 | Reports · Polish | pending | — |
+| 10 | Advanced scheduling | done (8a35e81) — **subprojects = extension point only** (user decision 2026-07-11; revisit at the very end, after 12/5; seams in spec 10) | — |
+| 11 | Reports | next | — |
+| 12 | Polish | pending | — |
 
 Specs: `docs/spec/01…04, 06, 07, 08, 09`. Deviations from MS Project: `docs/spec/deviations.md` (#1–#25).
 
@@ -120,17 +121,31 @@ Specs: `docs/spec/01…04, 06, 07, 08, 09`. Deviations from MS Project: `docs/sp
   check-in; add resource/assignment command ops when the web needs them.
 - Counts at 9d close: Core 193, Storage 3, Cli 77, Server 18, web 28.
 
-## Phase 10 pointers (next)
+## Advanced scheduling (phase 10) essentials
 
-- Scope: **resource leveling** (priority-based delay of overallocated
-  work — needs per-day allocation from `Timephased` vs `Resource.MaxUnits`),
-  task inspector/drivers (why is a task scheduled where it is), resource
-  pools; inactive tasks already exist (phase 2).
-- **Subprojects/cross-project links: extension point only** (user decision):
-  define seams (e.g. an `ExternalLink` marker on dependencies + document
-  fields), no implementation; revisit after phases 11/12/5.
-- Leveling sketch: compute per-resource daily demand (Timephased.ForAssignment
-  sums), find overallocations (> MaxUnits × day capacity on the resource
-  calendar), delay lower-priority (Priority field, then row) tasks via
-  leveling delay (a new scheduler input, distinct from assignment delay) until
-  demand fits; `p27 level [--clear]`; deviations for divergence from MSP.
+- `ResourceLeveler` (Core.Scheduling): victim order **must** prefer
+  already-delayed tasks or peers ping-pong on "most slack" forever.
+  `Project.Level()/ClearLeveling()/FindOverallocations()`;
+  `Task.LevelingDelayMinutes` (internal set) applied in ComputeEarly after
+  bounds, skipped for forced-date paths. Schema **v5**.
+- `TaskDrivers.Explain` (inspector) mirrors ComputeEarly read-only; binding
+  detection compares `NextWorkingTime(imposed) == Start`. CLI `task drivers`.
+- `Project.ImportResources(source)` = pool simplification (deviation #30);
+  CLI `resource import --from file.p27`. Live pools = subprojects extension
+  point (spec 10 documents the seams: JSON tolerates unknown members;
+  external tasks ≈ manual-task islands; server snapshots per project id).
+- Counts at 10 close: Core 203, Storage 3, Cli 81, Server 18, web 28.
+
+## Phase 11 pointers (next)
+
+- Scope (roadmap): dashboard/report set, PDF/PNG export, CLI report
+  generation, print layouts.
+- Realistic shape: Core/CLI report definitions producing **self-contained
+  HTML** (tables + inline SVG charts reusing view/EVM/usage projections);
+  `p27 report <name> [--out file.html]`; server `GET /{id}/reports/{name}`;
+  web report page. PDF/PNG export needs a headless browser — document as
+  print-to-PDF via the browser (no Chromium dependency in this environment);
+  revisit bundling in phase 12.
+- Report set: project overview (health, milestones, EVM summary), critical
+  tasks, late tasks (vs baseline), resource overview (work/cost/overalloc),
+  cost overview, upcoming tasks.
