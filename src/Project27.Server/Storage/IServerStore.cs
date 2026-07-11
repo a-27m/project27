@@ -37,5 +37,16 @@ public interface IServerStore
     public Task ReleaseLock(Guid id, CancellationToken cancellationToken);
 
     /// <summary>Appends a snapshot when the current version matches; returns the new version, or null on a version conflict.</summary>
-    public Task<int?> SaveSnapshot(Guid id, int expectedVersion, string documentJson, string name, string savedBy, DateTime now, CancellationToken cancellationToken);
+    public Task<int?> SaveSnapshot(Guid id, int expectedVersion, string documentJson, string name, string savedBy, DateTime now, CancellationToken cancellationToken, string? label = null);
+
+    /// <summary>Version history, newest first.</summary>
+    public Task<IReadOnlyList<SnapshotInfo>> GetHistory(Guid id, CancellationToken cancellationToken);
+
+    /// <summary>A specific version's document JSON; null when absent.</summary>
+    public Task<string?> GetDocumentAt(Guid id, int version, CancellationToken cancellationToken);
+
+    /// <summary>Names (or renames; null clears) a stored version.</summary>
+    public Task<bool> SetSnapshotLabel(Guid id, int version, string? label, CancellationToken cancellationToken);
 }
+
+public sealed record SnapshotInfo(int Version, string SavedBy, DateTime SavedAt, string? Label);

@@ -163,6 +163,74 @@ public sealed class CommandApiTests
     }
 
     [Fact]
+    public async Task History_labels_revert_and_file_download_work()
+    {
+        var (id, alice) = await CreateProject("Life-" + Guid.NewGuid().ToString("N"));
+        await alice.PostAsync($"/api/projects/{id:D}/checkout", null, Token);
+        await alice.PostAsJsonAsync($"/api/projects/{id:D}/commands", GoldenBatch(), Token); // v2
+
+        // Label the current version, then make another change.
+        await alice.PostAsJsonAsync($"/api/projects/{id:D}/label", new { label = "good plan" }, Token);
+        var extra = new object[] { new Dictionary<string, object> { ["op"] = "addTask", ["name"] = "Extra", ["duration"] = "1d" } };
+        await alice.PostAsJsonAsync($"/api/projects/{id:D}/commands", extra, Token); // v3
+
+        var history = await alice.GetFromJsonAsync<JsonElement>($"/api/projects/{id:D}/history", Token);
+        Assert.Equal(3, history.GetArrayLength());
+        Assert.Equal("good plan", history.EnumerateArray().Single(h => h.GetProperty("version").GetInt32() == 2)
+            .GetProperty("label").GetString());
+
+        // Revert to the labeled version: Extra disappears, version moves forward.
+        var revert = await alice.PostAsJsonAsync($"/api/projects/{id:D}/revert", new { version = 2 }, Token);
+        Assert.Equal(HttpStatusCode.OK, revert.StatusCode);
+        var reverted = await revert.Content.ReadFromJsonAsync<JsonElement>(Token);
+        Assert.Equal(4, reverted.GetProperty("version").GetInt32());
+        Assert.DoesNotContain(
+            reverted.GetProperty("schedule").GetProperty("tasks").EnumerateArray(),
+            t => t.GetProperty("name").GetString() == "Extra");
+        await alice.DeleteAsync($"/api/projects/{id:D}/lock", Token);
+
+        // .p27 download works for readers regardless of the lock.
+        var file = await alice.GetAsync($"/api/projects/{id:D}/file", Token);
+        Assert.Equal(HttpStatusCode.OK, file.StatusCode);
+        var bytes = await file.Content.ReadAsByteArrayAsync(Token);
+        Assert.True(bytes.Length > 1024);
+        Assert.Equal("SQLite format 3", System.Text.Encoding.ASCII.GetString(bytes, 0, 15));
+    }
+
+    [Fact]
+    public async Task Mspdi_import_creates_a_project_and_export_streams_xml()
+    {
+        var alice = _server.Client("alice");
+        const string xml = """
+            <Project xmlns="http://schemas.microsoft.com/project">
+              <Name>Imported via web</Name>
+              <StartDate>2026-03-02T08:00:00</StartDate>
+              <Tasks>
+                <Task><UID>1</UID><ID>1</ID><Name>Only</Name><OutlineLevel>1</OutlineLevel><Duration>PT16H0M0S</Duration></Task>
+              </Tasks>
+            </Project>
+            """;
+        var response = await alice.PostAsync(
+            "/api/projects/import/mspdi",
+            new System.Net.Http.StringContent(xml, System.Text.Encoding.UTF8, "application/xml"),
+            Token);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var info = await response.Content.ReadFromJsonAsync<JsonElement>(Token);
+        Assert.Equal("Imported via web", info.GetProperty("name").GetString());
+        var id = info.GetProperty("id").GetGuid();
+
+        var export = await alice.GetAsync($"/api/projects/{id:D}/export/mspdi", Token);
+        Assert.Equal(HttpStatusCode.OK, export.StatusCode);
+        Assert.Contains("schemas.microsoft.com/project", await export.Content.ReadAsStringAsync(Token), StringComparison.Ordinal);
+
+        var bad = await alice.PostAsync(
+            "/api/projects/import/mspdi",
+            new System.Net.Http.StringContent("<nope/>", System.Text.Encoding.UTF8, "application/xml"),
+            Token);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, bad.StatusCode);
+    }
+
+    [Fact]
     public async Task Reports_render_as_html_for_readers()
     {
         var (id, alice) = await CreateProject("Report-" + Guid.NewGuid().ToString("N"));

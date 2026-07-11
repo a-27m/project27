@@ -38,3 +38,7 @@ public sealed record MemberDto(string UserId, ProjectRole Role);
 public sealed record SetMemberRequest(ProjectRole Role);
 
 public sealed record MeDto(string Id, string Name);
+
+public sealed record LabelRequest(int? Version, string? Label);
+
+public sealed record RevertRequest(int Version, string? Label);

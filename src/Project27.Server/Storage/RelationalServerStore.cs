@@ -40,6 +40,16 @@ public abstract class RelationalServerStore : IServerStore
                 acquired_at TEXT NOT NULL,
                 refreshed_at TEXT NOT NULL);
             """, cancellationToken).ConfigureAwait(false);
+
+        // Additive migration; `ADD COLUMN IF NOT EXISTS` is Postgres-only, so swallow the duplicate error.
+        try
+        {
+            await Execute(connection, "ALTER TABLE snapshots ADD COLUMN label TEXT", cancellationToken).ConfigureAwait(false);
+        }
+        catch (DbException)
+        {
+            // Column already exists.
+        }
     }
 
     public async Task<IReadOnlyList<(ServerProject Project, ProjectRole Role)>> ListProjects(string userId, CancellationToken cancellationToken)
@@ -232,7 +242,7 @@ public abstract class RelationalServerStore : IServerStore
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<int?> SaveSnapshot(Guid id, int expectedVersion, string documentJson, string name, string savedBy, DateTime now, CancellationToken cancellationToken)
+    public async Task<int?> SaveSnapshot(Guid id, int expectedVersion, string documentJson, string name, string savedBy, DateTime now, CancellationToken cancellationToken, string? label = null)
     {
         await using var connection = await OpenConnection(cancellationToken).ConfigureAwait(false);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
@@ -253,7 +263,7 @@ public abstract class RelationalServerStore : IServerStore
         {
             write.Transaction = transaction;
             write.CommandText = """
-                INSERT INTO snapshots(project_id, version, document, saved_by, saved_at) VALUES (@id, @version, @doc, @by, @at);
+                INSERT INTO snapshots(project_id, version, document, saved_by, saved_at, label) VALUES (@id, @version, @doc, @by, @at, @label);
                 UPDATE projects SET version = @version, name = @name WHERE id = @id;
                 """;
             AddParameter(write, "id", Text(id));
@@ -262,11 +272,56 @@ public abstract class RelationalServerStore : IServerStore
             AddParameter(write, "by", savedBy);
             AddParameter(write, "at", Text(now));
             AddParameter(write, "name", name);
+            AddParameter(write, "label", (object?)label ?? DBNull.Value);
             await write.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         return newVersion;
+    }
+
+    public async Task<IReadOnlyList<SnapshotInfo>> GetHistory(Guid id, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnection(cancellationToken).ConfigureAwait(false);
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT version, saved_by, saved_at, label FROM snapshots
+            WHERE project_id = @id ORDER BY version DESC
+            """;
+        AddParameter(command, "id", Text(id));
+        var history = new List<SnapshotInfo>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            history.Add(new SnapshotInfo(
+                reader.GetInt32(0),
+                reader.GetString(1),
+                Timestamp(reader.GetString(2)),
+                reader.IsDBNull(3) ? null : reader.GetString(3)));
+        }
+
+        return history;
+    }
+
+    public async Task<string?> GetDocumentAt(Guid id, int version, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnection(cancellationToken).ConfigureAwait(false);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT document FROM snapshots WHERE project_id = @id AND version = @version";
+        AddParameter(command, "id", Text(id));
+        AddParameter(command, "version", version);
+        return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as string;
+    }
+
+    public async Task<bool> SetSnapshotLabel(Guid id, int version, string? label, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnection(cancellationToken).ConfigureAwait(false);
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE snapshots SET label = @label WHERE project_id = @id AND version = @version";
+        AddParameter(command, "label", (object?)label ?? DBNull.Value);
+        AddParameter(command, "id", Text(id));
+        AddParameter(command, "version", version);
+        return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) > 0;
     }
 
     // ---------------------------------------------------------------- helpers
@@ -278,11 +333,11 @@ public abstract class RelationalServerStore : IServerStore
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private static void AddParameter(DbCommand command, string name, object value)
+    private static void AddParameter(DbCommand command, string name, object? value)
     {
         var parameter = command.CreateParameter();
         parameter.ParameterName = name;
-        parameter.Value = value;
+        parameter.Value = value ?? DBNull.Value;
         command.Parameters.Add(parameter);
     }
 

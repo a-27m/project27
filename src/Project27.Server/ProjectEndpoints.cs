@@ -192,6 +192,135 @@ public static class ProjectEndpoints
                 .ToList());
         });
 
+        projects.MapPost("/import/mspdi", async (HttpRequest request, ClaimsPrincipal user, IServerStore store, LockingOptions locking, CancellationToken cancellationToken) =>
+        {
+            string xml;
+            using (var reader = new StreamReader(request.Body))
+            {
+                xml = await reader.ReadToEndAsync(cancellationToken);
+            }
+
+            Project imported;
+            try
+            {
+                imported = Interop.MspdiReader.Read(xml);
+            }
+            catch (Exception exception) when (exception is InvalidDataException or System.Xml.XmlException or ArgumentException)
+            {
+                return Problem(422, $"Not a readable MSPDI document: {exception.Message}");
+            }
+
+            var json = ProjectDocumentSerializer.Serialize(ProjectDocumentMapper.ToDocument(imported));
+            var record = new ServerProject(imported.Id, imported.Name, UserId(user), DateTime.UtcNow, Version: 1);
+            await store.CreateProject(record, json, cancellationToken);
+            return Results.Created(
+                $"/api/projects/{record.Id:D}",
+                await Info(store, locking, record, ProjectRole.Owner, cancellationToken));
+        });
+
+        projects.MapGet("/{id:guid}/file", async (Guid id, ClaimsPrincipal user, IServerStore store, CancellationToken cancellationToken) =>
+        {
+            var (access, error) = await Authorize(store, id, user, ProjectRole.Reader, cancellationToken);
+            if (error is not null)
+            {
+                return error;
+            }
+
+            var json = await store.GetDocument(id, cancellationToken)
+                ?? throw new InvalidOperationException($"Project {id:D} has no snapshot; the store is corrupt.");
+            var project = ProjectDocumentMapper.FromDocument(ProjectDocumentSerializer.Deserialize(json));
+            project.Recalculate();
+
+            // Materialize a .p27 (SQLite) in a temp file and stream its bytes.
+            var temp = Path.Combine(Path.GetTempPath(), $"p27-export-{Guid.NewGuid():N}.p27");
+            try
+            {
+                SqliteProjectStore.Create(temp, project);
+                var bytes = await File.ReadAllBytesAsync(temp, cancellationToken);
+                return Results.File(bytes, "application/octet-stream", SafeFileName(access!.Project.Name) + ".p27");
+            }
+            finally
+            {
+                File.Delete(temp);
+            }
+        });
+
+        projects.MapGet("/{id:guid}/export/mspdi", async (Guid id, ClaimsPrincipal user, IServerStore store, CancellationToken cancellationToken) =>
+        {
+            var (access, error) = await Authorize(store, id, user, ProjectRole.Reader, cancellationToken);
+            if (error is not null)
+            {
+                return error;
+            }
+
+            var json = await store.GetDocument(id, cancellationToken)
+                ?? throw new InvalidOperationException($"Project {id:D} has no snapshot; the store is corrupt.");
+            var project = ProjectDocumentMapper.FromDocument(ProjectDocumentSerializer.Deserialize(json));
+            project.Recalculate();
+            return Results.File(
+                System.Text.Encoding.UTF8.GetBytes(Interop.MspdiWriter.Write(project)),
+                "application/xml",
+                SafeFileName(access!.Project.Name) + ".xml");
+        });
+
+        projects.MapGet("/{id:guid}/history", async (Guid id, ClaimsPrincipal user, IServerStore store, CancellationToken cancellationToken) =>
+        {
+            var (_, error) = await Authorize(store, id, user, ProjectRole.Reader, cancellationToken);
+            return error ?? Results.Ok(await store.GetHistory(id, cancellationToken));
+        });
+
+        projects.MapPost("/{id:guid}/label", async (Guid id, LabelRequest request, ClaimsPrincipal user, IServerStore store, CancellationToken cancellationToken) =>
+        {
+            var (access, error) = await Authorize(store, id, user, ProjectRole.Editor, cancellationToken);
+            if (error is not null)
+            {
+                return error;
+            }
+
+            var version = request.Version ?? access!.Project.Version;
+            var label = string.IsNullOrWhiteSpace(request.Label) ? null : request.Label.Trim();
+            return await store.SetSnapshotLabel(id, version, label, cancellationToken)
+                ? Results.Ok(new { version, label })
+                : Problem(404, $"No version {version}.");
+        });
+
+        projects.MapPost("/{id:guid}/revert", async (Guid id, RevertRequest request, ClaimsPrincipal user, IServerStore store, ProjectEventBroker broker, CancellationToken cancellationToken) =>
+        {
+            var (access, error) = await Authorize(store, id, user, ProjectRole.Editor, cancellationToken);
+            if (error is not null)
+            {
+                return error;
+            }
+
+            var userId = UserId(user);
+            var held = await store.GetLock(id, cancellationToken);
+            if (held is null || held.UserId != userId)
+            {
+                return Problem(409, held is null
+                    ? "Check the project out before reverting."
+                    : $"The lock is held by '{held.UserId}'.");
+            }
+
+            var json = await store.GetDocumentAt(id, request.Version, cancellationToken);
+            if (json is null)
+            {
+                return Problem(404, $"No version {request.Version}.");
+            }
+
+            var project = ProjectDocumentMapper.FromDocument(ProjectDocumentSerializer.Deserialize(json));
+            project.Recalculate();
+            var label = string.IsNullOrWhiteSpace(request.Label) ? $"revert to v{request.Version}" : request.Label.Trim();
+            var newVersion = await store.SaveSnapshot(id, access!.Project.Version, json, project.Name, userId, DateTime.UtcNow, cancellationToken, label);
+            if (newVersion is null)
+            {
+                return Problem(409, "Version conflict: the project changed concurrently.");
+            }
+
+            await store.TryAcquireLock(id, userId, DateTime.UtcNow, cancellationToken);
+            broker.Publish(id, "checkin", new { version = newVersion.Value, user = userId });
+            return Results.Ok(new CommandsResponse(newVersion.Value, [], ScheduleProjection.From(project, newVersion.Value), null));
+        });
+
         projects.MapGet("/{id:guid}/reports/{name}", async (Guid id, string name, ClaimsPrincipal user, IServerStore store, CancellationToken cancellationToken) =>
         {
             var (_, error) = await Authorize(store, id, user, ProjectRole.Reader, cancellationToken);
@@ -346,7 +475,11 @@ public static class ProjectEndpoints
                 return Problem(422, $"The document is not a valid project: {exception.Message}");
             }
 
-            var newVersion = await store.SaveSnapshot(id, expectedVersion, json, name, userId, DateTime.UtcNow, cancellationToken);
+            var newVersion = await store.SaveSnapshot(
+                id, expectedVersion, json, name, userId, DateTime.UtcNow, cancellationToken,
+                request.Query.TryGetValue("label", out var labelValues) && !string.IsNullOrWhiteSpace(labelValues.ToString())
+                    ? labelValues.ToString().Trim()
+                    : null);
             if (newVersion is null)
             {
                 return Problem(409, $"Version conflict: expected {expectedVersion}, project is at {access!.Project.Version}.");
@@ -532,6 +665,9 @@ public static class ProjectEndpoints
         => user.FindFirstValue(ClaimTypes.NameIdentifier)
             ?? user.FindFirstValue("sub")
             ?? throw new InvalidOperationException("The authenticated principal has no user id claim.");
+
+    private static string SafeFileName(string name)
+        => string.Concat(name.Select(c => Path.GetInvalidFileNameChars().Contains(c) || c == ' ' ? '-' : c)).ToLowerInvariant();
 
     private static IResult Problem(int status, string detail) => Results.Problem(statusCode: status, detail: detail);
 }
