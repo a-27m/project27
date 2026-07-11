@@ -22,6 +22,7 @@ internal static class TaskCommands
         command.Add(Split());
         command.Add(Unsplit());
         command.Add(Evm());
+        command.Add(Drivers());
         return command;
     }
 
@@ -585,6 +586,40 @@ internal static class TaskCommands
                         Render.Num(r.Data.Vac),
                     ]),
                 ]);
+            return 0;
+        }));
+        return command;
+    }
+
+    private static Command Drivers()
+    {
+        var refArg = new Argument<string>("task") { Description = "Task reference: row id or uid:<n>." };
+        var command = new Command("drivers", "Explain what places the task where it is (inspector).") { refArg };
+        command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
+        {
+            var (_, project) = context.OpenProject();
+            var task = Parsers.TaskRef(project, parseResult.GetRequiredValue(refArg));
+            var drivers = Core.Scheduling.TaskDrivers.Explain(task);
+            if (context.Json)
+            {
+                context.WriteJson(drivers.Select(d => new
+                {
+                    kind = d.Kind.ToString(),
+                    d.Description,
+                    d.Binding,
+                    d.Date,
+                    d.PredecessorUid,
+                }).ToList());
+                return 0;
+            }
+
+            context.Out.WriteLine($"task {task.RowNumber} '{task.Name}': start {Render.Date(task.Start)}");
+            foreach (var driver in drivers)
+            {
+                context.Out.WriteLine($"  {(driver.Binding ? "*" : " ")} {driver.Description}");
+            }
+
+            context.Out.WriteLine("  (* = binding)");
             return 0;
         }));
         return command;

@@ -58,6 +58,8 @@ public static class CommandExecutor
                 SetProjectCommand set => SetProject(project, set),
                 SetBaselineCommand baseline => Run(() => project.SetBaseline(baseline.Slot, ResolveScope(project, baseline.Uids))),
                 ClearBaselineCommand baseline => Run(() => project.ClearBaseline(baseline.Slot, ResolveScope(project, baseline.Uids))),
+                LevelCommand => Run(() => project.Level()),
+                ClearLevelingCommand => Run(project.ClearLeveling),
                 _ => throw new CommandException($"Unknown command type {command.GetType().Name}."),
             };
         }

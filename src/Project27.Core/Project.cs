@@ -451,6 +451,55 @@ public sealed class Project
     /// <summary>Runs the full forward/backward scheduling passes. Deterministic.</summary>
     public void Recalculate() => ProjectScheduler.Recalculate(this);
 
+    /// <summary>Levels overallocated work resources by delaying tasks (docs/spec/10-advanced-scheduling.md). Recalculates.</summary>
+    public LevelingResult Level() => ResourceLeveler.Level(this);
+
+    /// <summary>Removes every leveling delay and recalculates.</summary>
+    public void ClearLeveling()
+    {
+        ResourceLeveler.ClearDelays(this);
+        Recalculate();
+    }
+
+    /// <summary>Current overallocated resource-days (call after Recalculate).</summary>
+    public IReadOnlyList<Overallocation> FindOverallocations() => ResourceLeveler.FindOverallocations(this);
+
+    /// <summary>
+    /// Copies resource definitions (with rate tables) from another project; name
+    /// clashes are skipped and returned. Calendars are matched by name, not copied.
+    /// </summary>
+    public IReadOnlyList<string> ImportResources(Project source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        var skipped = new List<string>();
+        foreach (var resource in source.Resources)
+        {
+            if (_resources.Any(r => string.Equals(r.Name, resource.Name, StringComparison.OrdinalIgnoreCase)))
+            {
+                skipped.Add(resource.Name);
+                continue;
+            }
+
+            var copy = AddResource(resource.Name, resource.Type);
+            copy.Initials = resource.Initials;
+            copy.Group = resource.Group;
+            copy.MaxUnits = resource.MaxUnits;
+            copy.MaterialLabel = resource.MaterialLabel;
+            copy.Accrual = resource.Accrual;
+            if (resource.Calendar is { } calendar)
+            {
+                copy.Calendar = _calendars.FirstOrDefault(c => string.Equals(c.Name, calendar.Name, StringComparison.OrdinalIgnoreCase));
+            }
+
+            foreach (var table in Enum.GetValues<CostRateTableId>())
+            {
+                copy.RateTable(table).RestoreEntries(resource.RateTable(table).Entries);
+            }
+        }
+
+        return skipped;
+    }
+
     // --------------------------------------------------------- custom fields
 
     private readonly Dictionary<string, Fields.CustomFieldDefinition> _customFields = new(StringComparer.OrdinalIgnoreCase);

@@ -9,7 +9,7 @@ namespace Project27.Core.Persistence;
 /// </summary>
 public sealed record ProjectDocument
 {
-    public int SchemaVersion { get; init; } = 4;
+    public int SchemaVersion { get; init; } = 5;
 
     public required Guid Id { get; init; }
 
@@ -217,6 +217,9 @@ public sealed record TaskDocument
 
     // Schema 4.
     public IReadOnlyList<CustomValueDocument>? CustomValues { get; init; }
+
+    // Schema 5.
+    public decimal LevelingDelayMinutes { get; init; }
 }
 
 public sealed record RateDocument(decimal Amount, RateUnit Per);

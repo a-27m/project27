@@ -31,3 +31,7 @@ from MS Project desktop. Entries are added as phases land.
 | 24 | Tables | Built-in tables (entry, schedule, cost, work, tracking, variance, evm, summary) are clean-room field selections | Table definitions differ in detail | Selections chosen for coherence; users can pass --fields |
 | 25 | Views | Sorting or grouping flattens the view to leaf tasks | Optional "keep outline structure" reorders within the hierarchy | Deterministic and simple; hierarchy-preserving sort deferred |
 | 26 | Custom fields | Formula language is a clean-room subset: [field] refs, arithmetic, comparisons, and/or/not, IIf/Abs/Min/Max/Round, Now/StatusDate, duration literals | VBA-flavored expression set with dozens of functions | Function set grows on demand; duration literals are an extension |
+| 27 | Leveling | Leveling delay counts in working time on the task calendar | Elapsed-duration ("edays") delay | Consistent with every other delay in the engine |
+| 28 | Leveling | Fixed victim order: priority, already-delayed, slack, latest start, row; whole-day steps | Configurable orders, minute-level and split-based leveling | Deterministic and predictable; refinements on demand |
+| 29 | Leveling | Tasks with any progress are never leveled | Can level remaining work | Split-leveling of in-progress work deferred with usage editing |
+| 30 | Resource pools | `resource import` copies definitions; no live shared pool | Linked pool files with sharer synchronization | Cross-file linking is the subprojects extension point (spec 10) |

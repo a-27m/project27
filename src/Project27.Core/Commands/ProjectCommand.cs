@@ -23,6 +23,8 @@ namespace Project27.Core.Commands;
 [JsonDerivedType(typeof(SetProjectCommand), "setProject")]
 [JsonDerivedType(typeof(SetBaselineCommand), "setBaseline")]
 [JsonDerivedType(typeof(ClearBaselineCommand), "clearBaseline")]
+[JsonDerivedType(typeof(LevelCommand), "level")]
+[JsonDerivedType(typeof(ClearLevelingCommand), "clearLeveling")]
 public abstract record ProjectCommand;
 
 public sealed record AddTaskCommand : ProjectCommand
@@ -206,3 +208,7 @@ public sealed record ClearBaselineCommand : ProjectCommand
 
     public IReadOnlyList<int> Uids { get; init; } = [];
 }
+
+public sealed record LevelCommand : ProjectCommand;
+
+public sealed record ClearLevelingCommand : ProjectCommand;

@@ -446,6 +446,23 @@ public sealed class ProjectTask
     internal IReadOnlyDictionary<int, TaskBaseline> BaselineSlots
         => _baselines ?? (IReadOnlyDictionary<int, TaskBaseline>)System.Collections.Immutable.ImmutableDictionary<int, TaskBaseline>.Empty;
 
+    private decimal _levelingDelayMinutes;
+
+    /// <summary>
+    /// Working minutes the leveler postpones this task by, applied after
+    /// dependencies and constraints (docs/spec/10-advanced-scheduling.md).
+    /// Written by <see cref="Project.Level"/> / cleared by <see cref="Project.ClearLeveling"/>.
+    /// </summary>
+    public decimal LevelingDelayMinutes
+    {
+        get => _levelingDelayMinutes;
+        internal set
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(value);
+            _levelingDelayMinutes = value;
+        }
+    }
+
     // Manual-mode inputs.
     public DateTime? ManualStart { get; set; }
 

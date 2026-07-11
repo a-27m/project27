@@ -15,6 +15,7 @@ internal static class ResourceCommands
         command.Add(Remove());
         command.Add(SetRate());
         command.Add(RemoveRate());
+        command.Add(Import());
         return command;
     }
 
@@ -366,4 +367,25 @@ internal static class ResourceCommands
         CostAccrual.End => "end",
         _ => throw new ArgumentOutOfRangeException(nameof(accrual)),
     };
+
+    private static Command Import()
+    {
+        var fromOpt = new Option<string>("--from") { HelpName = "file.p27", Required = true, Description = "Project file to copy resource definitions from." };
+        var command = new Command("import", "Copy resource definitions (with rate tables) from another project.") { fromOpt };
+        command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
+        {
+            var (store, project) = context.OpenProject();
+            var source = Storage.SqliteProjectStore.Open(parseResult.GetRequiredValue(fromOpt)).Load();
+            var before = project.Resources.Count;
+            var skipped = project.ImportResources(source);
+            store.Save(project);
+            var imported = project.Resources.Count - before;
+            context.Report(
+                new { imported, skipped },
+                $"imported {Render.Num(imported)} resource(s)"
+                + (skipped.Count > 0 ? $"; skipped existing: {string.Join(", ", skipped)}" : ""));
+            return 0;
+        }));
+        return command;
+    }
 }

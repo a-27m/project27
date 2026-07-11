@@ -375,6 +375,11 @@ internal static class ProjectScheduler
                 var fromFinish = BackwardStart(project, task, calendar, SnapToWorkingPoint(calendar, fb));
                 earlyStart = Max(earlyStart, fromFinish)!.Value;
             }
+
+            if (task.LevelingDelayMinutes > 0)
+            {
+                earlyStart = calendar.NextWorkingTime(calendar.AddWork(earlyStart, task.LevelingDelayMinutes));
+            }
         }
 
         return (earlyStart, ForwardFinish(project, task, calendar, earlyStart));
@@ -746,7 +751,7 @@ internal static class ProjectScheduler
         return (segments[0].Start, [.. segments]);
     }
 
-    private static DateTime ApplyLag(DateTime point, Lag lag, WorkCalendar successorCalendar, decimal predecessorDurationMinutes, bool forward)
+    internal static DateTime ApplyLag(DateTime point, Lag lag, WorkCalendar successorCalendar, decimal predecessorDurationMinutes, bool forward)
     {
         if (lag.IsZero)
         {

@@ -84,7 +84,7 @@ public static class ProjectDocumentMapper
     public static Project FromDocument(ProjectDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
-        if (document.SchemaVersion is not (>= 1 and <= 4))
+        if (document.SchemaVersion is not (>= 1 and <= 5))
         {
             throw new NotSupportedException($"Project document schema {document.SchemaVersion} is not supported by this build.");
         }
@@ -192,6 +192,7 @@ public static class ProjectDocumentMapper
                 task.RestoreSplitParts([.. parts.Select(p => (p.WorkMinutes, p.GapMinutes))]);
             }
 
+            task.LevelingDelayMinutes = taskDoc.LevelingDelayMinutes;
             task.RestoreTracking(taskDoc.PercentComplete, taskDoc.ActualStart, taskDoc.ActualFinish);
             foreach (var valueDoc in taskDoc.CustomValues ?? [])
             {
@@ -356,6 +357,7 @@ public static class ProjectDocumentMapper
             ? null
             : [.. task.CustomValues.OrderBy(pair => pair.Key, StringComparer.Ordinal)
                 .Select(pair => new CustomValueDocument(pair.Key, CustomValueText(pair.Value!)))],
+        LevelingDelayMinutes = task.LevelingDelayMinutes,
         PercentComplete = task.IsSummary ? 0 : task.PercentComplete,
         ActualStart = task.ActualStartRaw,
         ActualFinish = task.IsSummary ? null : task.ActualFinish,

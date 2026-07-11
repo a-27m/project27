@@ -51,7 +51,8 @@ public sealed record ScheduleTaskDto(
     DateTime? ActualFinish,
     DateTime? BaselineStart,
     DateTime? BaselineFinish,
-    decimal? BaselineCost);
+    decimal? BaselineCost,
+    decimal LevelingDelayMinutes);
 
 public sealed record ScheduleDto(int Version, ScheduleProjectDto Project, IReadOnlyList<ScheduleTaskDto> Tasks);
 
@@ -156,7 +157,8 @@ public static class ScheduleProjection
                     task.ActualFinish,
                     task.Baseline()?.Start,
                     task.Baseline()?.Finish,
-                    task.Baseline()?.Cost)),
+                    task.Baseline()?.Cost,
+                    task.LevelingDelayMinutes)),
             ]);
     }
 }
