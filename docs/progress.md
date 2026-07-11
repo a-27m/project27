@@ -17,8 +17,9 @@ expensive to re-derive; conventions live in `decisions.md` (D1–D9 + D6a).
 | 6 | Server | done | 2bfdc88 |
 | 7 | Web foundation | done | dd99a46 + cd38b54 |
 | 8 | Tracking & EVM | done | ed5944d |
-| 9 | Views & fields | **9a+9b+9c done** (a92e84e, 75ae639, 9cabb8d) — next: 9d web views + projection unification | — |
-| 10–12 | Advanced scheduling · Reports · Polish | pending | — |
+| 9 | Views & fields | **done** (a92e84e, 75ae639, 9cabb8d, f3e1edf) | — |
+| 10 | Advanced scheduling | next — leveling, inactive tasks (exists), pools, task drivers; **subprojects = extension point only** (user decision 2026-07-11; revisit at the very end) | — |
+| 11–12 | Reports · Polish | pending | — |
 
 Specs: `docs/spec/01…04, 06, 07, 08, 09`. Deviations from MS Project: `docs/spec/deviations.md` (#1–#25).
 
@@ -110,8 +111,26 @@ Specs: `docs/spec/01…04, 06, 07, 08, 09`. Deviations from MS Project: `docs/sp
   Note: BCWS's linear proration IS flat time-phasing of the baseline (no
   contour stored), so EVM was left as-is; deviation #19 now concerns accrual
   only. Usage *editing* deferred (needs actual-work model, phase 8's #20).
-- **9d next**: network diagram + calendar/timeline (web) and unification of
-  server `ScheduleProjection`/CLI `JsonShapes` onto catalog projections;
-  usage grids in the web app (data comes from a new server usage endpoint or
-  an extended schedule projection).
-- Counts at 9c close: Core 193, Storage 3, Cli 77, Server 17 (+ web 21).
+- **9d done**: server `GET /{id}/usage?granularity=day|week`; web view
+  switcher (Gantt | Network | Timeline | Usage) in `ProjectView`; pure layout
+  in `web/src/lib/network.ts` (rank = longest predecessor chain, summaries
+  excluded) and `lanes.ts` (greedy interval packing). Projection unification
+  deferred to phase 12 (documented in spec 09 §9d). Note: assignments are
+  **not editable via commands yet** — server tests seed them via document
+  check-in; add resource/assignment command ops when the web needs them.
+- Counts at 9d close: Core 193, Storage 3, Cli 77, Server 18, web 28.
+
+## Phase 10 pointers (next)
+
+- Scope: **resource leveling** (priority-based delay of overallocated
+  work — needs per-day allocation from `Timephased` vs `Resource.MaxUnits`),
+  task inspector/drivers (why is a task scheduled where it is), resource
+  pools; inactive tasks already exist (phase 2).
+- **Subprojects/cross-project links: extension point only** (user decision):
+  define seams (e.g. an `ExternalLink` marker on dependencies + document
+  fields), no implementation; revisit after phases 11/12/5.
+- Leveling sketch: compute per-resource daily demand (Timephased.ForAssignment
+  sums), find overallocations (> MaxUnits × day capacity on the resource
+  calendar), delay lower-priority (Priority field, then row) tasks via
+  leveling delay (a new scheduler input, distinct from assignment delay) until
+  demand fits; `p27 level [--clear]`; deviations for divergence from MSP.
