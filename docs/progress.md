@@ -20,7 +20,7 @@ expensive to re-derive; conventions live in `decisions.md` (D1–D9 + D6a).
 | 9 | Views & fields | **done** (a92e84e, 75ae639, 9cabb8d, f3e1edf) | — |
 | 10 | Advanced scheduling | done (8a35e81) — **subprojects = extension point only** (user decision 2026-07-11; revisit at the very end, after 12/5; seams in spec 10) | — |
 | 11 | Reports | done (3b38136) | — |
-| 12 | Polish & web parity | **12a, 12p-1..3 done** (02ff3c5, fd5a123, 50ea3b5, aed9069) — next: 12p-4 (table view, custom-field & calendar managers, drivers popover, recurring dialog), then 12b (undo/redo, a11y) | — |
+| 12 | Polish & web parity | **12a, 12p-1..4 done** (02ff3c5, fd5a123, 50ea3b5, aed9069, 3e5ba5d) — remaining: **12b** (undo/redo via command inverses, accessibility pass) | — |
 
 Specs: `docs/spec/01…04, 06, 07, 08, 09`. Deviations from MS Project: `docs/spec/deviations.md` (#1–#25).
 
@@ -152,11 +152,10 @@ Specs: `docs/spec/01…04, 06, 07, 08, 09`. Deviations from MS Project: `docs/sp
   calendars/resources/custom-field defs/assignments/all task fields),
   12p-2 (TaskInspector: 6 tabs, everything editable), 12p-3
   (ResourcesView + ProjectSettings + Plan menu) are done.
-- **12p-4 remaining**: web Table view over `GET /view` (column picker, filter
-  bar, sort, group), custom-fields manager dialog (defineCustomField/
-  removeCustomField ops exist), calendar manager dialog (ops exist),
-  drivers popover (`GET /drivers/{uid}`), recurring-task dialog
-  (`addRecurringTask` op, structured CommandRecurrence).
+- **12p-4 done**: TableView (server view engine), Manage menu with
+  CustomFieldsManager + CalendarManager + RecurringTaskDialog
+  (components/Managers.tsx), inspector Drivers tab. Parity matrix complete
+  except usage editing (deviation #20) and file-local verbs.
 - **12b remaining**: undo/redo via command inverses (extend CommandExecutor to
   capture pre-state and emit inverse ops; web stack while holding the lock;
   CLI stays without undo — snapshot files), accessibility pass (keyboard nav
