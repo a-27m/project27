@@ -1,6 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>p27</ToolCommandName>
+    <PackageId>Project27.Cli</PackageId>
+    <Version>0.12.0</Version>
+    <Description>Project27 command-line client: plan, schedule, and inspect .p27 project files or server projects.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <OutputType>Exe</OutputType>
     <AssemblyName>p27</AssemblyName>
   </PropertyGroup>

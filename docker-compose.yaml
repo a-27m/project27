@@ -1,0 +1,48 @@
+# Evaluation / small-team deployment.
+#
+#   docker compose up --build              # SQLite storage, DevAuth (pick a user via X-Dev-User)
+#   docker compose --profile postgres up   # PostgreSQL storage instead
+#
+# DevAuth is for evaluation only: the server runs in the Development
+# environment here. For production, set ASPNETCORE_ENVIRONMENT=Production and
+# configure Auth__Authority / Auth__Audience (OIDC) — the server refuses to
+# start with DevAuth outside Development (decision D5).
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: src/Project27.Server/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      Auth__DevAuth: "true"
+      # Postgres profile: uncomment the two lines below (or set via env).
+      # Storage__Provider: postgres
+      # Storage__ConnectionString: Host=postgres;Database=project27;Username=project27;Password=project27
+    volumes:
+      - server-data:/data
+    ports:
+      - "5240:8080"
+
+  web:
+    build:
+      context: web
+      dockerfile: Dockerfile
+    depends_on:
+      - server
+    ports:
+      - "5173:80"
+
+  postgres:
+    image: postgres:17-alpine
+    profiles: [postgres]
+    environment:
+      POSTGRES_DB: project27
+      POSTGRES_USER: project27
+      POSTGRES_PASSWORD: project27
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+volumes:
+  server-data:
+  postgres-data:

@@ -1,8 +1,11 @@
 # Project27
 
 Project management with MS Project desktop scope: a clean-room CPM engine with a
-CLI, a REST server, and a React web client. See `docs/` for architecture,
-decisions, roadmap, and per-phase specs; `docs/progress.md` for current status.
+CLI, a REST server, and a React web client. See `docs/guide.md` for a user
+guide, `docs/` for architecture/decisions/roadmap and per-phase specs, and
+`docs/progress.md` for current status. `docker-compose.yaml` starts server +
+web for evaluation; the CLI packs as a dotnet tool
+(`dotnet pack src/Project27.Cli`).
 
 ## Build & test
 
