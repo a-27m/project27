@@ -16,16 +16,17 @@ expensive to re-derive; conventions live in `decisions.md` (D1–D9 + D6a).
 | 5 | Interop (MSPDI/CSV) | **postponed → after 12** | — |
 | 6 | Server | done | 2bfdc88 |
 | 7 | Web foundation | done | dd99a46 + cd38b54 |
-| 8 | Tracking & EVM | next | — |
-| 9–12 | Views · Advanced scheduling · Reports · Polish | pending | — |
+| 8 | Tracking & EVM | done | ed5944d |
+| 9 | Views & fields | next | — |
+| 10–12 | Advanced scheduling · Reports · Polish | pending | — |
 
-Specs: `docs/spec/01…04, 06, 07`. Deviations from MS Project: `docs/spec/deviations.md` (#1–#18).
+Specs: `docs/spec/01…04, 06, 07, 08`. Deviations from MS Project: `docs/spec/deviations.md` (#1–#23).
 
 ## Build & test
 
 - `dotnet build Project27.slnx` — must stay at **0 warnings** (TreatWarningsAsErrors).
-- `dotnet test` — all suites; counts at phase 6 close: Core 145, Storage 3,
-  Server 13, Cli 57 (218 total, all green).
+- `dotnet test` — all suites; counts at phase 8 close: Core 165, Storage 3,
+  Server 17, Cli 63 (248 total) + web 21 (Vitest), all green.
 - net10.0, central package management. Pinned overrides for vulnerable
   transitives: SQLitePCLRaw.bundle_e_sqlite3 3.0.3, Microsoft.OpenApi 2.10.0.
 
@@ -75,15 +76,26 @@ Specs: `docs/spec/01…04, 06, 07`. Deviations from MS Project: `docs/spec/devia
 - Playwright browser smoke deferred (no browsers in this environment) —
   tracked for phase 12.
 
-## Phase 8 pointers (next)
+## Tracking/EVM (phase 8) essentials
 
-- Scope (roadmap): baselines 0–10, interim plans, status date, actuals
-  (percent complete, actual start/finish/duration/work/cost), reschedule
-  uncompleted work, earned value fields (BCWS/BCWP/ACWP, SV/CV, SPI/CPI…).
-- Engine work first (Core: baseline storage per task/assignment + EVM
-  calculators + actuals interplay with the triangle), then persistence schema
-  v3 (additive), CLI verbs (`baseline set/clear`, `task set --percent-complete
-  --actual-start …`, `project set --status-date`), commands + schedule
-  projection fields, web columns later (phase 9 usage views).
-- The snapshots table already keeps history per version — interim plans can
-  reference stored versions.
+- Persistence is now **schema v3** (v1/v2 load). Baselines live per task
+  (`TaskBaseline`) and assignment; `EarnedValue.ForTask/ForProject` computes
+  on demand after `Recalculate()` (status date fallback: project finish).
+- Actuals **pin** the scheduler in `ComputeEarly` before manual/constraint
+  logic; `FinalizeDates` backfills implied actuals (%>0 → actual start,
+  %=100 → actual finish) and actual spans rewrite `DurationMinutes`.
+- `RescheduleUncompletedWork` reuses the split machinery; deviations #19–#23
+  cover BCWS proration, derived actuals, interim plans, summary %, splits.
+
+## Phase 9 pointers (next)
+
+- Scope (roadmap): usage views (time-phased editing), network diagram,
+  calendar/timeline views, full field catalog, custom fields with
+  formulas/indicators, filters/groups/sorts/tables.
+- The Core "field catalog + view projections" should replace the server's
+  `ScheduleProjection` and the CLI's `JsonShapes` duplication (architecture
+  intends projections in Core — this phase is where that lands).
+- Time-phased data unlocks: real ACWP/BCWS proration (deviations #19/#20),
+  contour distribution (deviation #14), per-assignment actual work.
+- Web: usage grids + network diagram views build on phase-7 primitives
+  (virtualize/timescale).
