@@ -17,7 +17,7 @@ expensive to re-derive; conventions live in `decisions.md` (D1–D9 + D6a).
 | 6 | Server | done | 2bfdc88 |
 | 7 | Web foundation | done | dd99a46 + cd38b54 |
 | 8 | Tracking & EVM | done | ed5944d |
-| 9 | Views & fields | **9a+9b done** (a92e84e, 75ae639) — next: 9c usage/time-phased, 9d web views | — |
+| 9 | Views & fields | **9a+9b+9c done** (a92e84e, 75ae639, 9cabb8d) — next: 9d web views + projection unification | — |
 | 10–12 | Advanced scheduling · Reports · Polish | pending | — |
 
 Specs: `docs/spec/01…04, 06, 07, 08, 09`. Deviations from MS Project: `docs/spec/deviations.md` (#1–#25).
@@ -103,7 +103,15 @@ Specs: `docs/spec/01…04, 06, 07, 08, 09`. Deviations from MS Project: `docs/sp
   per kind; persistence **schema v4**; CLI `customfield define/list/remove`,
   `task set --field Name=value` ('none' clears). Counts at 9b close:
   Core 185, Storage 3, Cli 73, Server 17 (+ web 21).
-- **9c**: time-phased assignment buckets + usage views; retires the
-  approximations behind deviations #14/#19/#20.
-- **9d**: network diagram + calendar/timeline (web) and unification of server
-  `ScheduleProjection`/CLI `JsonShapes` onto catalog projections.
+- **9c done**: `Core.Usage.Timephased` — `ForAssignment/ForTask/Merge/ByWeek`;
+  contour decile tables (same averages as `AverageUtilization`); exactly
+  conserving via telescoped rounded cumulatives; lump costs by resource
+  accrual. CLI `p27 usage [-g day|week] [--assignments] [--cost] [--filter]`.
+  Note: BCWS's linear proration IS flat time-phasing of the baseline (no
+  contour stored), so EVM was left as-is; deviation #19 now concerns accrual
+  only. Usage *editing* deferred (needs actual-work model, phase 8's #20).
+- **9d next**: network diagram + calendar/timeline (web) and unification of
+  server `ScheduleProjection`/CLI `JsonShapes` onto catalog projections;
+  usage grids in the web app (data comes from a new server usage endpoint or
+  an extended schedule projection).
+- Counts at 9c close: Core 193, Storage 3, Cli 77, Server 17 (+ web 21).
