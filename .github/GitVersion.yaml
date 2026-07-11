@@ -1,0 +1,37 @@
+---
+mode: Mainline
+branches:
+  main:
+    regex: ^main$
+    mode: ContinuousDelivery
+    tag: ''
+    increment: Patch
+    prevent-increment-of-merged-branch-version: true
+    track-merge-target: false
+    source-branches: []
+    is-mainline: true
+    is-release-branch: false
+  feature:
+    regex: ^feature[/-]
+    mode: ContinuousDelivery
+    tag: feature-{BranchName}
+    increment: Minor
+    source-branches:
+      - main
+    is-mainline: false
+  pull-request:
+    regex: ^(pull|pull\-requests|pr)[/-]
+    mode: ContinuousDelivery
+    tag: PullRequest
+    increment: Inherit
+    tag-number-pattern: '[/-](?<number>\d+)'
+    is-mainline: false
+ignore:
+  sha: []
+merge-message-formats: {}
+tag-prefix: 'v'
+major-version-bump-message: '\+semver:\s?(breaking|major)'
+minor-version-bump-message: '\+semver:\s?(feature|minor)'
+patch-version-bump-message: '\+semver:\s?(fix|patch)'
+no-bump-message: '\+semver:\s?(none|skip)'
+commit-message-incrementing: Enabled

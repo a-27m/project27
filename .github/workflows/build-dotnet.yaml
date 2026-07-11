@@ -1,0 +1,68 @@
+---
+name: .NET Build & Test
+
+on:
+  workflow_call:
+    inputs:
+      service-name:
+        description: 'Name of the service being built'
+        required: true
+        type: string
+      working-directory:
+        description: 'Working directory for the build (default: .)'
+        required: false
+        type: string
+        default: '.'
+      dotnet-version:
+        description: '.NET SDK version to use'
+        required: false
+        type: string
+        default: '10.0.x'
+    outputs:
+      build-result:
+        description: 'Build result (success/failure)'
+        value: ${{ jobs.build-test.outputs.result }}
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  build-test:
+    name: Build and Test ${{ inputs.service-name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      result: ${{ steps.test.outcome }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+
+      - name: Restore dependencies
+        working-directory: ${{ inputs.working-directory }}
+        run: dotnet restore
+
+      - name: Build
+        working-directory: ${{ inputs.working-directory }}
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Test
+        id: test
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          dotnet test --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
+
+      - name: Upload test results
+        if: always() && steps.test.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ inputs.service-name }}
+          path: '${{ inputs.working-directory }}/**/TestResults/*.trx'
+          retention-days: 7
+          if-no-files-found: ignore
