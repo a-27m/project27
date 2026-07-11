@@ -17,7 +17,7 @@ expensive to re-derive; conventions live in `decisions.md` (D1–D9 + D6a).
 | 6 | Server | done | 2bfdc88 |
 | 7 | Web foundation | done | dd99a46 + cd38b54 |
 | 8 | Tracking & EVM | done | ed5944d |
-| 9 | Views & fields | **9a done** (a92e84e) — 9b custom fields next, then 9c usage/time-phased, 9d web views | — |
+| 9 | Views & fields | **9a+9b done** (a92e84e, 75ae639) — next: 9c usage/time-phased, 9d web views | — |
 | 10–12 | Advanced scheduling · Reports · Polish | pending | — |
 
 Specs: `docs/spec/01…04, 06, 07, 08, 09`. Deviations from MS Project: `docs/spec/deviations.md` (#1–#25).
@@ -96,11 +96,13 @@ Specs: `docs/spec/01…04, 06, 07, 08, 09`. Deviations from MS Project: `docs/sp
   built-ins) + `ParseSorts`. CLI: `p27 view`, `p27 field list`.
   `FieldCatalog.Resolve(project, key)` has the project parameter *specifically*
   so 9b custom fields/aliases can resolve there.
-- **9b next**: custom field slots (text1..30, number1..20, cost1..10,
-  date1..10, flag1..20, duration1..10), aliases, formula evaluator
-  (`[Field]` refs, arithmetic, comparisons, IIf/Abs/Min/Max/Round,
-  Now/StatusDate), indicator rules, persistence v4, CLI customfield verbs +
-  `task set --field`. Spec §9b in docs/spec/09-views-fields.md is complete.
+- **9b done**: custom field slots + aliases resolve through
+  `FieldCatalog.Resolve` (also virtual `<field>.icon`); `FormulaEvaluator`
+  (Core.Fields) has **duration literals** (`2d` → minutes) and a
+  thread-static cycle guard (formulas re-enter via accessors). Values typed
+  per kind; persistence **schema v4**; CLI `customfield define/list/remove`,
+  `task set --field Name=value` ('none' clears). Counts at 9b close:
+  Core 185, Storage 3, Cli 73, Server 17 (+ web 21).
 - **9c**: time-phased assignment buckets + usage views; retires the
   approximations behind deviations #14/#19/#20.
 - **9d**: network diagram + calendar/timeline (web) and unification of server
