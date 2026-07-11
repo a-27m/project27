@@ -1,0 +1,541 @@
+import { useState } from 'react'
+import type { Command, ScheduleProject, ScheduleTask } from '../api/types'
+import { dateTime, durationDays, fromWireDate, toWireDate } from '../lib/format'
+
+interface Props {
+  task: ScheduleTask
+  project: ScheduleProject
+  tasks: ScheduleTask[]
+  editable: boolean
+  onCommands: (commands: Command[]) => void
+  onClose: () => void
+}
+
+type Section = 'general' | 'advanced' | 'tracking' | 'links' | 'resources' | 'custom'
+
+const CONSTRAINTS = [
+  'asSoonAsPossible',
+  'asLateAsPossible',
+  'startNoEarlierThan',
+  'startNoLaterThan',
+  'finishNoEarlierThan',
+  'finishNoLaterThan',
+  'mustStartOn',
+  'mustFinishOn',
+] as const
+
+const LINK_TYPES = ['finishToStart', 'startToStart', 'finishToFinish', 'startToFinish'] as const
+const CONTOURS = ['flat', 'backLoaded', 'frontLoaded', 'doublePeak', 'earlyPeak', 'latePeak', 'bell', 'turtle'] as const
+
+/** Full-field task editor (docs/spec/12-polish.md parity matrix, 12p-2). */
+export function TaskInspector({ task, project, tasks, editable, onCommands, onClose }: Props) {
+  const [section, setSection] = useState<Section>('general')
+  const set = (patch: Record<string, unknown>) => onCommands([{ op: 'setTask', uid: task.uid, ...patch }])
+  const rowOf = (uid: number) => tasks.find((t) => t.uid === uid)?.row ?? uid
+
+  return (
+    <aside className="inspector" aria-label={`Task ${task.row} details`}>
+      <header className="inspector-head">
+        <strong>
+          #{task.row} {task.name}
+        </strong>
+        <button onClick={onClose} aria-label="Close inspector">
+          ✕
+        </button>
+      </header>
+      <nav className="inspector-tabs" role="tablist">
+        {(
+          [
+            ['general', 'General'],
+            ['advanced', 'Advanced'],
+            ['tracking', 'Tracking'],
+            ['links', 'Links'],
+            ['resources', 'Resources'],
+            ['custom', 'Custom'],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            role="tab"
+            aria-selected={section === key}
+            className={section === key ? 'active' : ''}
+            onClick={() => setSection(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+      <div className="inspector-body">
+        {section === 'general' && (
+          <>
+            <TextField label="Name" value={task.name} editable={editable} onCommit={(v) => set({ name: v })} />
+            <TextField
+              label="Duration"
+              value={durationDays(task.durationMinutes, project.minutesPerDay, task.estimated)}
+              editable={editable && !task.summary}
+              onCommit={(v) => set({ duration: v })}
+            />
+            <StaticField label="Start" value={dateTime(task.start)} />
+            <StaticField label="Finish" value={dateTime(task.finish)} />
+            <SelectField
+              label="Mode"
+              value={task.mode}
+              options={['auto', 'manual']}
+              editable={editable}
+              onCommit={(v) => set({ mode: v })}
+            />
+            <CheckField
+              label="Milestone"
+              checked={task.milestone}
+              editable={editable && !task.summary}
+              onCommit={(v) => set({ milestone: v })}
+            />
+            <CheckField label="Active" checked={task.active} editable={editable} onCommit={(v) => set({ active: v })} />
+            <TextField
+              label="Priority"
+              value={String(task.priority)}
+              editable={editable && !task.summary}
+              onCommit={(v) => set({ priority: Number(v) })}
+            />
+            <StaticField label="WBS" value={task.wbs} />
+            <StaticField
+              label="Slack"
+              value={task.totalSlackMinutes === null ? '' : durationDays(task.totalSlackMinutes, project.minutesPerDay)}
+            />
+          </>
+        )}
+
+        {section === 'advanced' && (
+          <>
+            <SelectField
+              label="Type"
+              value={task.type}
+              options={['fixedUnits', 'fixedDuration', 'fixedWork']}
+              editable={editable && !task.summary}
+              onCommit={(v) => set({ type: v })}
+            />
+            <CheckField
+              label="Effort-driven"
+              checked={task.effortDriven}
+              editable={editable && task.type !== 'fixedWork' && !task.summary}
+              onCommit={(v) => set({ effortDriven: v })}
+            />
+            <SelectField
+              label="Constraint"
+              value={task.constraint}
+              options={CONSTRAINTS}
+              editable={editable && !task.summary}
+              onCommit={(v) =>
+                v === 'asSoonAsPossible' || v === 'asLateAsPossible'
+                  ? set({ constraint: v })
+                  : set({ constraint: v, constraintDate: task.constraintDate ?? toWireDate(fromWireDate(task.start ?? project.start)) })
+              }
+            />
+            <DateField
+              label="Constraint date"
+              value={task.constraintDate}
+              editable={editable && !task.summary && task.constraint !== 'asSoonAsPossible' && task.constraint !== 'asLateAsPossible'}
+              onCommit={(v) => set(v === null ? {} : { constraintDate: v })}
+            />
+            <DateField
+              label="Deadline"
+              value={task.deadline}
+              editable={editable}
+              onCommit={(v) => set(v === null ? { clearDeadline: true } : { deadline: v })}
+            />
+            <SelectField
+              label="Calendar"
+              value={task.calendar ?? ''}
+              options={['', ...project.calendars]}
+              labels={['(project)', ...project.calendars]}
+              editable={editable}
+              onCommit={(v) => set(v === '' ? { clearCalendar: true } : { calendar: v })}
+            />
+            <CheckField
+              label="Ignore resource calendars"
+              checked={task.ignoresResourceCalendars}
+              editable={editable}
+              onCommit={(v) => set({ ignoreResourceCalendars: v })}
+            />
+            <TextField
+              label="Fixed cost"
+              value={String(task.fixedCost)}
+              editable={editable}
+              onCommit={(v) => set({ fixedCost: Number(v) })}
+            />
+            <SelectField
+              label="Cost accrual"
+              value={task.fixedCostAccrual}
+              options={['start', 'prorated', 'end']}
+              editable={editable}
+              onCommit={(v) => set({ fixedCostAccrual: v })}
+            />
+            <DateField
+              label="Manual start"
+              value={task.manualStart}
+              editable={editable && task.mode === 'manual'}
+              onCommit={(v) => set(v === null ? { clearManualStart: true } : { manualStart: v })}
+            />
+            <DateField
+              label="Manual finish"
+              value={task.manualFinish}
+              editable={editable && task.mode === 'manual'}
+              onCommit={(v) => set(v === null ? { clearManualFinish: true } : { manualFinish: v })}
+            />
+          </>
+        )}
+
+        {section === 'tracking' && (
+          <>
+            <TextField
+              label="% complete"
+              value={String(task.percentComplete)}
+              editable={editable && !task.summary}
+              onCommit={(v) => set({ percentComplete: Number(v) })}
+            />
+            <DateField
+              label="Actual start"
+              value={task.actualStart}
+              editable={editable && !task.summary}
+              onCommit={(v) => set(v === null ? { clearActualStart: true } : { actualStart: v })}
+            />
+            <DateField
+              label="Actual finish"
+              value={task.actualFinish}
+              editable={editable && !task.summary}
+              onCommit={(v) => set(v === null ? { clearActualFinish: true } : { actualFinish: v })}
+            />
+            <StaticField label="Baseline start" value={dateTime(task.baselineStart)} />
+            <StaticField label="Baseline finish" value={dateTime(task.baselineFinish)} />
+            <StaticField label="Baseline cost" value={task.baselineCost === null ? '' : String(task.baselineCost)} />
+            <StaticField
+              label="Leveling delay"
+              value={task.levelingDelayMinutes > 0 ? durationDays(task.levelingDelayMinutes, project.minutesPerDay) : ''}
+            />
+            <StaticField label="Cost" value={String(task.cost)} />
+            <StaticField label="Work" value={durationDays(task.workMinutes, 60).replace('d', 'h')} />
+          </>
+        )}
+
+        {section === 'links' && (
+          <LinksSection task={task} tasks={tasks} editable={editable} onCommands={onCommands} rowOf={rowOf} />
+        )}
+
+        {section === 'resources' && (
+          <ResourcesSection task={task} project={project} editable={editable} onCommands={onCommands} />
+        )}
+
+        {section === 'custom' && (
+          <>
+            {project.customFields.length === 0 && <p className="muted">No custom fields defined.</p>}
+            {project.customFields.map((field) => {
+              const raw = task.customValues?.[field.id]
+              const text = raw === null || raw === undefined ? '' : String(raw)
+              return (
+                <TextField
+                  key={field.id}
+                  label={(field.alias ?? field.id) + (field.hasFormula ? ' (formula)' : '')}
+                  value={text}
+                  editable={editable && !field.hasFormula && !task.summary}
+                  onCommit={(v) =>
+                    set({ customValues: { [field.alias ?? field.id]: v === '' ? null : v } })
+                  }
+                />
+              )
+            })}
+          </>
+        )}
+      </div>
+    </aside>
+  )
+}
+
+function LinksSection({
+  task,
+  tasks,
+  editable,
+  onCommands,
+  rowOf,
+}: {
+  task: ScheduleTask
+  tasks: ScheduleTask[]
+  editable: boolean
+  onCommands: (commands: Command[]) => void
+  rowOf: (uid: number) => number
+}) {
+  const [newPredecessor, setNewPredecessor] = useState('')
+  return (
+    <>
+      {task.predecessors.length === 0 && <p className="muted">No predecessors.</p>}
+      {task.predecessors.map((link) => (
+        <div className="inspector-row" key={link.predecessorUid}>
+          <span className="inspector-label">#{rowOf(link.predecessorUid)}</span>
+          <select
+            value={link.type}
+            disabled={!editable}
+            aria-label="Link type"
+            onChange={(event) =>
+              onCommands([
+                {
+                  op: 'setLink',
+                  predecessorUid: link.predecessorUid,
+                  successorUid: task.uid,
+                  type: event.target.value as (typeof LINK_TYPES)[number],
+                },
+              ])
+            }
+          >
+            {LINK_TYPES.map((type) => (
+              <option key={type}>{type}</option>
+            ))}
+          </select>
+          {editable && (
+            <button
+              className="danger"
+              aria-label="Remove link"
+              onClick={() => onCommands([{ op: 'unlink', predecessorUid: link.predecessorUid, successorUid: task.uid }])}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      ))}
+      {editable && (
+        <div className="inspector-row">
+          <input
+            placeholder="Predecessor row #"
+            aria-label="Predecessor row number"
+            value={newPredecessor}
+            onChange={(event) => setNewPredecessor(event.target.value)}
+          />
+          <button
+            onClick={() => {
+              const predecessor = tasks.find((t) => t.row === Number(newPredecessor))
+              if (predecessor !== undefined) {
+                onCommands([{ op: 'link', predecessorUid: predecessor.uid, successorUid: task.uid }])
+                setNewPredecessor('')
+              }
+            }}
+          >
+            Link
+          </button>
+        </div>
+      )}
+    </>
+  )
+}
+
+function ResourcesSection({
+  task,
+  project,
+  editable,
+  onCommands,
+}: {
+  task: ScheduleTask
+  project: ScheduleProject
+  editable: boolean
+  onCommands: (commands: Command[]) => void
+}) {
+  const [newResource, setNewResource] = useState('')
+  const unassigned = project.resources.filter((r) => !task.assignments.some((a) => a.resource === r.name))
+  return (
+    <>
+      {task.assignments.length === 0 && <p className="muted">No resources assigned.</p>}
+      {task.assignments.map((assignment) => (
+        <div className="inspector-group" key={assignment.resource}>
+          <div className="inspector-row">
+            <strong>{assignment.resource}</strong>
+            <span className="muted">{assignment.resourceType}</span>
+            {editable && (
+              <button
+                className="danger"
+                aria-label={`Unassign ${assignment.resource}`}
+                onClick={() => onCommands([{ op: 'unassign', uid: task.uid, resource: assignment.resource }])}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          {assignment.resourceType === 'work' && (
+            <>
+              <TextField
+                label="Units"
+                value={`${assignment.units * 100}%`}
+                editable={editable}
+                onCommit={(v) =>
+                  onCommands([
+                    {
+                      op: 'setAssignment',
+                      uid: task.uid,
+                      resource: assignment.resource,
+                      units: v.endsWith('%') ? Number(v.slice(0, -1)) / 100 : Number(v),
+                    },
+                  ])
+                }
+              />
+              <TextField
+                label="Work"
+                value={`${Math.round((assignment.workMinutes / 60) * 100) / 100}h`}
+                editable={editable}
+                onCommit={(v) => onCommands([{ op: 'setAssignment', uid: task.uid, resource: assignment.resource, work: v }])}
+              />
+              <SelectField
+                label="Contour"
+                value={assignment.contour}
+                options={CONTOURS}
+                editable={editable}
+                onCommit={(v) => onCommands([{ op: 'setAssignment', uid: task.uid, resource: assignment.resource, contour: v }])}
+              />
+            </>
+          )}
+          {assignment.resourceType === 'cost' && (
+            <TextField
+              label="Cost"
+              value={String(assignment.costInput)}
+              editable={editable}
+              onCommit={(v) => onCommands([{ op: 'setAssignment', uid: task.uid, resource: assignment.resource, cost: Number(v) }])}
+            />
+          )}
+          <StaticField label="Costed" value={String(assignment.cost)} />
+        </div>
+      ))}
+      {editable && unassigned.length > 0 && (
+        <div className="inspector-row">
+          <select value={newResource} aria-label="Resource to assign" onChange={(event) => setNewResource(event.target.value)}>
+            <option value="">Assign resource…</option>
+            {unassigned.map((r) => (
+              <option key={r.uid} value={r.name}>
+                {r.name} ({r.type})
+              </option>
+            ))}
+          </select>
+          <button
+            disabled={newResource === ''}
+            onClick={() => {
+              onCommands([{ op: 'assign', uid: task.uid, resource: newResource }])
+              setNewResource('')
+            }}
+          >
+            Assign
+          </button>
+        </div>
+      )}
+    </>
+  )
+}
+
+// ------------------------------------------------------------ field widgets
+
+function TextField({
+  label,
+  value,
+  editable,
+  onCommit,
+}: {
+  label: string
+  value: string
+  editable: boolean
+  onCommit: (value: string) => void
+}) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const commit = () => {
+    if (draft !== null && draft !== value) onCommit(draft)
+    setDraft(null)
+  }
+  return (
+    <label className="inspector-row">
+      <span className="inspector-label">{label}</span>
+      <input
+        value={draft ?? value}
+        readOnly={!editable}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') commit()
+          else if (event.key === 'Escape') setDraft(null)
+        }}
+      />
+    </label>
+  )
+}
+
+function StaticField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="inspector-row">
+      <span className="inspector-label">{label}</span>
+      <span className="inspector-value">{value}</span>
+    </div>
+  )
+}
+
+function SelectField({
+  label,
+  value,
+  options,
+  labels,
+  editable,
+  onCommit,
+}: {
+  label: string
+  value: string
+  options: readonly string[]
+  labels?: readonly string[]
+  editable: boolean
+  onCommit: (value: string) => void
+}) {
+  return (
+    <label className="inspector-row">
+      <span className="inspector-label">{label}</span>
+      <select value={value} disabled={!editable} onChange={(event) => onCommit(event.target.value)}>
+        {options.map((option, index) => (
+          <option key={option} value={option}>
+            {labels?.[index] ?? option}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+function CheckField({
+  label,
+  checked,
+  editable,
+  onCommit,
+}: {
+  label: string
+  checked: boolean
+  editable: boolean
+  onCommit: (value: boolean) => void
+}) {
+  return (
+    <label className="inspector-row">
+      <span className="inspector-label">{label}</span>
+      <input type="checkbox" checked={checked} disabled={!editable} onChange={(event) => onCommit(event.target.checked)} />
+    </label>
+  )
+}
+
+function DateField({
+  label,
+  value,
+  editable,
+  onCommit,
+}: {
+  label: string
+  value: string | null
+  editable: boolean
+  onCommit: (value: string | null) => void
+}) {
+  return (
+    <label className="inspector-row">
+      <span className="inspector-label">{label}</span>
+      <input
+        type="datetime-local"
+        value={value === null ? '' : value.slice(0, 16)}
+        readOnly={!editable}
+        onChange={(event) => onCommit(event.target.value === '' ? null : event.target.value + ':00')}
+      />
+    </label>
+  )
+}

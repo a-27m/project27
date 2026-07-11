@@ -80,6 +80,30 @@ export interface ScheduleTask {
   baselineStart: string | null
   baselineFinish: string | null
   baselineCost: number | null
+  levelingDelayMinutes: number
+  priority: number
+  type: 'fixedUnits' | 'fixedDuration' | 'fixedWork'
+  effortDriven: boolean
+  ignoresResourceCalendars: boolean
+  fixedCost: number
+  fixedCostAccrual: 'start' | 'prorated' | 'end'
+  manualStart: string | null
+  manualFinish: string | null
+  calendar: string | null
+  assignments: ScheduleAssignment[]
+  customValues: Record<string, unknown> | null
+}
+
+export interface ScheduleAssignment {
+  resource: string
+  resourceType: 'work' | 'material' | 'cost'
+  units: number
+  workMinutes: number
+  contour: string
+  delayMinutes: number
+  rateTable: 'a' | 'b' | 'c' | 'd' | 'e'
+  cost: number
+  costInput: number
 }
 
 export interface ScheduleProject {
@@ -95,6 +119,14 @@ export interface ScheduleProject {
   statusDate: string | null
   calendars: string[]
   resources: ResourceSummary[]
+  customFields: CustomFieldSummary[]
+}
+
+export interface CustomFieldSummary {
+  id: string
+  alias: string | null
+  kind: string
+  hasFormula: boolean
 }
 
 export interface ResourceSummary {
@@ -176,7 +208,16 @@ export type Command =
   | { op: 'link'; predecessorUid: number; successorUid: number; type?: DependencyType; lag?: CommandLag }
   | { op: 'setLink'; predecessorUid: number; successorUid: number; type?: DependencyType; lag?: CommandLag }
   | { op: 'unlink'; predecessorUid: number; successorUid: number }
-  | { op: 'setProject'; name?: string; start?: string }
+  | { op: 'setProject'; name?: string; start?: string; statusDate?: string; clearStatusDate?: boolean }
+  | { op: 'assign'; uid: number; resource: string; units?: number; work?: string; cost?: number }
+  | { op: 'setAssignment'; uid: number; resource: string; units?: number; work?: string; contour?: string; delay?: string; rateTable?: string; cost?: number }
+  | { op: 'unassign'; uid: number; resource: string }
+  | { op: 'setBaseline'; slot?: number }
+  | { op: 'clearBaseline'; slot?: number }
+  | { op: 'level' }
+  | { op: 'clearLeveling' }
+  | { op: 'reschedule'; after?: string }
+  | { op: string; [key: string]: unknown }
 
 export interface ProjectEvent {
   kind: 'checkout' | 'checkin' | 'lock-released'

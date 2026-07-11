@@ -17,9 +17,23 @@ public sealed record ScheduleProjectDto(
     decimal TotalCost,
     DateTime? StatusDate,
     IReadOnlyList<string> Calendars,
-    IReadOnlyList<ResourceSummaryDto> Resources);
+    IReadOnlyList<ResourceSummaryDto> Resources,
+    IReadOnlyList<CustomFieldSummaryDto> CustomFields);
 
 public sealed record ResourceSummaryDto(int Uid, string Name, ResourceType Type, decimal MaxUnits, string Rate);
+
+public sealed record CustomFieldSummaryDto(string Id, string? Alias, string Kind, bool HasFormula);
+
+public sealed record ScheduleAssignmentDto(
+    string Resource,
+    ResourceType ResourceType,
+    decimal Units,
+    decimal WorkMinutes,
+    WorkContour Contour,
+    decimal DelayMinutes,
+    CostRateTableId RateTable,
+    decimal Cost,
+    decimal CostInput);
 
 public sealed record ScheduleSegmentDto(DateTime Start, DateTime Finish);
 
@@ -56,7 +70,18 @@ public sealed record ScheduleTaskDto(
     DateTime? BaselineStart,
     DateTime? BaselineFinish,
     decimal? BaselineCost,
-    decimal LevelingDelayMinutes);
+    decimal LevelingDelayMinutes,
+    int Priority,
+    TaskType Type,
+    bool EffortDriven,
+    bool IgnoresResourceCalendars,
+    decimal FixedCost,
+    CostAccrual FixedCostAccrual,
+    DateTime? ManualStart,
+    DateTime? ManualFinish,
+    string? Calendar,
+    IReadOnlyList<ScheduleAssignmentDto> Assignments,
+    IReadOnlyDictionary<string, object?>? CustomValues);
 
 public sealed record ScheduleDto(int Version, ScheduleProjectDto Project, IReadOnlyList<ScheduleTaskDto> Tasks);
 
@@ -143,6 +168,10 @@ public static class ScheduleProjection
                 [
                     .. project.Resources.Select(r => new ResourceSummaryDto(
                         r.UniqueId, r.Name, r.Type, r.MaxUnits, r.StandardRate.ToString())),
+                ],
+                [
+                    .. project.CustomFields.OrderBy(f => f.Id, StringComparer.Ordinal).Select(f => new CustomFieldSummaryDto(
+                        f.Id, f.Alias, f.Kind.ToString(), f.Formula is not null)),
                 ]),
             [
                 .. project.Tasks.Select(task => new ScheduleTaskDto(
@@ -179,7 +208,33 @@ public static class ScheduleProjection
                     task.Baseline()?.Start,
                     task.Baseline()?.Finish,
                     task.Baseline()?.Cost,
-                    task.LevelingDelayMinutes)),
+                    task.LevelingDelayMinutes,
+                    task.Priority,
+                    task.Type,
+                    task.IsEffortDriven,
+                    task.IgnoresResourceCalendars,
+                    task.FixedCost,
+                    task.FixedCostAccrual,
+                    task.ManualStart,
+                    task.ManualFinish,
+                    task.Calendar?.Name,
+                    [
+                        .. task.Assignments.Select(a => new ScheduleAssignmentDto(
+                            a.Resource.Name,
+                            a.Resource.Type,
+                            a.Units,
+                            a.WorkMinutes,
+                            a.Contour,
+                            a.DelayMinutes,
+                            a.RateTable,
+                            a.Cost,
+                            a.Resource.Type == ResourceType.Cost ? a.CostInput : 0m)),
+                    ],
+                    project.CustomFields.Count == 0
+                        ? null
+                        : project.CustomFields.ToDictionary(
+                            f => f.Id,
+                            f => Core.Fields.FieldCatalog.CustomValue(f, task)))),
             ]);
     }
 }

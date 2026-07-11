@@ -3,6 +3,7 @@ import type { ApiClient } from '../api/client'
 import type { Command, ProjectInfo, Schedule } from '../api/types'
 import { Gantt } from '../components/Gantt'
 import { NetworkView } from '../components/NetworkView'
+import { TaskInspector } from '../components/TaskInspector'
 import { TaskSheet } from '../components/TaskSheet'
 import { TimelineView } from '../components/TimelineView'
 import { UsageView } from '../components/UsageView'
@@ -311,6 +312,17 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
           />
         </div>
       </div>
+
+      {selected !== null && schedule !== null && (
+        <TaskInspector
+          task={selected}
+          project={schedule.project}
+          tasks={tasks}
+          editable={editable}
+          onCommands={(commands) => void sendCommands(commands)}
+          onClose={() => setSelectedUid(null)}
+        />
+      )}
     </div>
   )
 }
