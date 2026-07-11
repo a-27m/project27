@@ -3,6 +3,8 @@ import type { ApiClient } from '../api/client'
 import type { Command, ProjectInfo, Schedule } from '../api/types'
 import { Gantt } from '../components/Gantt'
 import { NetworkView } from '../components/NetworkView'
+import { ProjectSettings } from '../components/ProjectSettings'
+import { ResourcesView } from '../components/ResourcesView'
 import { TaskInspector } from '../components/TaskInspector'
 import { TaskSheet } from '../components/TaskSheet'
 import { TimelineView } from '../components/TimelineView'
@@ -31,7 +33,8 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
   const [scrollTop, setScrollTop] = useState(0)
   const [viewportHeight, setViewportHeight] = useState(600)
   const [splitX, setSplitX] = useState(Math.min(SHEET_WIDTH + 12, 560))
-  const [viewMode, setViewMode] = useState<'gantt' | 'network' | 'timeline' | 'usage'>('gantt')
+  const [viewMode, setViewMode] = useState<'gantt' | 'network' | 'timeline' | 'usage' | 'resources'>('gantt')
+  const [showSettings, setShowSettings] = useState(false)
   const scrollerRef = useRef<HTMLDivElement>(null)
   const ganttScrollRef = useRef<HTMLDivElement>(null)
 
@@ -134,16 +137,48 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
             `v${schedule.version} · ${durationDays(schedule.project.totalWorkMinutes, schedule.project.minutesPerDay)} work`}
         </span>
         <nav className="view-switch" aria-label="View">
-          {(['gantt', 'network', 'timeline', 'usage'] as const).map((mode) => (
+          {(['gantt', 'network', 'timeline', 'usage', 'resources'] as const).map((mode) => (
             <button
               key={mode}
               className={viewMode === mode ? 'active' : ''}
               onClick={() => setViewMode(mode)}
             >
-              {mode === 'gantt' ? 'Gantt' : mode === 'network' ? 'Network' : mode === 'timeline' ? 'Timeline' : 'Usage'}
+              {mode === 'gantt'
+                ? 'Gantt'
+                : mode === 'network'
+                  ? 'Network'
+                  : mode === 'timeline'
+                    ? 'Timeline'
+                    : mode === 'usage'
+                      ? 'Usage'
+                      : 'Resources'}
             </button>
           ))}
         </nav>
+        {editable && (
+          <select
+            className="report-menu"
+            aria-label="Plan actions"
+            value=""
+            onChange={(event) => {
+              const action = event.target.value
+              event.target.value = ''
+              if (action === 'baseline') void sendCommands([{ op: 'setBaseline' }])
+              else if (action === 'clearBaseline') void sendCommands([{ op: 'clearBaseline' }])
+              else if (action === 'level') void sendCommands([{ op: 'level' }])
+              else if (action === 'clearLeveling') void sendCommands([{ op: 'clearLeveling' }])
+              else if (action === 'reschedule') void sendCommands([{ op: 'reschedule' }])
+            }}
+          >
+            <option value="">Plan…</option>
+            <option value="baseline">Set baseline</option>
+            <option value="clearBaseline">Clear baseline</option>
+            <option value="level">Level resources</option>
+            <option value="clearLeveling">Clear leveling</option>
+            <option value="reschedule">Reschedule uncompleted work</option>
+          </select>
+        )}
+        <button onClick={() => setShowSettings(true)}>Settings</button>
         <select
           className="report-menu"
           aria-label="Reports"
@@ -242,6 +277,15 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
           <UsageView client={client} projectId={projectId} version={schedule?.version ?? 0} />
         </div>
       )}
+      {viewMode === 'resources' && schedule !== null && (
+        <div className="view-body">
+          <ResourcesView
+            project={schedule.project}
+            editable={editable}
+            onCommands={(commands) => void sendCommands(commands)}
+          />
+        </div>
+      )}
       <div
         className="split"
         style={{ gridTemplateColumns: `${splitX}px 6px 1fr`, display: viewMode === 'gantt' ? undefined : 'none' }}
@@ -313,6 +357,14 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
         </div>
       </div>
 
+      {showSettings && schedule !== null && (
+        <ProjectSettings
+          project={schedule.project}
+          editable={editable}
+          onCommands={(commands) => void sendCommands(commands)}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
       {selected !== null && schedule !== null && (
         <TaskInspector
           task={selected}
