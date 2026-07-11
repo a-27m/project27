@@ -1,0 +1,86 @@
+---
+name: Reusable Semantic Versioning and Tagging
+
+on:
+  workflow_call:
+    inputs:
+      service-name:
+        description: 'Name of the service being versioned'
+        required: true
+        type: string
+    outputs:
+      version:
+        description: 'Generated semantic version'
+        value: ${{ jobs.semver.outputs.version }}
+      major:
+        description: 'Major version number'
+        value: ${{ jobs.semver.outputs.major }}
+      minor:
+        description: 'Minor version number'
+        value: ${{ jobs.semver.outputs.minor }}
+      patch:
+        description: 'Patch version number'
+        value: ${{ jobs.semver.outputs.patch }}
+
+permissions:
+  contents: write
+
+jobs:
+  semver:
+    name: Generate Version for ${{ inputs.service-name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.gitversion.outputs.semVer }}
+      major: ${{ steps.gitversion.outputs.major }}
+      minor: ${{ steps.gitversion.outputs.minor }}
+      patch: ${{ steps.gitversion.outputs.patch }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for GitVersion
+
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@v3.1.1
+        with:
+          versionSpec: '5.x'
+
+      - name: Setup GitVersion config with fallback
+        id: setup-config
+        run: |
+          echo "Using service repo GitVersion config"
+          echo "config-path=.github/GitVersion.yaml" >> $GITHUB_OUTPUT
+
+      - name: Determine Version
+        id: gitversion
+        uses: gittools/actions/gitversion/execute@v3.1.1
+        with:
+          useConfigFile: true
+          configFilePath: ${{ steps.setup-config.outputs.config-path }}
+
+      - name: Display Version
+        run: |
+          echo "SemVer: ${{ steps.gitversion.outputs.semVer }}"
+          echo "Major: ${{ steps.gitversion.outputs.major }}"
+          echo "Minor: ${{ steps.gitversion.outputs.minor }}"
+          echo "Patch: ${{ steps.gitversion.outputs.patch }}"
+          echo "FullSemVer: ${{ steps.gitversion.outputs.fullSemVer }}"
+          echo "InformationalVersion: ${{ steps.gitversion.outputs.informationalVersion }}"
+
+      - name: Create and push tag
+        if: github.ref == 'refs/heads/main'
+        run: |
+          VERSION="${{ steps.gitversion.outputs.semVer }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Create annotated tag if it doesn't exist
+          if ! git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            git tag -a "v$VERSION" -m "Release version $VERSION"
+            git push origin "v$VERSION"
+            echo "Created and pushed tag v$VERSION"
+          else
+            echo "Tag v$VERSION already exists, skipping"
+          fi

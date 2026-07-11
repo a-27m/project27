@@ -1,0 +1,59 @@
+---
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  dotnet:
+    uses: ./.github/workflows/build-dotnet.yaml
+    with:
+      service-name: project27
+
+  web:
+    name: Build and Test web
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      result: ${{ steps.test.outcome }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 26.x
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run build --if-present
+      - run: npm run lint
+      - id: test
+        run: npm test
+
+  docker-backend:
+    uses: ./.github/workflows/ci-docker-template.yaml
+    needs: [dotnet]
+    with:
+      service-name: 'project27-server'
+      dockerfile-path: './src/Project27.Server/Dockerfile'
+    permissions:
+      contents: write
+      packages: write
+    secrets: inherit
+
+  docker-web:
+    uses: ./.github/workflows/ci-docker-template.yaml
+    needs: [web]
+    with:
+      service-name: 'project27-web'
+      dockerfile-path: './web/Dockerfile'
+    permissions:
+      contents: write
+      packages: write
+    secrets: inherit
