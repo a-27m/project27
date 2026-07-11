@@ -13,7 +13,7 @@ expensive to re-derive; conventions live in `decisions.md` (D1–D9 + D6a).
 | 2 | CPM scheduler | done | b98560b |
 | 3 | Persistence + CLI | done | 695563e + d31b7d0 |
 | 4 | Resources & costs | done | f269ad9 |
-| 5 | Interop (MSPDI/CSV) | **postponed → after 12** | — |
+| 5 | Interop (MSPDI/CSV) | done after 12, as planned (b2b7dd4) | — |
 | 6 | Server | done | 2bfdc88 |
 | 7 | Web foundation | done | dd99a46 + cd38b54 |
 | 8 | Tracking & EVM | done | ed5944d |
@@ -163,8 +163,17 @@ Specs: `docs/spec/01…04, 06, 07, 08, 09`. Deviations from MS Project: `docs/sp
   (Ctrl+Z / Ctrl+Shift+Z, cleared on lock transitions). Modals focus + Escape;
   errors role=alert. Full keyboard grid-nav + axe run remain as noted gaps.
 - Counts at 12 close: Core 217, Storage 3, Cli 83, Server 21, web 28.
-- **Next: phase 5 (interop)** — 5a CSV export (`p27 export csv` over the view
-  engine), 5b MSPDI XML import/export with round-trip tests (remember
-  deviation #10: emit/consume 1-based OutlineLevel; MSPDI durations are
-  PT#H#M#S; UIDs map to our uid). Then the final subprojects/cross-project
-  links + live pools revisit (extension point, spec 10).
+- **Phase 5 done**: `Project27.Interop` — `CsvExporter` (view engine →
+  RFC-4180), `MspdiWriter`/`MspdiReader` (1-based outline, PT-durations,
+  link lag in tenths of minutes, hourly rates, baseline 0; lossy edges in
+  deviation #32). CLI `export csv|mspdi`, `import mspdi`.
+- **All roadmap phases (0–12 + 5) are complete.** Counts at close:
+  Core 217, Storage 3, Interop 9, Cli 86, Server 21 (.NET 336) + web 28.
+- **Open product decision — the subprojects revisit** (user deferred to the
+  very end): the extension-point seams are in spec 10 (JSON tolerates new
+  members; external tasks ≈ manual-task islands; server snapshots per
+  project id; live pools = same cross-file concern). Options when picked up:
+  (a) server-side cross-project links (external predecessor = read-only
+  mirror task synced from another server project), (b) master projects as a
+  web-side composition view, (c) leave as extension point. Needs a product
+  call before implementation.
