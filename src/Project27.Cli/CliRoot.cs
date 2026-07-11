@@ -70,6 +70,8 @@ internal static class CliRoot
         root.Add(UsageCommands.Command());
         root.Add(LevelCommands.Command());
         root.Add(ReportCommands.Command());
+        root.Add(InteropCommands.Export());
+        root.Add(InteropCommands.Import());
         root.Add(ServerCommands.Checkout());
         root.Add(ServerCommands.Checkin());
         root.Add(ServerCommands.Unlock());

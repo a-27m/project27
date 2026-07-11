@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Project27.Core\Project27.Core.csproj" />
+    <ProjectReference Include="..\Project27.Interop\Project27.Interop.csproj" />
     <ProjectReference Include="..\Project27.Storage\Project27.Storage.csproj" />
   </ItemGroup>
 

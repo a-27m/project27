@@ -204,6 +204,23 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
             </button>
           ))}
         </nav>
+        {editable ? (
+          <>
+          <button className="primary" onClick={() => void checkin()}>
+              Check in
+            </button>
+          </>
+
+          ) : (
+            (info?.role === 'editor' || info?.role === 'owner') && (
+            <button className="primary" onClick={() => void checkout()}>
+              Checkout to edit
+            </button>
+            )
+          )
+        }
+        </div>
+        <div className="toolbar">
         {editable && (
           <select
             className="report-menu"
@@ -308,16 +325,9 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
             >
               Delete
             </button>
-            <button className="primary" onClick={() => void checkin()}>
-              Check in
-            </button>
           </>
         ) : (
-          (info?.role === 'editor' || info?.role === 'owner') && (
-            <button className="primary" onClick={() => void checkout()}>
-              Checkout to edit
-            </button>
-          )
+          <></>
         )}
       </div>
 

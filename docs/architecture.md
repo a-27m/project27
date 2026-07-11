@@ -7,10 +7,10 @@ Project27 is a project-management system with MS Project Professional desktop sc
 
 ```
                 ┌────────────────────────────────────────────┐
-                │                Project27.Core               │
-                │  domain model · calendars · CPM scheduler   │
-                │  tracking/EVM · leveling · field catalog    │
-                │  commands + undo/redo · view projections    │
+                │                Project27.Core              │
+                │  domain model · calendars · CPM scheduler  │
+                │  tracking/EVM · leveling · field catalog   │
+                │  commands + undo/redo · view projections   │
                 └───────▲────────────────────────▲───────────┘
                         │                        │
         ┌───────────────┴───────┐    ┌───────────┴─────────────┐

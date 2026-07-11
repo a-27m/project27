@@ -36,3 +36,4 @@ from MS Project desktop. Entries are added as phases land.
 | 29 | Leveling | Tasks with any progress are never leveled | Can level remaining work | Split-leveling of in-progress work deferred with usage editing |
 | 30 | Resource pools | `resource import` copies definitions; no live shared pool | Linked pool files with sharer synchronization | Cross-file linking is the subprojects extension point (spec 10) |
 | 31 | Reports | Self-contained HTML with print CSS; PDF/PNG via the browser's print-to-PDF | Native PDF/image export | No headless-browser dependency; packaging revisited in phase 12 |
+| 32 | MSPDI | Percent lags materialize to working minutes; cost-resource identity flattens to work-type; custom fields, non-flat contours, splits, recurring markers, and baseline slots 1-10 do not round-trip | Full-fidelity within MSP's own feature set | Documented lossy edges; imports reschedule under clean-room semantics (D7) |
