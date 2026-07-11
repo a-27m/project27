@@ -17,10 +17,10 @@ expensive to re-derive; conventions live in `decisions.md` (D1–D9 + D6a).
 | 6 | Server | done | 2bfdc88 |
 | 7 | Web foundation | done | dd99a46 + cd38b54 |
 | 8 | Tracking & EVM | done | ed5944d |
-| 9 | Views & fields | next | — |
+| 9 | Views & fields | **9a done** (a92e84e) — 9b custom fields next, then 9c usage/time-phased, 9d web views | — |
 | 10–12 | Advanced scheduling · Reports · Polish | pending | — |
 
-Specs: `docs/spec/01…04, 06, 07, 08`. Deviations from MS Project: `docs/spec/deviations.md` (#1–#23).
+Specs: `docs/spec/01…04, 06, 07, 08, 09`. Deviations from MS Project: `docs/spec/deviations.md` (#1–#25).
 
 ## Build & test
 
@@ -87,15 +87,21 @@ Specs: `docs/spec/01…04, 06, 07, 08`. Deviations from MS Project: `docs/spec/d
 - `RescheduleUncompletedWork` reuses the split machinery; deviations #19–#23
   cover BCWS proration, derived actuals, interim plans, summary %, splits.
 
-## Phase 9 pointers (next)
+## Views & fields (phase 9, in progress) essentials
 
-- Scope (roadmap): usage views (time-phased editing), network diagram,
-  calendar/timeline views, full field catalog, custom fields with
-  formulas/indicators, filters/groups/sorts/tables.
-- The Core "field catalog + view projections" should replace the server's
-  `ScheduleProjection` and the CLI's `JsonShapes` duplication (architecture
-  intends projections in Core — this phase is where that lands).
-- Time-phased data unlocks: real ACWP/BCWS proration (deviations #19/#20),
-  contour distribution (deviation #14), per-assignment actual work.
-- Web: usage grids + network diagram views build on phase-7 primitives
-  (virtualize/timescale).
+- **9a done**: `FieldCatalog` (Core.Fields) — key → `FieldDefinition(Key,
+  Caption, Kind, Accessor)`; raw duration/work values are decimal **minutes**;
+  `Format/Compare/ParseLiteral` are kind-driven. `Core.Views`: `FilterParser`
+  (recursive descent; `~` = contains), `TaskView.Evaluate` + `Tables` (8
+  built-ins) + `ParseSorts`. CLI: `p27 view`, `p27 field list`.
+  `FieldCatalog.Resolve(project, key)` has the project parameter *specifically*
+  so 9b custom fields/aliases can resolve there.
+- **9b next**: custom field slots (text1..30, number1..20, cost1..10,
+  date1..10, flag1..20, duration1..10), aliases, formula evaluator
+  (`[Field]` refs, arithmetic, comparisons, IIf/Abs/Min/Max/Round,
+  Now/StatusDate), indicator rules, persistence v4, CLI customfield verbs +
+  `task set --field`. Spec §9b in docs/spec/09-views-fields.md is complete.
+- **9c**: time-phased assignment buckets + usage views; retires the
+  approximations behind deviations #14/#19/#20.
+- **9d**: network diagram + calendar/timeline (web) and unification of server
+  `ScheduleProjection`/CLI `JsonShapes` onto catalog projections.
