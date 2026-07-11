@@ -48,6 +48,14 @@ export class ApiClient {
     return this.request('GET', `/api/projects/${id}/schedule`)
   }
 
+  async reportHtml(id: string, name: string): Promise<string> {
+    const response = await fetch(`${this.credentials.serverUrl}/api/projects/${id}/reports/${name}`, {
+      headers: this.headers(),
+    })
+    if (!response.ok) throw new ApiError(response.status, await problemDetail(response))
+    return response.text()
+  }
+
   usage(id: string, granularity: 'day' | 'week'): Promise<Usage> {
     return this.request('GET', `/api/projects/${id}/usage?granularity=${granularity}`)
   }

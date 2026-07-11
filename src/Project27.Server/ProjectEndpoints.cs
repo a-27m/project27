@@ -125,6 +125,28 @@ public static class ProjectEndpoints
             return Results.Ok(ScheduleProjection.Usage(project, access!.Project.Version, weekly.Value));
         });
 
+        projects.MapGet("/{id:guid}/reports/{name}", async (Guid id, string name, ClaimsPrincipal user, IServerStore store, CancellationToken cancellationToken) =>
+        {
+            var (_, error) = await Authorize(store, id, user, ProjectRole.Reader, cancellationToken);
+            if (error is not null)
+            {
+                return error;
+            }
+
+            var json = await store.GetDocument(id, cancellationToken)
+                ?? throw new InvalidOperationException($"Project {id:D} has no snapshot; the store is corrupt.");
+            var project = ProjectDocumentMapper.FromDocument(ProjectDocumentSerializer.Deserialize(json));
+            project.Recalculate();
+            try
+            {
+                return Results.Text(Core.Reports.ReportBuilder.Render(project, name), "text/html");
+            }
+            catch (KeyNotFoundException exception)
+            {
+                return Problem(404, exception.Message);
+            }
+        });
+
         projects.MapPost("/{id:guid}/commands", async (Guid id, List<ProjectCommand> commands, ClaimsPrincipal user, IServerStore store, ProjectEventBroker broker, CancellationToken cancellationToken) =>
         {
             var (access, error) = await Authorize(store, id, user, ProjectRole.Editor, cancellationToken);

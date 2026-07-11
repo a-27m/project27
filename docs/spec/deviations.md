@@ -35,3 +35,4 @@ from MS Project desktop. Entries are added as phases land.
 | 28 | Leveling | Fixed victim order: priority, already-delayed, slack, latest start, row; whole-day steps | Configurable orders, minute-level and split-based leveling | Deterministic and predictable; refinements on demand |
 | 29 | Leveling | Tasks with any progress are never leveled | Can level remaining work | Split-leveling of in-progress work deferred with usage editing |
 | 30 | Resource pools | `resource import` copies definitions; no live shared pool | Linked pool files with sharer synchronization | Cross-file linking is the subprojects extension point (spec 10) |
+| 31 | Reports | Self-contained HTML with print CSS; PDF/PNG via the browser's print-to-PDF | Native PDF/image export | No headless-browser dependency; packaging revisited in phase 12 |

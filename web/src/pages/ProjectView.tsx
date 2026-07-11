@@ -143,6 +143,32 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
             </button>
           ))}
         </nav>
+        <select
+          className="report-menu"
+          aria-label="Reports"
+          value=""
+          onChange={(event) => {
+            const name = event.target.value
+            if (name === '') return
+            event.target.value = ''
+            void client
+              .reportHtml(projectId, name)
+              .then((html) => {
+                const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }))
+                window.open(url, '_blank', 'noopener')
+                setTimeout(() => URL.revokeObjectURL(url), 60_000)
+              })
+              .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
+          }}
+        >
+          <option value="">Reports…</option>
+          <option value="overview">Project overview</option>
+          <option value="critical">Critical tasks</option>
+          <option value="late">Late tasks</option>
+          <option value="resources">Resource overview</option>
+          <option value="costs">Cost overview</option>
+          <option value="upcoming">Upcoming tasks</option>
+        </select>
         <span className="spacer" />
         {error !== null && <span className="error">{error}</span>}
         {info !== null && !holdsLock && info.lock !== null && (

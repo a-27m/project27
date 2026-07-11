@@ -117,6 +117,18 @@ public sealed class CommandApiTests
     }
 
     [Fact]
+    public async Task Reports_render_as_html_for_readers()
+    {
+        var (id, alice) = await CreateProject("Report-" + Guid.NewGuid().ToString("N"));
+        var response = await alice.GetAsync($"/api/projects/{id:D}/reports/overview", Token);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("text/html", response.Content.Headers.ContentType?.MediaType);
+        Assert.StartsWith("<!doctype html>", await response.Content.ReadAsStringAsync(Token), StringComparison.Ordinal);
+
+        Assert.Equal(HttpStatusCode.NotFound, (await alice.GetAsync($"/api/projects/{id:D}/reports/bogus", Token)).StatusCode);
+    }
+
+    [Fact]
     public async Task Schedule_projection_is_readable_by_readers()
     {
         var (id, alice) = await CreateProject("Sched-" + Guid.NewGuid().ToString("N"));
