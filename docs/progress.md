@@ -20,7 +20,7 @@ expensive to re-derive; conventions live in `decisions.md` (D1–D9 + D6a).
 | 9 | Views & fields | **done** (a92e84e, 75ae639, 9cabb8d, f3e1edf) | — |
 | 10 | Advanced scheduling | done (8a35e81) — **subprojects = extension point only** (user decision 2026-07-11; revisit at the very end, after 12/5; seams in spec 10) | — |
 | 11 | Reports | done (3b38136) | — |
-| 12 | Polish | next | — |
+| 12 | Polish & web parity | **12a, 12p-1..3 done** (02ff3c5, fd5a123, 50ea3b5, aed9069) — next: 12p-4 (table view, custom-field & calendar managers, drivers popover, recurring dialog), then 12b (undo/redo, a11y) | — |
 
 Specs: `docs/spec/01…04, 06, 07, 08, 09`. Deviations from MS Project: `docs/spec/deviations.md` (#1–#25).
 
@@ -144,17 +144,24 @@ Specs: `docs/spec/01…04, 06, 07, 08, 09`. Deviations from MS Project: `docs/sp
   `GET /{id}/reports/{name}` (text/html); web Reports menu (blob URL tab).
 - Counts at 11 close: Core 209, Storage 3, Cli 83, Server 19, web 28.
 
-## Phase 12 pointers (next — the last regular phase)
+## Phase 12 state (web parity per spec 12 matrix)
 
-- Roadmap scope: undo/redo surfaced everywhere, options parity, WCAG 2.2 AA,
-  user docs, docker-compose deploy, `dotnet tool` packaging.
-- Undo/redo: inverse commands over `Core.Commands` (D6a promise); CLI
-  `undo/redo` on local files (session journal?) is likely overkill — realistic:
-  web undo/redo via command inverses while holding the lock; document scope.
-- Also due here: projection unification decision (spec 09 §9d deferred it
-  here — reassess value), Playwright smoke (browsers permitting), user docs
-  (docs/guide.md), docker-compose (server + web + optional postgres),
-  `PackAsTool` for the CLI.
+- **User decision 2026-07-11: full web/CLI feature parity** — plan + matrix in
+  docs/spec/12-polish.md. 12a (packaging/compose/guide), 12p-1 (21 command
+  ops + `GET /view` + `GET /drivers/{uid}` + projection carries
+  calendars/resources/custom-field defs/assignments/all task fields),
+  12p-2 (TaskInspector: 6 tabs, everything editable), 12p-3
+  (ResourcesView + ProjectSettings + Plan menu) are done.
+- **12p-4 remaining**: web Table view over `GET /view` (column picker, filter
+  bar, sort, group), custom-fields manager dialog (defineCustomField/
+  removeCustomField ops exist), calendar manager dialog (ops exist),
+  drivers popover (`GET /drivers/{uid}`), recurring-task dialog
+  (`addRecurringTask` op, structured CommandRecurrence).
+- **12b remaining**: undo/redo via command inverses (extend CommandExecutor to
+  capture pre-state and emit inverse ops; web stack while holding the lock;
+  CLI stays without undo — snapshot files), accessibility pass (keyboard nav
+  for sheet/inspector, focus management in modals, axe check).
+- Counts at 12p-3: Core 211, Storage 3, Cli 83, Server 21, web 28.
 - After 12: **phase 5 (interop: MSPDI XML both ways + CSV export)**, then the
   final revisit of subprojects/cross-project links + live resource pools
   (extension point, spec 10).
