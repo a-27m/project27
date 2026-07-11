@@ -19,8 +19,8 @@ expensive to re-derive; conventions live in `decisions.md` (D1–D9 + D6a).
 | 8 | Tracking & EVM | done | ed5944d |
 | 9 | Views & fields | **done** (a92e84e, 75ae639, 9cabb8d, f3e1edf) | — |
 | 10 | Advanced scheduling | done (8a35e81) — **subprojects = extension point only** (user decision 2026-07-11; revisit at the very end, after 12/5; seams in spec 10) | — |
-| 11 | Reports | next | — |
-| 12 | Polish | pending | — |
+| 11 | Reports | done (3b38136) | — |
+| 12 | Polish | next | — |
 
 Specs: `docs/spec/01…04, 06, 07, 08, 09`. Deviations from MS Project: `docs/spec/deviations.md` (#1–#25).
 
@@ -136,16 +136,25 @@ Specs: `docs/spec/01…04, 06, 07, 08, 09`. Deviations from MS Project: `docs/sp
   external tasks ≈ manual-task islands; server snapshots per project id).
 - Counts at 10 close: Core 203, Storage 3, Cli 81, Server 18, web 28.
 
-## Phase 11 pointers (next)
+## Reports (phase 11) essentials
 
-- Scope (roadmap): dashboard/report set, PDF/PNG export, CLI report
-  generation, print layouts.
-- Realistic shape: Core/CLI report definitions producing **self-contained
-  HTML** (tables + inline SVG charts reusing view/EVM/usage projections);
-  `p27 report <name> [--out file.html]`; server `GET /{id}/reports/{name}`;
-  web report page. PDF/PNG export needs a headless browser — document as
-  print-to-PDF via the browser (no Chromium dependency in this environment);
-  revisit bundling in phase 12.
-- Report set: project overview (health, milestones, EVM summary), critical
-  tasks, late tasks (vs baseline), resource overview (work/cost/overalloc),
-  cost overview, upcoming tasks.
+- `Core.Reports.ReportBuilder.Render(project, name)` → self-contained HTML;
+  `Available` lists the six reports. Reports re-present existing projections
+  only. CLI `p27 report <name> [--out]`; server
+  `GET /{id}/reports/{name}` (text/html); web Reports menu (blob URL tab).
+- Counts at 11 close: Core 209, Storage 3, Cli 83, Server 19, web 28.
+
+## Phase 12 pointers (next — the last regular phase)
+
+- Roadmap scope: undo/redo surfaced everywhere, options parity, WCAG 2.2 AA,
+  user docs, docker-compose deploy, `dotnet tool` packaging.
+- Undo/redo: inverse commands over `Core.Commands` (D6a promise); CLI
+  `undo/redo` on local files (session journal?) is likely overkill — realistic:
+  web undo/redo via command inverses while holding the lock; document scope.
+- Also due here: projection unification decision (spec 09 §9d deferred it
+  here — reassess value), Playwright smoke (browsers permitting), user docs
+  (docs/guide.md), docker-compose (server + web + optional postgres),
+  `PackAsTool` for the CLI.
+- After 12: **phase 5 (interop: MSPDI XML both ways + CSV export)**, then the
+  final revisit of subprojects/cross-project links + live resource pools
+  (extension point, spec 10).
