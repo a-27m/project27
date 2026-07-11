@@ -125,6 +125,73 @@ public static class ProjectEndpoints
             return Results.Ok(ScheduleProjection.Usage(project, access!.Project.Version, weekly.Value));
         });
 
+        projects.MapGet("/{id:guid}/view", async (Guid id, string? fields, string? filter, string? sort, string? groupBy, string? table, ClaimsPrincipal user, IServerStore store, CancellationToken cancellationToken) =>
+        {
+            var (_, error) = await Authorize(store, id, user, ProjectRole.Reader, cancellationToken);
+            if (error is not null)
+            {
+                return error;
+            }
+
+            var json = await store.GetDocument(id, cancellationToken)
+                ?? throw new InvalidOperationException($"Project {id:D} has no snapshot; the store is corrupt.");
+            var project = ProjectDocumentMapper.FromDocument(ProjectDocumentSerializer.Deserialize(json));
+            project.Recalculate();
+            try
+            {
+                IReadOnlyList<string> fieldKeys = fields is { Length: > 0 }
+                    ? [.. fields.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)]
+                    : Core.Views.TaskView.Tables.TryGetValue(table ?? "entry", out var tableFields)
+                        ? tableFields
+                        : throw new KeyNotFoundException($"Unknown table '{table}'.");
+                var definition = new Core.Views.ViewDefinition(
+                    fieldKeys,
+                    filter is { Length: > 0 } ? Core.Views.FilterParser.Parse(project, filter) : null,
+                    sort is { Length: > 0 } ? Core.Views.TaskView.ParseSorts(sort) : null,
+                    string.IsNullOrWhiteSpace(groupBy) ? null : groupBy);
+                var result = Core.Views.TaskView.Evaluate(project, definition);
+                return Results.Ok(new ViewDto(
+                    [.. result.Fields.Select(f => new ViewFieldDto(f.Key, f.Caption, f.Kind.ToString()))],
+                    [
+                        .. result.Groups.Select(g => new ViewGroupDto(
+                            g.Heading,
+                            [
+                                .. g.Rows.Select(r => new ViewRowDto(
+                                    r.Task.UniqueId,
+                                    r.Task.RowNumber,
+                                    r.Cells.ToDictionary(c => c.Field, c => c.Raw))),
+                            ])),
+                    ]));
+            }
+            catch (Exception exception) when (exception is FormatException or KeyNotFoundException)
+            {
+                return Problem(422, exception.Message);
+            }
+        });
+
+        projects.MapGet("/{id:guid}/drivers/{uid:int}", async (Guid id, int uid, ClaimsPrincipal user, IServerStore store, CancellationToken cancellationToken) =>
+        {
+            var (_, error) = await Authorize(store, id, user, ProjectRole.Reader, cancellationToken);
+            if (error is not null)
+            {
+                return error;
+            }
+
+            var json = await store.GetDocument(id, cancellationToken)
+                ?? throw new InvalidOperationException($"Project {id:D} has no snapshot; the store is corrupt.");
+            var project = ProjectDocumentMapper.FromDocument(ProjectDocumentSerializer.Deserialize(json));
+            project.Recalculate();
+            var task = project.Tasks.FirstOrDefault(t => t.UniqueId == uid);
+            if (task is null)
+            {
+                return Problem(404, $"No task with uid {uid}.");
+            }
+
+            return Results.Ok(Core.Scheduling.TaskDrivers.Explain(task)
+                .Select(d => new TaskDriverDto(d.Kind.ToString(), d.Description, d.Binding, d.Date, d.PredecessorUid))
+                .ToList());
+        });
+
         projects.MapGet("/{id:guid}/reports/{name}", async (Guid id, string name, ClaimsPrincipal user, IServerStore store, CancellationToken cancellationToken) =>
         {
             var (_, error) = await Authorize(store, id, user, ProjectRole.Reader, cancellationToken);

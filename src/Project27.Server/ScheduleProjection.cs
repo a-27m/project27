@@ -15,7 +15,11 @@ public sealed record ScheduleProjectDto(
     string Calendar,
     decimal TotalWorkMinutes,
     decimal TotalCost,
-    DateTime? StatusDate);
+    DateTime? StatusDate,
+    IReadOnlyList<string> Calendars,
+    IReadOnlyList<ResourceSummaryDto> Resources);
+
+public sealed record ResourceSummaryDto(int Uid, string Name, ResourceType Type, decimal MaxUnits, string Rate);
 
 public sealed record ScheduleSegmentDto(DateTime Start, DateTime Finish);
 
@@ -74,6 +78,18 @@ public sealed record UsageDto(int Version, string Granularity, DayOfWeek WeekSta
 
 public sealed record CommandsResponse(int Version, IReadOnlyList<int?> CreatedUids, ScheduleDto Schedule);
 
+// View-engine projection (12p-1): the CLI's JSON shape, server-side.
+
+public sealed record ViewFieldDto(string Key, string Caption, string Kind);
+
+public sealed record ViewRowDto(int Uid, int Id, IReadOnlyDictionary<string, object?> Values);
+
+public sealed record ViewGroupDto(string? Heading, IReadOnlyList<ViewRowDto> Rows);
+
+public sealed record ViewDto(IReadOnlyList<ViewFieldDto> Fields, IReadOnlyList<ViewGroupDto> Groups);
+
+public sealed record TaskDriverDto(string Kind, string Description, bool Binding, DateTime? Date, int? PredecessorUid);
+
 public static class ScheduleProjection
 {
     /// <summary>Time-phased work/cost per task; call after <see cref="Project.Recalculate"/>.</summary>
@@ -122,7 +138,12 @@ public static class ScheduleProjection
                 project.Calendar.Name,
                 project.TotalWorkMinutes,
                 project.TotalCost,
-                project.StatusDate),
+                project.StatusDate,
+                [.. project.Calendars.Select(c => c.Name)],
+                [
+                    .. project.Resources.Select(r => new ResourceSummaryDto(
+                        r.UniqueId, r.Name, r.Type, r.MaxUnits, r.StandardRate.ToString())),
+                ]),
             [
                 .. project.Tasks.Select(task => new ScheduleTaskDto(
                     task.UniqueId,

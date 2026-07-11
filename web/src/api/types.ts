@@ -93,6 +93,16 @@ export interface ScheduleProject {
   totalWorkMinutes: number
   totalCost: number
   statusDate: string | null
+  calendars: string[]
+  resources: ResourceSummary[]
+}
+
+export interface ResourceSummary {
+  uid: number
+  name: string
+  type: 'work' | 'material' | 'cost'
+  maxUnits: number
+  rate: string
 }
 
 export interface Schedule {

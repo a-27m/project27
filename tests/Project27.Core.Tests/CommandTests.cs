@@ -142,6 +142,81 @@ public sealed class CommandTests
     }
 
     [Fact]
+    public void Full_surface_ops_build_a_staffed_tracked_project()
+    {
+        var project = NewProject();
+        CommandExecutor.ApplyAll(project,
+        [
+            new AddCalendarCommand { Name = "Ops", BaseCalendar = "Standard" },
+            new SetCalendarDayCommand { Calendar = "Ops", Day = DayOfWeek.Saturday, Intervals = [new CommandInterval("08:00", "12:00")] },
+            new AddCalendarExceptionCommand { Calendar = "Standard", Name = "Holiday", From = new DateOnly(2026, 1, 6) },
+            new AddResourceCommand { Name = "Dev", Rate = "50/h", MaxUnits = 2m, Group = "Eng" },
+            new AddResourceCommand { Name = "Travel", Type = ResourceType.Cost },
+            new SetResourceRateCommand { Resource = "Dev", Table = CostRateTableId.B, From = At("2026-06-01 00:00"), Rate = "80/h" },
+            new AddTaskCommand { Name = "Build", Duration = "3d" },
+            new AssignCommand { Uid = 1, Resource = "Dev" },
+            new AssignCommand { Uid = 1, Resource = "Travel", Cost = 300m },
+            new SetAssignmentCommand { Uid = 1, Resource = "Dev", Contour = WorkContour.Bell },
+            new DefineCustomFieldCommand { Slot = "text1", Alias = "Phase" },
+            new SetTaskCommand { Uid = 1, CustomValues = new Dictionary<string, string?> { ["Phase"] = "Rollout" } },
+            new SetProjectCommand { StatusDate = At("2026-01-12 08:00"), MinutesPerDay = 420, DayStart = "07:00" },
+        ]);
+        project.Recalculate();
+
+        var build = project.Tasks.Single();
+        Assert.Equal("Ops", project.Calendars.Single(c => c.Name == "Ops").Name);
+        Assert.Single(project.Calendar.Exceptions);
+        Assert.Equal(2, project.Resources.Count);
+        Assert.Equal(2, build.Assignments.Count);
+        Assert.Equal(WorkContour.Bell, build.Assignments[0].Contour);
+        Assert.Equal(80m, project.Resources[0].RateTable(CostRateTableId.B).RateAt(At("2026-07-01 00:00")).StandardRate.Amount);
+        Assert.Equal("Rollout", build.GetCustomValue("text1"));
+        Assert.Equal(420, project.TimeSettings.MinutesPerDay);
+        Assert.Equal(new TimeOnly(7, 0), project.TimeSettings.DefaultStartTime);
+        Assert.Equal(At("2026-01-12 08:00"), project.StatusDate);
+        Assert.True(build.Cost > 300m);
+
+        CommandExecutor.ApplyAll(project,
+        [
+            new UnassignCommand { Uid = 1, Resource = "Travel" },
+            new RemoveResourceCommand { Resource = "Travel" },
+            new RemoveCustomFieldCommand { Field = "Phase" },
+            new RemoveCalendarCommand { Calendar = "Ops" },
+        ]);
+        Assert.Single(project.Resources);
+        Assert.Single(build.Assignments);
+        Assert.Empty(project.CustomFields);
+    }
+
+    [Fact]
+    public void Recurring_and_reschedule_ops_work()
+    {
+        var project = NewProject();
+        var uid = CommandExecutor.Apply(project, new AddRecurringTaskCommand
+        {
+            Name = "Standup",
+            Duration = "30m",
+            Recurrence = new CommandRecurrence { Kind = "weekly", Days = [DayOfWeek.Monday, DayOfWeek.Friday] },
+            From = new DateOnly(2026, 1, 5),
+            Times = 4,
+        });
+        project.Recalculate();
+        var summary = project.Tasks.Single(t => t.UniqueId == uid);
+        Assert.True(summary.IsRecurring);
+        Assert.Equal(4, summary.Children.Count);
+
+        var workUid = CommandExecutor.Apply(project, new AddTaskCommand { Name = "Work", Duration = "4d" })!.Value;
+        CommandExecutor.ApplyAll(project,
+        [
+            new SetTaskCommand { Uid = workUid, PercentComplete = 25 },
+            new RescheduleCommand { After = At("2026-01-08 08:00") },
+        ]);
+        var work = project.Tasks.Single(t => t.Name == "Work");
+        Assert.True(work.IsSplit);
+        Assert.Equal(At("2026-01-08 08:00"), work.Segments[1].Start);
+    }
+
+    [Fact]
     public void Remove_and_split_commands_work()
     {
         var project = NewProject();

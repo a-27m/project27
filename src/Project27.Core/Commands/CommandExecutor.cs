@@ -60,6 +60,75 @@ public static class CommandExecutor
                 ClearBaselineCommand baseline => Run(() => project.ClearBaseline(baseline.Slot, ResolveScope(project, baseline.Uids))),
                 LevelCommand => Run(() => project.Level()),
                 ClearLevelingCommand => Run(project.ClearLeveling),
+                AddResourceCommand add => AddResource(project, add),
+                SetResourceCommand set => SetResource(project, set),
+                RemoveResourceCommand remove => Run(() => project.RemoveResource(ResourceByName(project, remove.Resource))),
+                SetResourceRateCommand rate => Run(() => ResourceByName(project, rate.Resource).RateTable(rate.Table).SetRate(
+                    rate.From ?? DateTime.MinValue,
+                    rate.Rate is { } standard ? ParseRate(standard) : null,
+                    rate.OvertimeRate is { } overtime ? ParseRate(overtime) : null,
+                    rate.CostPerUse)),
+                RemoveResourceRateCommand rate => Run(() =>
+                {
+                    if (!ResourceByName(project, rate.Resource).RateTable(rate.Table).RemoveRate(rate.From))
+                    {
+                        throw new CommandException($"No rate entry effective at {rate.From:yyyy-MM-dd HH:mm} in table {rate.Table}.");
+                    }
+                }),
+                AssignCommand assign => Assign(project, assign),
+                SetAssignmentCommand set => SetAssignment(project, set),
+                UnassignCommand unassign => Run(() => project.Unassign(AssignmentOf(project, unassign.Uid, unassign.Resource))),
+                AddCalendarCommand add => Run(() => project.AddCalendar(BuildCalendar(project, add))),
+                RemoveCalendarCommand remove => Run(() => project.RemoveCalendar(Calendar(project, remove.Calendar))),
+                SetCalendarDayCommand day => Run(() => Calendar(project, day.Calendar).SetDay(
+                    day.Day,
+                    day.Off ? DaySchedule.NonWorking : day.Intervals is null ? null : ToSchedule(day.Intervals))),
+                SetCalendarBaseCommand baseCalendar => Run(() => Calendar(project, baseCalendar.Calendar).SetBaseCalendar(
+                    baseCalendar.BaseCalendar is { } baseName ? Calendar(project, baseName) : null)),
+                AddCalendarExceptionCommand exception => Run(() => Calendar(project, exception.Calendar).AddException(new CalendarException(
+                    exception.Name,
+                    exception.From,
+                    exception.To,
+                    exception.Intervals is { Count: > 0 } intervals ? ToSchedule(intervals) : DaySchedule.NonWorking,
+                    exception.Recurrence is { } recurrence ? ToRecurrence(recurrence) : null,
+                    exception.Times))),
+                RemoveCalendarExceptionCommand exception => Run(() =>
+                {
+                    var calendar = Calendar(project, exception.Calendar);
+                    var match = calendar.Exceptions.FirstOrDefault(e => string.Equals(e.Name, exception.Name, StringComparison.OrdinalIgnoreCase))
+                        ?? throw new CommandException($"No exception named '{exception.Name}' in calendar '{calendar.Name}'.");
+                    calendar.RemoveException(match);
+                }),
+                AddWorkWeekCommand week => Run(() => Calendar(project, week.Calendar).AddWorkWeek(new WorkWeek(
+                    week.Name, week.From, week.To, ToPattern(week.Days)))),
+                RemoveWorkWeekCommand week => Run(() =>
+                {
+                    var calendar = Calendar(project, week.Calendar);
+                    var match = calendar.WorkWeeks.FirstOrDefault(w => string.Equals(w.Name, week.Name, StringComparison.OrdinalIgnoreCase))
+                        ?? throw new CommandException($"No work week named '{week.Name}' in calendar '{calendar.Name}'.");
+                    calendar.RemoveWorkWeek(match);
+                }),
+                DefineCustomFieldCommand field => Run(() => project.DefineCustomField(
+                    field.Slot,
+                    field.Alias,
+                    field.Formula,
+                    field.Indicators?.Select(rule => ToIndicatorRule(project, field.Slot, rule)))),
+                RemoveCustomFieldCommand field => Run(() =>
+                {
+                    if (!project.RemoveCustomField(field.Field))
+                    {
+                        throw new CommandException($"No custom field '{field.Field}'.");
+                    }
+                }),
+                AddRecurringTaskCommand recurring => project.AddRecurringTask(
+                    recurring.Name,
+                    ParseDuration(recurring.Duration),
+                    ToRecurrence(recurring.Recurrence),
+                    recurring.From,
+                    recurring.Until,
+                    recurring.Times,
+                    recurring.ParentUid is { } parentUid ? Task(project, parentUid) : null).UniqueId,
+                RescheduleCommand reschedule => Run(() => project.RescheduleUncompletedWork(reschedule.After)),
                 _ => throw new CommandException($"Unknown command type {command.GetType().Name}."),
             };
         }
@@ -225,6 +294,15 @@ public static class CommandExecutor
             task.SetRemainingDuration(ParseDuration(remaining));
         }
 
+        foreach (var (fieldName, text) in command.CustomValues ?? new Dictionary<string, string?>())
+        {
+            var field = project.FindCustomField(fieldName)
+                ?? throw new CommandException($"No custom field '{fieldName}'.");
+            task.SetCustomValue(field, text is null
+                ? null
+                : Fields.FieldCatalog.ParseLiteral(field.Kind, text, project.TimeSettings));
+        }
+
         return null;
     }
 
@@ -275,7 +353,279 @@ public static class CommandExecutor
             project.StatusDate = statusDate;
         }
 
+        if (command.MinutesPerDay is { } minutesPerDay)
+        {
+            project.TimeSettings.MinutesPerDay = minutesPerDay;
+        }
+
+        if (command.MinutesPerWeek is { } minutesPerWeek)
+        {
+            project.TimeSettings.MinutesPerWeek = minutesPerWeek;
+        }
+
+        if (command.DaysPerMonth is { } daysPerMonth)
+        {
+            project.TimeSettings.DaysPerMonth = daysPerMonth;
+        }
+
+        if (command.WeekStartsOn is { } weekStartsOn)
+        {
+            project.TimeSettings.WeekStartsOn = weekStartsOn;
+        }
+
+        if (command.DayStart is { } dayStart)
+        {
+            project.TimeSettings.DefaultStartTime = ParseTime(dayStart);
+        }
+
+        if (command.DayEnd is { } dayEnd)
+        {
+            project.TimeSettings.DefaultEndTime = ParseTime(dayEnd);
+        }
+
+        if (command.CriticalSlack is { } criticalSlack)
+        {
+            project.CriticalSlackThresholdMinutes = ParseDuration(criticalSlack).ToMinutes(project.TimeSettings);
+        }
+
         return null;
+    }
+
+    // -------------------------------------------------------- 12p-1 helpers
+
+    private static int? AddResource(Project project, AddResourceCommand command)
+    {
+        var resource = project.AddResource(command.Name, command.Type);
+        if (command.MaxUnits is { } maxUnits)
+        {
+            resource.MaxUnits = maxUnits;
+        }
+
+        if (command.Rate is { } rate)
+        {
+            resource.RateTable(CostRateTableId.A).SetRate(DateTime.MinValue, ParseRate(rate));
+        }
+
+        resource.MaterialLabel = command.MaterialLabel;
+        resource.Initials = command.Initials;
+        resource.Group = command.Group;
+        if (command.Calendar is { } calendarName)
+        {
+            resource.Calendar = Calendar(project, calendarName);
+        }
+
+        return null;
+    }
+
+    private static int? SetResource(Project project, SetResourceCommand command)
+    {
+        var resource = ResourceByName(project, command.Resource);
+        if (command.Name is { } name)
+        {
+            resource.Name = name;
+        }
+
+        if (command.MaxUnits is { } maxUnits)
+        {
+            resource.MaxUnits = maxUnits;
+        }
+
+        if (command.MaterialLabel is { } label)
+        {
+            resource.MaterialLabel = label;
+        }
+
+        if (command.ClearCalendar)
+        {
+            resource.Calendar = null;
+        }
+        else if (command.Calendar is { } calendarName)
+        {
+            resource.Calendar = Calendar(project, calendarName);
+        }
+
+        if (command.Initials is { } initials)
+        {
+            resource.Initials = initials;
+        }
+
+        if (command.Group is { } group)
+        {
+            resource.Group = group;
+        }
+
+        if (command.Accrual is { } accrual)
+        {
+            resource.Accrual = accrual;
+        }
+
+        return null;
+    }
+
+    private static int? Assign(Project project, AssignCommand command)
+    {
+        var assignment = project.Assign(
+            Task(project, command.Uid),
+            ResourceByName(project, command.Resource),
+            command.Units,
+            command.Work is { } work ? ParseDuration(work) : null);
+        if (command.Cost is { } cost)
+        {
+            assignment.CostInput = cost;
+        }
+
+        return null;
+    }
+
+    private static int? SetAssignment(Project project, SetAssignmentCommand command)
+    {
+        var assignment = AssignmentOf(project, command.Uid, command.Resource);
+        if (command.Units is { } units)
+        {
+            assignment.SetUnits(units);
+        }
+
+        if (command.Work is { } work)
+        {
+            assignment.SetWork(ParseDuration(work));
+        }
+
+        if (command.Contour is { } contour)
+        {
+            assignment.SetContour(contour);
+        }
+
+        if (command.Delay is { } delay)
+        {
+            assignment.DelayMinutes = ParseDuration(delay).ToMinutes(project.TimeSettings);
+        }
+
+        if (command.RateTable is { } table)
+        {
+            assignment.RateTable = table;
+        }
+
+        if (command.Cost is { } cost)
+        {
+            assignment.CostInput = cost;
+        }
+
+        return null;
+    }
+
+    private static WorkCalendar BuildCalendar(Project project, AddCalendarCommand command)
+    {
+        if (command.BaseCalendar is { } baseName)
+        {
+            return new WorkCalendar(command.Name, Calendar(project, baseName));
+        }
+
+        return (command.Preset?.Trim().ToUpperInvariant() ?? "STANDARD") switch
+        {
+            "STANDARD" => WorkCalendar.CreateStandard(command.Name),
+            "24H" => WorkCalendar.Create24Hours(command.Name),
+            "NIGHT-SHIFT" => WorkCalendar.CreateNightShift(command.Name),
+            var other => throw new CommandException($"Unknown calendar preset '{other}'; use standard, 24h, or night-shift."),
+        };
+    }
+
+    private static Resource ResourceByName(Project project, string name)
+        => project.Resources.FirstOrDefault(r => string.Equals(r.Name, name.Trim(), StringComparison.OrdinalIgnoreCase))
+            ?? throw new CommandException($"No resource named '{name}'.");
+
+    private static Assignment AssignmentOf(Project project, int uid, string resourceName)
+    {
+        var task = Task(project, uid);
+        var resource = ResourceByName(project, resourceName);
+        return task.Assignments.FirstOrDefault(a => ReferenceEquals(a.Resource, resource))
+            ?? throw new CommandException($"'{resource.Name}' is not assigned to uid {uid}.");
+    }
+
+    private static Rate ParseRate(string text)
+    {
+        try
+        {
+            return Rate.Parse(text);
+        }
+        catch (FormatException exception)
+        {
+            throw new CommandException(exception.Message, exception);
+        }
+    }
+
+    private static TimeOnly ParseTime(string text)
+        => TimeOnly.TryParseExact(text.Trim(), ["HH:mm", "H:mm"], System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var time)
+            ? time
+            : throw new CommandException($"'{text}' is not a time; use HH:mm.");
+
+    private static DaySchedule ToSchedule(IReadOnlyList<CommandInterval> intervals)
+    {
+        if (intervals.Count == 0)
+        {
+            return DaySchedule.NonWorking;
+        }
+
+        try
+        {
+            return DaySchedule.Working([.. intervals.Select(i => TimeInterval.FromTimes(ParseTime(i.Start), ParseTime(i.End)))]);
+        }
+        catch (ArgumentException exception)
+        {
+            throw new CommandException(exception.Message, exception);
+        }
+    }
+
+    private static WeeklyPattern ToPattern(IReadOnlyDictionary<DayOfWeek, IReadOnlyList<CommandInterval>>? days)
+    {
+        var pattern = WeeklyPattern.InheritAll;
+        foreach (var (day, intervals) in days ?? new Dictionary<DayOfWeek, IReadOnlyList<CommandInterval>>())
+        {
+            pattern = pattern.With(day, ToSchedule(intervals));
+        }
+
+        return pattern;
+    }
+
+    private static Recurrence ToRecurrence(CommandRecurrence recurrence)
+    {
+        var days = (recurrence.Days ?? []).Aggregate(DayOfWeekSet.None, (set, day) => set | day.AsSet());
+        try
+        {
+            return recurrence.Kind.Trim().ToUpperInvariant() switch
+            {
+                "DAILY" => new DailyRecurrence(recurrence.Every),
+                "WEEKLY" => new WeeklyRecurrence(recurrence.Every, days),
+                "MONTHLYDAY" or "MONTHLY-DAY" => new MonthlyDayRecurrence(recurrence.Day, recurrence.Every),
+                "MONTHLYWEEKDAY" or "MONTHLY-WEEKDAY" => new MonthlyWeekdayRecurrence(recurrence.Ordinal, recurrence.Weekday, recurrence.Every),
+                "YEARLYDATE" or "YEARLY-DATE" => new YearlyDateRecurrence(recurrence.Month, recurrence.Day),
+                "YEARLYWEEKDAY" or "YEARLY-WEEKDAY" => new YearlyWeekdayRecurrence(recurrence.Ordinal, recurrence.Weekday, recurrence.Month),
+                var other => throw new CommandException($"Unknown recurrence kind '{other}'."),
+            };
+        }
+        catch (ArgumentOutOfRangeException exception)
+        {
+            throw new CommandException($"Invalid recurrence: {exception.Message}", exception);
+        }
+    }
+
+    private static Fields.IndicatorRule ToIndicatorRule(Project project, string slot, CommandIndicatorRule rule)
+    {
+        var op = rule.Op.Trim() switch
+        {
+            "=" or "==" => Views.FilterOperator.Equals,
+            "!=" or "<>" => Views.FilterOperator.NotEquals,
+            ">" => Views.FilterOperator.GreaterThan,
+            ">=" => Views.FilterOperator.GreaterOrEqual,
+            "<" => Views.FilterOperator.LessThan,
+            "<=" => Views.FilterOperator.LessOrEqual,
+            "~" => Views.FilterOperator.Contains,
+            var other => throw new CommandException($"Unknown indicator operator '{other}'."),
+        };
+        var kind = Fields.CustomFieldDefinition.KindOfSlot(slot);
+        object value = op == Views.FilterOperator.Contains
+            ? rule.Value
+            : Fields.FieldCatalog.ParseLiteral(kind, rule.Value, project.TimeSettings);
+        return new Fields.IndicatorRule(op, value, rule.Icon);
     }
 
     private static int? Run(Action action)

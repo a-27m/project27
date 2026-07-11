@@ -117,6 +117,52 @@ public sealed class CommandApiTests
     }
 
     [Fact]
+    public async Task View_and_drivers_endpoints_project_the_engine()
+    {
+        var (id, alice) = await CreateProject("View-" + Guid.NewGuid().ToString("N"));
+        await alice.PostAsync($"/api/projects/{id:D}/checkout", null, Token);
+        await alice.PostAsJsonAsync($"/api/projects/{id:D}/commands", GoldenBatch(), Token);
+        await alice.DeleteAsync($"/api/projects/{id:D}/lock", Token);
+
+        var view = await alice.GetFromJsonAsync<JsonElement>(
+            $"/api/projects/{id:D}/view?fields=id,name,duration&filter=critical%20%3D%20true&sort=duration%20desc", Token);
+        var rows = view.GetProperty("groups")[0].GetProperty("rows");
+        Assert.Equal(2, rows.GetArrayLength());
+        Assert.Equal("Build", rows[0].GetProperty("values").GetProperty("name").GetString());
+
+        var bad = await alice.GetAsync($"/api/projects/{id:D}/view?filter=bogus%20%3D%201", Token);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, bad.StatusCode);
+
+        var drivers = await alice.GetFromJsonAsync<JsonElement>($"/api/projects/{id:D}/drivers/2", Token);
+        Assert.Contains(
+            drivers.EnumerateArray(),
+            d => d.GetProperty("kind").GetString() == "Predecessor" && d.GetProperty("binding").GetBoolean());
+        Assert.Equal(HttpStatusCode.NotFound, (await alice.GetAsync($"/api/projects/{id:D}/drivers/99", Token)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Resource_ops_flow_through_the_commands_endpoint()
+    {
+        var (id, alice) = await CreateProject("Ops-" + Guid.NewGuid().ToString("N"));
+        await alice.PostAsync($"/api/projects/{id:D}/checkout", null, Token);
+        var batch = new object[]
+        {
+            new Dictionary<string, object> { ["op"] = "addResource", ["name"] = "Dev", ["rate"] = "50/h" },
+            new Dictionary<string, object> { ["op"] = "addTask", ["name"] = "Build", ["duration"] = "3d" },
+            new Dictionary<string, object> { ["op"] = "assign", ["uid"] = 1, ["resource"] = "Dev" },
+        };
+        var response = await alice.PostAsJsonAsync($"/api/projects/{id:D}/commands", batch, Token);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(Token);
+        var projectDto = body.GetProperty("schedule").GetProperty("project");
+        Assert.Equal("Dev", projectDto.GetProperty("resources")[0].GetProperty("name").GetString());
+        Assert.Equal("50/h", projectDto.GetProperty("resources")[0].GetProperty("rate").GetString());
+        var build = body.GetProperty("schedule").GetProperty("tasks")[0];
+        Assert.Equal(1200m, build.GetProperty("cost").GetDecimal()); // 24h × 50
+        await alice.DeleteAsync($"/api/projects/{id:D}/lock", Token);
+    }
+
+    [Fact]
     public async Task Reports_render_as_html_for_readers()
     {
         var (id, alice) = await CreateProject("Report-" + Guid.NewGuid().ToString("N"));
