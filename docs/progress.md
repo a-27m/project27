@@ -20,7 +20,7 @@ expensive to re-derive; conventions live in `decisions.md` (D1–D9 + D6a).
 | 9 | Views & fields | **done** (a92e84e, 75ae639, 9cabb8d, f3e1edf) | — |
 | 10 | Advanced scheduling | done (8a35e81) — **subprojects = extension point only** (user decision 2026-07-11; revisit at the very end, after 12/5; seams in spec 10) | — |
 | 11 | Reports | done (3b38136) | — |
-| 12 | Polish & web parity | **12a, 12p-1..4 done** (02ff3c5, fd5a123, 50ea3b5, aed9069, 3e5ba5d) — remaining: **12b** (undo/redo via command inverses, accessibility pass) | — |
+| 12 | Polish & web parity | **done** (02ff3c5, fd5a123, 50ea3b5, aed9069, 3e5ba5d, 4e4ab3a) | — |
 
 Specs: `docs/spec/01…04, 06, 07, 08, 09`. Deviations from MS Project: `docs/spec/deviations.md` (#1–#25).
 
@@ -156,11 +156,15 @@ Specs: `docs/spec/01…04, 06, 07, 08, 09`. Deviations from MS Project: `docs/sp
   CustomFieldsManager + CalendarManager + RecurringTaskDialog
   (components/Managers.tsx), inspector Drivers tab. Parity matrix complete
   except usage editing (deviation #20) and file-local verbs.
-- **12b remaining**: undo/redo via command inverses (extend CommandExecutor to
-  capture pre-state and emit inverse ops; web stack while holding the lock;
-  CLI stays without undo — snapshot files), accessibility pass (keyboard nav
-  for sheet/inspector, focus management in modals, axe check).
-- Counts at 12p-3: Core 211, Storage 3, Cli 83, Server 21, web 28.
-- After 12: **phase 5 (interop: MSPDI XML both ways + CSV export)**, then the
-  final revisit of subprojects/cross-project links + live resource pools
-  (extension point, spec 10).
+- **12b done**: `CommandInverter.ApplyWithInverse` (Core.Commands) — inverse
+  per op from pre-state; destructive ops (removeTask/removeResource/level/
+  baseline/reschedule/calendar ops) return null = undo barrier. Commands
+  endpoint returns `inverse` (reversed batch); web keeps undo/redo stacks
+  (Ctrl+Z / Ctrl+Shift+Z, cleared on lock transitions). Modals focus + Escape;
+  errors role=alert. Full keyboard grid-nav + axe run remain as noted gaps.
+- Counts at 12 close: Core 217, Storage 3, Cli 83, Server 21, web 28.
+- **Next: phase 5 (interop)** — 5a CSV export (`p27 export csv` over the view
+  engine), 5b MSPDI XML import/export with round-trip tests (remember
+  deviation #10: emit/consume 1-based OutlineLevel; MSPDI durations are
+  PT#H#M#S; UIDs map to our uid). Then the final subprojects/cross-project
+  links + live pools revisit (extension point, spec 10).
