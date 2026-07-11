@@ -1,4 +1,4 @@
-import type { Checkout, Command, CommandsResponse, Me, ProjectEvent, ProjectInfo, Schedule, Usage } from './types'
+import type { Checkout, Command, CommandsResponse, Me, ProjectEvent, ProjectInfo, Schedule, TaskDriver, Usage, ViewResult } from './types'
 
 export interface Credentials {
   /** Server base URL; empty string = same origin (Vite dev proxy). */
@@ -54,6 +54,18 @@ export class ApiClient {
     })
     if (!response.ok) throw new ApiError(response.status, await problemDetail(response))
     return response.text()
+  }
+
+  view(id: string, params: { table?: string; fields?: string; filter?: string; sort?: string; groupBy?: string }): Promise<ViewResult> {
+    const query = new URLSearchParams()
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== '') query.set(key, value)
+    }
+    return this.request('GET', `/api/projects/${id}/view?${query.toString()}`)
+  }
+
+  drivers(id: string, uid: number): Promise<TaskDriver[]> {
+    return this.request('GET', `/api/projects/${id}/drivers/${uid}`)
   }
 
   usage(id: string, granularity: 'day' | 'week'): Promise<Usage> {

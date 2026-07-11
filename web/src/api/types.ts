@@ -223,3 +223,33 @@ export interface ProjectEvent {
   kind: 'checkout' | 'checkin' | 'lock-released'
   data: unknown
 }
+
+export interface ViewField {
+  key: string
+  caption: string
+  kind: string
+}
+
+export interface ViewRow {
+  uid: number
+  id: number
+  values: Record<string, unknown>
+}
+
+export interface ViewGroup {
+  heading: string | null
+  rows: ViewRow[]
+}
+
+export interface ViewResult {
+  fields: ViewField[]
+  groups: ViewGroup[]
+}
+
+export interface TaskDriver {
+  kind: string
+  description: string
+  binding: boolean
+  date: string | null
+  predecessorUid: number | null
+}

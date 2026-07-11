@@ -3,7 +3,9 @@ import type { ApiClient } from '../api/client'
 import type { Command, ProjectInfo, Schedule } from '../api/types'
 import { Gantt } from '../components/Gantt'
 import { NetworkView } from '../components/NetworkView'
+import { CalendarManager, CustomFieldsManager, RecurringTaskDialog } from '../components/Managers'
 import { ProjectSettings } from '../components/ProjectSettings'
+import { TableView } from '../components/TableView'
 import { ResourcesView } from '../components/ResourcesView'
 import { TaskInspector } from '../components/TaskInspector'
 import { TaskSheet } from '../components/TaskSheet'
@@ -33,8 +35,9 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
   const [scrollTop, setScrollTop] = useState(0)
   const [viewportHeight, setViewportHeight] = useState(600)
   const [splitX, setSplitX] = useState(Math.min(SHEET_WIDTH + 12, 560))
-  const [viewMode, setViewMode] = useState<'gantt' | 'network' | 'timeline' | 'usage' | 'resources'>('gantt')
+  const [viewMode, setViewMode] = useState<'gantt' | 'table' | 'network' | 'timeline' | 'usage' | 'resources'>('gantt')
   const [showSettings, setShowSettings] = useState(false)
+  const [dialog, setDialog] = useState<'fields' | 'calendars' | 'recurring' | null>(null)
   const scrollerRef = useRef<HTMLDivElement>(null)
   const ganttScrollRef = useRef<HTMLDivElement>(null)
 
@@ -137,21 +140,13 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
             `v${schedule.version} · ${durationDays(schedule.project.totalWorkMinutes, schedule.project.minutesPerDay)} work`}
         </span>
         <nav className="view-switch" aria-label="View">
-          {(['gantt', 'network', 'timeline', 'usage', 'resources'] as const).map((mode) => (
+          {(['gantt', 'table', 'network', 'timeline', 'usage', 'resources'] as const).map((mode) => (
             <button
               key={mode}
               className={viewMode === mode ? 'active' : ''}
               onClick={() => setViewMode(mode)}
             >
-              {mode === 'gantt'
-                ? 'Gantt'
-                : mode === 'network'
-                  ? 'Network'
-                  : mode === 'timeline'
-                    ? 'Timeline'
-                    : mode === 'usage'
-                      ? 'Usage'
-                      : 'Resources'}
+              {mode.charAt(0).toUpperCase() + mode.slice(1)}
             </button>
           ))}
         </nav>
@@ -179,6 +174,21 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
           </select>
         )}
         <button onClick={() => setShowSettings(true)}>Settings</button>
+        <select
+          className="report-menu"
+          aria-label="Manage"
+          value=""
+          onChange={(event) => {
+            const choice = event.target.value
+            event.target.value = ''
+            if (choice === 'fields' || choice === 'calendars' || choice === 'recurring') setDialog(choice)
+          }}
+        >
+          <option value="">Manage…</option>
+          <option value="fields">Custom fields</option>
+          <option value="calendars">Calendars</option>
+          <option value="recurring">Add recurring task</option>
+        </select>
         <select
           className="report-menu"
           aria-label="Reports"
@@ -277,6 +287,11 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
           <UsageView client={client} projectId={projectId} version={schedule?.version ?? 0} />
         </div>
       )}
+      {viewMode === 'table' && (
+        <div className="view-body">
+          <TableView client={client} projectId={projectId} version={schedule?.version ?? 0} />
+        </div>
+      )}
       {viewMode === 'resources' && schedule !== null && (
         <div className="view-body">
           <ResourcesView
@@ -357,6 +372,29 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
         </div>
       </div>
 
+      {dialog === 'fields' && schedule !== null && (
+        <CustomFieldsManager
+          project={schedule.project}
+          editable={editable}
+          onCommands={(commands) => void sendCommands(commands)}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog === 'calendars' && schedule !== null && (
+        <CalendarManager
+          project={schedule.project}
+          editable={editable}
+          onCommands={(commands) => void sendCommands(commands)}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog === 'recurring' && (
+        <RecurringTaskDialog
+          editable={editable}
+          onCommands={(commands) => void sendCommands(commands)}
+          onClose={() => setDialog(null)}
+        />
+      )}
       {showSettings && schedule !== null && (
         <ProjectSettings
           project={schedule.project}
@@ -371,6 +409,8 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
           project={schedule.project}
           tasks={tasks}
           editable={editable}
+          client={client}
+          projectId={projectId}
           onCommands={(commands) => void sendCommands(commands)}
           onClose={() => setSelectedUid(null)}
         />

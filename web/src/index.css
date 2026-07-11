@@ -705,3 +705,72 @@ g:hover > .gantt-linkhandle,
   border-color: var(--border);
   background: var(--bg);
 }
+
+/* -------------------------------------------------------------- 12p-4 bits */
+
+.grow {
+  flex: 1;
+  min-width: 160px;
+}
+
+.inline-form.wrap {
+  flex-wrap: wrap;
+}
+
+.modal.wide {
+  width: 640px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.plain-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.plain-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.table-group {
+  margin: 12px 12px 4px;
+  font-size: 14px;
+}
+
+.drivers-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.drivers-list .binding {
+  font-weight: 600;
+}
+
+.checks {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.checks label {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.mono {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}

@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import type { Command, ScheduleProject, ScheduleTask } from '../api/types'
+import { useEffect, useState } from 'react'
+import type { ApiClient } from '../api/client'
+import type { Command, ScheduleProject, ScheduleTask, TaskDriver } from '../api/types'
 import { dateTime, durationDays, fromWireDate, toWireDate } from '../lib/format'
 
 interface Props {
@@ -7,11 +8,13 @@ interface Props {
   project: ScheduleProject
   tasks: ScheduleTask[]
   editable: boolean
+  client: ApiClient
+  projectId: string
   onCommands: (commands: Command[]) => void
   onClose: () => void
 }
 
-type Section = 'general' | 'advanced' | 'tracking' | 'links' | 'resources' | 'custom'
+type Section = 'general' | 'advanced' | 'tracking' | 'links' | 'resources' | 'custom' | 'drivers'
 
 const CONSTRAINTS = [
   'asSoonAsPossible',
@@ -28,7 +31,7 @@ const LINK_TYPES = ['finishToStart', 'startToStart', 'finishToFinish', 'startToF
 const CONTOURS = ['flat', 'backLoaded', 'frontLoaded', 'doublePeak', 'earlyPeak', 'latePeak', 'bell', 'turtle'] as const
 
 /** Full-field task editor (docs/spec/12-polish.md parity matrix, 12p-2). */
-export function TaskInspector({ task, project, tasks, editable, onCommands, onClose }: Props) {
+export function TaskInspector({ task, project, tasks, editable, client, projectId, onCommands, onClose }: Props) {
   const [section, setSection] = useState<Section>('general')
   const set = (patch: Record<string, unknown>) => onCommands([{ op: 'setTask', uid: task.uid, ...patch }])
   const rowOf = (uid: number) => tasks.find((t) => t.uid === uid)?.row ?? uid
@@ -52,6 +55,7 @@ export function TaskInspector({ task, project, tasks, editable, onCommands, onCl
             ['links', 'Links'],
             ['resources', 'Resources'],
             ['custom', 'Custom'],
+            ['drivers', 'Drivers'],
           ] as const
         ).map(([key, label]) => (
           <button
@@ -225,6 +229,8 @@ export function TaskInspector({ task, project, tasks, editable, onCommands, onCl
           <ResourcesSection task={task} project={project} editable={editable} onCommands={onCommands} />
         )}
 
+        {section === 'drivers' && <DriversSection client={client} projectId={projectId} uid={task.uid} />}
+
         {section === 'custom' && (
           <>
             {project.customFields.length === 0 && <p className="muted">No custom fields defined.</p>}
@@ -247,6 +253,38 @@ export function TaskInspector({ task, project, tasks, editable, onCommands, onCl
         )}
       </div>
     </aside>
+  )
+}
+
+function DriversSection({ client, projectId, uid }: { client: ApiClient; projectId: string; uid: number }) {
+  const [drivers, setDrivers] = useState<TaskDriver[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    client
+      .drivers(projectId, uid)
+      .then((result) => {
+        if (!cancelled) setDrivers(result)
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [client, projectId, uid])
+  if (error !== null) return <p className="error">{error}</p>
+  if (drivers === null) return <p className="muted">Loading…</p>
+  return (
+    <ul className="drivers-list">
+      {drivers.map((driver, index) => (
+        <li key={index} className={driver.binding ? 'binding' : ''}>
+          {driver.binding ? '● ' : '○ '}
+          {driver.description}
+        </li>
+      ))}
+      <li className="muted">● = binding</li>
+    </ul>
   )
 }
 
