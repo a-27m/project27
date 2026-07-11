@@ -17,6 +17,9 @@ public sealed class ProjectTask
     private readonly List<TaskDependency> _successors = [];
     private readonly List<Assignment> _assignments = [];
     private bool _effortDriven;
+    private Dictionary<int, TaskBaseline>? _baselines;
+    private int _percentComplete;
+    private DateTime? _actualFinish;
     private List<(decimal WorkMinutes, decimal GapMinutes)>? _splitParts;
     private Duration _duration = new(1, DurationUnit.Days, isEstimated: true);
     private decimal _durationMinutes;
@@ -229,6 +232,175 @@ public sealed class ProjectTask
         => FixedCost + (IsSummary
             ? _children.Where(c => c.IsActive).Sum(c => c.Cost)
             : _assignments.Sum(a => a.Cost));
+
+    // ------------------------------------------------------------- tracking
+
+    /// <summary>
+    /// Duration-based completion, 0–100. Leaf input; summaries roll up completed
+    /// working minutes over active leaves (not directly editable — deviation #22).
+    /// Dropping below 100 clears the actual finish.
+    /// </summary>
+    public int PercentComplete
+    {
+        get
+        {
+            if (!IsSummary)
+            {
+                return _percentComplete;
+            }
+
+            decimal total = 0m, completed = 0m, percentSum = 0m;
+            var leafCount = 0;
+            foreach (var leaf in Leaves())
+            {
+                if (!leaf.IsActive)
+                {
+                    continue;
+                }
+
+                total += leaf.DurationMinutes;
+                completed += leaf.CompletedMinutes;
+                percentSum += leaf.PercentComplete;
+                leafCount++;
+            }
+
+            // All-milestone summaries have no duration; average the flags instead.
+            return total == 0
+                ? leafCount == 0 ? 0 : (int)Math.Round(percentSum / leafCount)
+                : (int)Math.Round(completed / total * 100m);
+        }
+        set
+        {
+            if (IsSummary)
+            {
+                throw new InvalidOperationException($"Percent complete of summary task '{Name}' rolls up from its children.");
+            }
+
+            ArgumentOutOfRangeException.ThrowIfNegative(value);
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(value, 100);
+            _percentComplete = value;
+            if (value < 100)
+            {
+                _actualFinish = null;
+            }
+        }
+    }
+
+    /// <summary>Working minutes already done: duration × percent complete; summaries roll up.</summary>
+    public decimal CompletedMinutes
+        => IsSummary
+            ? ChildrenList.Where(c => c.IsActive).Sum(c => c.CompletedMinutes)
+            : DurationMinutes * _percentComplete / 100m;
+
+    /// <summary>Pins the scheduled start, overriding dependencies and constraints. Summaries roll up.</summary>
+    public DateTime? ActualStart
+    {
+        get => IsSummary
+            ? ChildrenList.Where(c => c.IsActive).Select(c => c.ActualStart).Where(d => d is not null).DefaultIfEmpty(null).Min()
+            : ActualStartRaw;
+        set
+        {
+            if (IsSummary)
+            {
+                throw new InvalidOperationException($"Actual start of summary task '{Name}' rolls up from its children.");
+            }
+
+            ActualStartRaw = value;
+        }
+    }
+
+    internal DateTime? ActualStartRaw { get; set; }
+
+    /// <summary>Marks the task complete and pins the finish. Summaries roll up (all children done).</summary>
+    public DateTime? ActualFinish
+    {
+        get
+        {
+            if (!IsSummary)
+            {
+                return _actualFinish;
+            }
+
+            DateTime? latest = null;
+            foreach (var child in ChildrenList)
+            {
+                if (!child.IsActive)
+                {
+                    continue;
+                }
+
+                var childFinish = child.ActualFinish;
+                if (childFinish is null)
+                {
+                    return null;
+                }
+
+                latest = latest is null || childFinish > latest ? childFinish : latest;
+            }
+
+            return latest;
+        }
+        set
+        {
+            if (IsSummary)
+            {
+                throw new InvalidOperationException($"Actual finish of summary task '{Name}' rolls up from its children.");
+            }
+
+            _actualFinish = value;
+            if (value is not null)
+            {
+                _percentComplete = 100;
+            }
+        }
+    }
+
+    internal void RestoreTracking(int percentComplete, DateTime? actualStart, DateTime? actualFinish)
+    {
+        _percentComplete = percentComplete;
+        ActualStartRaw = actualStart;
+        _actualFinish = actualFinish;
+    }
+
+    /// <summary>Remaining working minutes: duration × (1 − percent complete).</summary>
+    public decimal RemainingMinutes => IsSummary
+        ? ChildrenList.Where(c => c.IsActive).Sum(c => c.RemainingMinutes)
+        : DurationMinutes - CompletedMinutes;
+
+    /// <summary>
+    /// Sets the remaining duration: total becomes completed + remaining and the
+    /// percentage is re-derived, keeping the completed span fixed.
+    /// </summary>
+    public void SetRemainingDuration(Duration remaining)
+    {
+        if (IsSummary)
+        {
+            throw new InvalidOperationException($"Remaining duration of summary task '{Name}' rolls up from its children.");
+        }
+
+        var remainingMinutes = remaining.ToMinutes(Project.TimeSettings);
+        ArgumentOutOfRangeException.ThrowIfNegative(remainingMinutes, nameof(remaining));
+        var completed = CompletedMinutes;
+        var total = completed + remainingMinutes;
+        Duration = Duration.FromMinutes(total, _duration.IsElapsed ? DurationUnit.Days : _duration.Unit, Project.TimeSettings, _duration.IsEstimated);
+        _percentComplete = total == 0 ? _percentComplete : (int)Math.Round(completed / total * 100m);
+        if (_percentComplete < 100)
+        {
+            _actualFinish = null;
+        }
+    }
+
+    /// <summary>The captured plan in a baseline slot; null when never baselined.</summary>
+    public TaskBaseline? Baseline(int slot = 0)
+        => _baselines is not null && _baselines.TryGetValue(slot, out var baseline) ? baseline : null;
+
+    internal void SetBaselineSlot(int slot, TaskBaseline baseline)
+        => (_baselines ??= [])[slot] = baseline;
+
+    internal void ClearBaselineSlot(int slot) => _baselines?.Remove(slot);
+
+    internal IReadOnlyDictionary<int, TaskBaseline> BaselineSlots
+        => _baselines ?? (IReadOnlyDictionary<int, TaskBaseline>)System.Collections.Immutable.ImmutableDictionary<int, TaskBaseline>.Empty;
 
     // Manual-mode inputs.
     public DateTime? ManualStart { get; set; }

@@ -21,6 +21,7 @@ internal static class TaskCommands
         command.Add(IndentOutdent("outdent", "Outdent tasks one outline level."));
         command.Add(Split());
         command.Add(Unsplit());
+        command.Add(Evm());
         return command;
     }
 
@@ -118,7 +119,7 @@ internal static class TaskCommands
 
             Render.Table(
                 context.Out,
-                ["ID", "Name", "Duration", "Start", "Finish", "Preds", "Crit"],
+                ["ID", "Name", "Duration", "Start", "Finish", "Preds", "%", "Crit"],
                 [
                     .. tasks.Select(IReadOnlyList<string> (t) =>
                     [
@@ -128,6 +129,7 @@ internal static class TaskCommands
                         Render.Date(t.Start),
                         Render.Date(t.Finish),
                         string.Join(",", t.Predecessors.Select(d => Render.PredecessorToken(d, settings))),
+                        t.PercentComplete == 0 ? "" : Render.Num(t.PercentComplete) + "%",
                         t.IsCritical ? "*" : "",
                     ]),
                 ]);
@@ -180,6 +182,12 @@ internal static class TaskCommands
                 ("late finish", Render.Date(task.LateFinish)),
                 ("total slack", Render.MinutesAsDays(task.TotalSlackMinutes, settings) ?? ""),
                 ("free slack", Render.MinutesAsDays(task.FreeSlackMinutes, settings) ?? ""),
+                ("% complete", Render.Num(task.PercentComplete) + "%"),
+                ("actual start", Render.Date(task.ActualStart)),
+                ("actual finish", Render.Date(task.ActualFinish)),
+                ("baseline", task.Baseline() is { } baseline
+                    ? $"{Render.Date(baseline.Start)} -> {Render.Date(baseline.Finish)}  cost {Render.Num(baseline.Cost)}"
+                    : ""),
                 ("type", Render.TaskTypeName(task.Type) + (task.IsEffortDriven ? ", effort-driven" : "")),
                 ("work", Render.WorkHours(task.WorkMinutes)),
                 ("cost", Render.Num(task.Cost)),
@@ -228,11 +236,16 @@ internal static class TaskCommands
         var fixedCostOpt = new Option<string?>("--fixed-cost") { HelpName = "amount" };
         var accrualOpt = new Option<string?>("--accrual") { HelpName = "start|prorated|end" };
         var ignoreResCalOpt = new Option<string?>("--ignore-resource-calendars") { HelpName = "bool" };
+        var percentOpt = new Option<int?>("--percent-complete") { Description = "0-100." };
+        var actualStartOpt = new Option<string?>("--actual-start") { HelpName = "date|none" };
+        var actualFinishOpt = new Option<string?>("--actual-finish") { HelpName = "date|none" };
+        var remainingOpt = new Option<string?>("--remaining-duration") { HelpName = "duration" };
         var command = new Command("set", "Change task fields; recalculates and saves.")
         {
             refArg, nameOpt, durationOpt, modeOpt, activeOpt, milestoneOpt, priorityOpt, deadlineOpt,
             constraintOpt, constraintDateOpt, calendarOpt, wbsOpt, manualStartOpt, manualFinishOpt,
             typeOpt, effortOpt, fixedCostOpt, accrualOpt, ignoreResCalOpt,
+            percentOpt, actualStartOpt, actualFinishOpt, remainingOpt,
         };
         command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
         {
@@ -337,6 +350,26 @@ internal static class TaskCommands
             if (parseResult.GetValue(wbsOpt) is { } wbs)
             {
                 task.CustomWbs = string.Equals(wbs.Trim(), "auto", StringComparison.OrdinalIgnoreCase) ? null : wbs;
+            }
+
+            if (parseResult.GetValue(percentOpt) is { } percent)
+            {
+                task.PercentComplete = percent;
+            }
+
+            if (parseResult.GetValue(actualStartOpt) is { } actualStart)
+            {
+                task.ActualStart = None(actualStart) ? null : Parsers.DateInput(actualStart, settings, finishLike: false);
+            }
+
+            if (parseResult.GetValue(actualFinishOpt) is { } actualFinish)
+            {
+                task.ActualFinish = None(actualFinish) ? null : Parsers.DateInput(actualFinish, settings, finishLike: true);
+            }
+
+            if (parseResult.GetValue(remainingOpt) is { } remaining)
+            {
+                task.SetRemainingDuration(Parsers.DurationInput(remaining));
             }
 
             if (parseResult.GetValue(manualStartOpt) is { } manualStart)
@@ -477,6 +510,57 @@ internal static class TaskCommands
             context.Report(
                 JsonShapes.ForTask(task, project.TimeSettings),
                 $"removed splits from task {task.RowNumber}");
+            return 0;
+        }));
+        return command;
+    }
+
+    private static Command Evm()
+    {
+        var refArg = new Argument<string?>("task")
+        {
+            Description = "Optional task reference; default: every task plus the project row.",
+            Arity = ArgumentArity.ZeroOrOne,
+        };
+        var command = new Command("evm", "Earned-value figures at the status date (baseline 0).") { refArg };
+        command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
+        {
+            var (_, project) = context.OpenProject();
+            var scope = parseResult.GetValue(refArg) is { } taskRef ? Parsers.TaskRef(project, taskRef) : null;
+            if (context.Json)
+            {
+                context.WriteJson(scope is null
+                    ? project.Tasks.Select(t => JsonShapes.ForEvm(t.RowNumber, t.Name, EarnedValue.ForTask(t)))
+                        .Append(JsonShapes.ForEvm(0, project.Name, EarnedValue.ForProject(project)))
+                        .ToList()
+                    : [JsonShapes.ForEvm(scope.RowNumber, scope.Name, EarnedValue.ForTask(scope))]);
+                return 0;
+            }
+
+            var rows = scope is null
+                ? project.Tasks.Select(t => (Row: t.RowNumber.ToString(System.Globalization.CultureInfo.InvariantCulture), t.Name, Data: EarnedValue.ForTask(t)))
+                    .Append((Row: "", Name: project.Name, Data: EarnedValue.ForProject(project)))
+                : [(Row: scope.RowNumber.ToString(System.Globalization.CultureInfo.InvariantCulture), scope.Name, Data: EarnedValue.ForTask(scope))];
+            Render.Table(
+                context.Out,
+                ["ID", "Name", "BAC", "BCWS", "BCWP", "ACWP", "SV", "CV", "SPI", "CPI", "EAC", "VAC"],
+                [
+                    .. rows.Select(IReadOnlyList<string> (r) =>
+                    [
+                        r.Row,
+                        r.Name,
+                        Render.Num(r.Data.Bac),
+                        Render.Num(r.Data.Bcws),
+                        Render.Num(r.Data.Bcwp),
+                        Render.Num(r.Data.Acwp),
+                        Render.Num(r.Data.Sv),
+                        Render.Num(r.Data.Cv),
+                        r.Data.Spi is { } spi ? Render.Num(Math.Round(spi, 2)) : "",
+                        r.Data.Cpi is { } cpi ? Render.Num(Math.Round(cpi, 2)) : "",
+                        Render.Num(r.Data.Eac),
+                        Render.Num(r.Data.Vac),
+                    ]),
+                ]);
             return 0;
         }));
         return command;

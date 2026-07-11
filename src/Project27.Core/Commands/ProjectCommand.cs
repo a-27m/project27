@@ -21,6 +21,8 @@ namespace Project27.Core.Commands;
 [JsonDerivedType(typeof(SplitTaskCommand), "splitTask")]
 [JsonDerivedType(typeof(UnsplitTaskCommand), "unsplitTask")]
 [JsonDerivedType(typeof(SetProjectCommand), "setProject")]
+[JsonDerivedType(typeof(SetBaselineCommand), "setBaseline")]
+[JsonDerivedType(typeof(ClearBaselineCommand), "clearBaseline")]
 public abstract record ProjectCommand;
 
 public sealed record AddTaskCommand : ProjectCommand
@@ -90,6 +92,19 @@ public sealed record SetTaskCommand : ProjectCommand
     public CostAccrual? FixedCostAccrual { get; init; }
 
     public bool? IgnoreResourceCalendars { get; init; }
+
+    public int? PercentComplete { get; init; }
+
+    public DateTime? ActualStart { get; init; }
+
+    public bool ClearActualStart { get; init; }
+
+    public DateTime? ActualFinish { get; init; }
+
+    public bool ClearActualFinish { get; init; }
+
+    /// <summary>Engine duration syntax; rewrites the total keeping the completed span.</summary>
+    public string? RemainingDuration { get; init; }
 }
 
 public sealed record RemoveTaskCommand : ProjectCommand
@@ -171,4 +186,23 @@ public sealed record SetProjectCommand : ProjectCommand
 
     /// <summary>Project calendar by name.</summary>
     public string? Calendar { get; init; }
+
+    public DateTime? StatusDate { get; init; }
+
+    public bool ClearStatusDate { get; init; }
+}
+
+public sealed record SetBaselineCommand : ProjectCommand
+{
+    public int Slot { get; init; }
+
+    /// <summary>Uids to capture; empty = the whole project.</summary>
+    public IReadOnlyList<int> Uids { get; init; } = [];
+}
+
+public sealed record ClearBaselineCommand : ProjectCommand
+{
+    public int Slot { get; init; }
+
+    public IReadOnlyList<int> Uids { get; init; } = [];
 }

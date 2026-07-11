@@ -63,7 +63,23 @@ internal static class ProjectCommands
                 $"schedule: {Render.Date(project.StartDate)} -> {Render.Date(project.FinishDate)}");
             return 0;
         }));
-        return new Command("schedule", "Scheduling operations.") { recalc };
+        var afterOpt = new Option<string?>("--after") { HelpName = "date", Description = "Cutoff; default: the status date." };
+        var reschedule = new Command("reschedule", "Move uncompleted work past the status date (or --after).") { afterOpt };
+        reschedule.SetAction(parseResult => CliRoot.Run(parseResult, context =>
+        {
+            var (store, project) = context.OpenProject();
+            var after = parseResult.GetValue(afterOpt) is { } text
+                ? Parsers.DateInput(text, project.TimeSettings, finishLike: false)
+                : (DateTime?)null;
+            project.RescheduleUncompletedWork(after);
+            store.Save(project);
+            context.Report(
+                JsonShapes.ForProject(project),
+                $"rescheduled uncompleted work after {Render.Date(after ?? project.StatusDate)}");
+            return 0;
+        }));
+
+        return new Command("schedule", "Scheduling operations.") { recalc, reschedule };
     }
 
     private static Command Show()
@@ -91,6 +107,7 @@ internal static class ProjectCommands
         var weekStartsOnOpt = new Option<string?>("--week-starts-on") { HelpName = "day" };
         var dayStartOpt = new Option<string?>("--day-start") { HelpName = "HH:mm", Description = "Default start time for date-only inputs." };
         var dayEndOpt = new Option<string?>("--day-end") { HelpName = "HH:mm", Description = "Default end time for date-only inputs." };
+        var statusDateOpt = new Option<string?>("--status-date") { HelpName = "date|none", Description = "Progress reporting date for EVM and rescheduling." };
         var criticalSlackOpt = new Option<string?>("--critical-slack")
         {
             HelpName = "duration",
@@ -100,7 +117,7 @@ internal static class ProjectCommands
         var command = new Command("set", "Change project settings; recalculates and saves.")
         {
             nameOpt, startOpt, finishOpt, scheduleFromOpt, calendarOpt, minutesPerDayOpt, minutesPerWeekOpt,
-            daysPerMonthOpt, weekStartsOnOpt, dayStartOpt, dayEndOpt, criticalSlackOpt,
+            daysPerMonthOpt, weekStartsOnOpt, dayStartOpt, dayEndOpt, criticalSlackOpt, statusDateOpt,
         };
         command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
         {
@@ -166,6 +183,13 @@ internal static class ProjectCommands
             if (parseResult.GetValue(calendarOpt) is { } calendar)
             {
                 project.Calendar = Parsers.CalendarByName(project, calendar);
+            }
+
+            if (parseResult.GetValue(statusDateOpt) is { } statusDate)
+            {
+                project.StatusDate = string.Equals(statusDate.Trim(), "none", StringComparison.OrdinalIgnoreCase)
+                    ? null
+                    : Parsers.DateInput(statusDate, settings, finishLike: true);
             }
 
             if (parseResult.GetValue(criticalSlackOpt) is { } criticalSlack)

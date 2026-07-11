@@ -56,6 +56,8 @@ public static class CommandExecutor
                     ParseDuration(split.Gap))),
                 UnsplitTaskCommand unsplit => Run(() => Task(project, unsplit.Uid).ClearSplits()),
                 SetProjectCommand set => SetProject(project, set),
+                SetBaselineCommand baseline => Run(() => project.SetBaseline(baseline.Slot, ResolveScope(project, baseline.Uids))),
+                ClearBaselineCommand baseline => Run(() => project.ClearBaseline(baseline.Slot, ResolveScope(project, baseline.Uids))),
                 _ => throw new CommandException($"Unknown command type {command.GetType().Name}."),
             };
         }
@@ -193,8 +195,41 @@ public static class CommandExecutor
             task.IgnoresResourceCalendars = ignores;
         }
 
+        if (command.PercentComplete is { } percent)
+        {
+            task.PercentComplete = percent;
+        }
+
+        if (command.ClearActualStart)
+        {
+            task.ActualStart = null;
+        }
+        else if (command.ActualStart is { } actualStart)
+        {
+            task.ActualStart = actualStart;
+        }
+
+        if (command.ClearActualFinish)
+        {
+            task.ActualFinish = null;
+        }
+        else if (command.ActualFinish is { } actualFinish)
+        {
+            task.ActualFinish = actualFinish;
+        }
+
+        if (command.RemainingDuration is { } remaining)
+        {
+            task.SetRemainingDuration(ParseDuration(remaining));
+        }
+
         return null;
     }
+
+    private static List<ProjectTask>? ResolveScope(Project project, IReadOnlyList<int> uids)
+        => uids.Count == 0
+            ? null
+            : [.. uids.Select(uid => Task(project, uid)).SelectMany(t => t.SelfAndDescendants()).Distinct()];
 
     private static int? SetLink(Project project, SetLinkCommand command)
     {
@@ -227,6 +262,15 @@ public static class CommandExecutor
         if (command.Calendar is { } calendarName)
         {
             project.Calendar = Calendar(project, calendarName);
+        }
+
+        if (command.ClearStatusDate)
+        {
+            project.StatusDate = null;
+        }
+        else if (command.StatusDate is { } statusDate)
+        {
+            project.StatusDate = statusDate;
         }
 
         return null;

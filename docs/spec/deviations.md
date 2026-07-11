@@ -23,3 +23,8 @@ from MS Project desktop. Entries are added as phases land.
 | 16 | Assignments | Split and manual tasks pin assignment dates to task dates (resource calendars not applied) | Resource calendars also shape split-task assignments | Complexity deferred; splits + assignments is a rare combination |
 | 17 | Costs | The rate band in force at the assignment start prices the whole assignment | Prorates across bands per time-phased bucket | Needs time-phased work (phase 8); flagged for revisit |
 | 18 | Scheduling | A restrictive resource calendar extends the task finish but the entered duration field is not rewritten | Duration is recalculated from the assignment span | Inputs stay inputs; the bar and slack reflect the real span |
+| 19 | EVM | BCWS prorates baseline cost linearly over the baseline span's working time | Time-phased by cost accrual | Time-phased data arrives with usage views; flagged for revisit |
+| 20 | Actuals | Actual work and cost derive from percent complete | Separately trackable actual work/cost per assignment | Explicit actuals land with usage views (phase 9) |
+| 21 | Interim plans | Subsumed by full baseline slots 1–10 plus server snapshot history | Interim plans store start/finish only | Strictly more information retained |
+| 22 | Tracking | Summary percent complete is read-only (rolls up) | Editing a summary % distributes to children | Distribution rules are opaque; explicit per-leaf updates are safer |
+| 23 | Rescheduling | Already-split in-progress tasks are left alone by reschedule-uncompleted-work | Moves remaining segments | Split-of-split complexity deferred until demanded |

@@ -277,6 +277,22 @@ internal static class ProjectScheduler
     {
         var calendar = task.Calendar ?? project.Calendar;
 
+        // Actuals pin the schedule: what happened outranks dependencies, constraints, and manual dates.
+        if (task.ActualFinish is { } actualFinish)
+        {
+            var actualSpanStart = task.ActualStartRaw ?? BackwardStart(project, task, calendar, actualFinish);
+            task.DurationMinutes = calendar.WorkBetween(actualSpanStart, actualFinish);
+            return (actualSpanStart, actualFinish);
+        }
+
+        if (task.ActualStartRaw is { } actualStart)
+        {
+            var pinnedStart = calendar.NextWorkingTime(actualStart);
+            return (pinnedStart, task.DurationMinutes == 0 && !task.IsSplit
+                ? pinnedStart
+                : ForwardFinish(project, task, calendar, pinnedStart));
+        }
+
         if (task.Mode == TaskMode.Manual)
         {
             var manualStart = task.ManualStart ?? calendar.NextWorkingTime(anchor);
@@ -599,15 +615,26 @@ internal static class ProjectScheduler
                 continue;
             }
 
-            if (task.Mode == TaskMode.Manual || task.Constraint != ConstraintType.AsLateAsPossible)
+            if (task.Mode == TaskMode.Manual || task.ActualStartRaw is not null || task.Constraint != ConstraintType.AsLateAsPossible)
             {
                 task.Start = task.EarlyStart;
                 task.Finish = task.EarlyFinish;
                 if (task.EarlyStart is { } es)
                 {
-                    task.Segments = task.Mode == TaskMode.Manual || UsesAssignmentScheduling(task)
+                    task.Segments = task.Mode == TaskMode.Manual || task.ActualFinish is not null || UsesAssignmentScheduling(task)
                         ? [new TaskSegment(es, task.EarlyFinish!.Value)]
                         : ScheduleForward(calendar, task, es).Segments;
+                }
+
+                // Backfill actuals implied by progress on the now-final dates.
+                if (task.PercentComplete > 0 && task.ActualStartRaw is null)
+                {
+                    task.ActualStartRaw = task.Start;
+                }
+
+                if (task.PercentComplete == 100 && task.ActualFinish is null && task.Finish is not null)
+                {
+                    task.ActualFinish = task.Finish;
                 }
             }
             else if (task.LateFinish is { } lf)

@@ -63,6 +63,7 @@ internal static class CliRoot
         root.Add(CalendarCommands.Command());
         root.Add(ResourceCommands.Command());
         root.Add(AssignCommands.Command());
+        root.Add(BaselineCommands.Command());
         root.Add(ServerCommands.Checkout());
         root.Add(ServerCommands.Checkin());
         root.Add(ServerCommands.Unlock());

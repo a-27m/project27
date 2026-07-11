@@ -66,6 +66,20 @@ public sealed class Assignment
         }
     }
 
+    private Dictionary<int, AssignmentBaseline>? _baselines;
+
+    /// <summary>The captured work/cost in a baseline slot; null when never baselined.</summary>
+    public AssignmentBaseline? Baseline(int slot = 0)
+        => _baselines is not null && _baselines.TryGetValue(slot, out var baseline) ? baseline : null;
+
+    internal void SetBaselineSlot(int slot, AssignmentBaseline baseline)
+        => (_baselines ??= [])[slot] = baseline;
+
+    internal void ClearBaselineSlot(int slot) => _baselines?.Remove(slot);
+
+    internal IReadOnlyDictionary<int, AssignmentBaseline> BaselineSlots
+        => _baselines ?? (IReadOnlyDictionary<int, AssignmentBaseline>)System.Collections.Immutable.ImmutableDictionary<int, AssignmentBaseline>.Empty;
+
     // Outputs of Recalculate.
     public DateTime? Start { get; internal set; }
 

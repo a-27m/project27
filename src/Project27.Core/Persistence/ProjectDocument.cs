@@ -9,7 +9,7 @@ namespace Project27.Core.Persistence;
 /// </summary>
 public sealed record ProjectDocument
 {
-    public int SchemaVersion { get; init; } = 2;
+    public int SchemaVersion { get; init; } = 3;
 
     public required Guid Id { get; init; }
 
@@ -37,7 +37,20 @@ public sealed record ProjectDocument
     public IReadOnlyList<ResourceDocument> Resources { get; init; } = [];
 
     public IReadOnlyList<AssignmentDocument> Assignments { get; init; } = [];
+
+    // Schema 3.
+    public DateTime? StatusDate { get; init; }
 }
+
+public sealed record TaskBaselineDocument(
+    int Slot,
+    DateTime? Start,
+    DateTime? Finish,
+    decimal DurationMinutes,
+    decimal WorkMinutes,
+    decimal Cost);
+
+public sealed record AssignmentBaselineDocument(int Slot, decimal WorkMinutes, decimal Cost);
 
 public sealed record TimeSettingsDocument
 {
@@ -173,6 +186,15 @@ public sealed record TaskDocument
     public decimal FixedCost { get; init; }
 
     public CostAccrual FixedCostAccrual { get; init; } = CostAccrual.Prorated;
+
+    // Schema 3 (defaults preserve older semantics).
+    public int PercentComplete { get; init; }
+
+    public DateTime? ActualStart { get; init; }
+
+    public DateTime? ActualFinish { get; init; }
+
+    public IReadOnlyList<TaskBaselineDocument>? Baselines { get; init; }
 }
 
 public sealed record RateDocument(decimal Amount, RateUnit Per);
@@ -240,6 +262,8 @@ public sealed record AssignmentDocument
     public CostRateTableId RateTable { get; init; }
 
     public decimal CostInput { get; init; }
+
+    public IReadOnlyList<AssignmentBaselineDocument>? Baselines { get; init; }
 }
 
 public sealed record DependencyDocument

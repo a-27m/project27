@@ -48,7 +48,28 @@ internal sealed record TaskJson(
     decimal Cost,
     decimal FixedCost,
     CostAccrual FixedCostAccrual,
-    IReadOnlyList<AssignmentJson> Assignments);
+    IReadOnlyList<AssignmentJson> Assignments,
+    int PercentComplete,
+    DateTime? ActualStart,
+    DateTime? ActualFinish,
+    BaselineJson? Baseline);
+
+internal sealed record BaselineJson(DateTime? Start, DateTime? Finish, string Duration, string Work, decimal Cost);
+
+internal sealed record EvmJson(
+    int Id,
+    string Name,
+    decimal Bac,
+    decimal Bcws,
+    decimal Bcwp,
+    decimal Acwp,
+    decimal Sv,
+    decimal Cv,
+    decimal? Spi,
+    decimal? Cpi,
+    decimal Eac,
+    decimal Vac,
+    decimal? Tcpi);
 
 internal sealed record AssignmentJson(
     int TaskUid,
@@ -102,7 +123,8 @@ internal sealed record ProjectJson(
     IReadOnlyList<string> Calendars,
     int Resources,
     string Work,
-    decimal Cost);
+    decimal Cost,
+    DateTime? StatusDate);
 
 internal sealed record LinkJson(
     int PredecessorUid,
@@ -186,7 +208,21 @@ internal static class JsonShapes
         Cost: task.Cost,
         FixedCost: task.FixedCost,
         FixedCostAccrual: task.FixedCostAccrual,
-        Assignments: [.. task.Assignments.Select(ForAssignment)]);
+        Assignments: [.. task.Assignments.Select(ForAssignment)],
+        PercentComplete: task.PercentComplete,
+        ActualStart: task.ActualStart,
+        ActualFinish: task.ActualFinish,
+        Baseline: task.Baseline() is { } baseline
+            ? new BaselineJson(
+                baseline.Start,
+                baseline.Finish,
+                Duration.FromMinutes(baseline.DurationMinutes, DurationUnit.Days, settings).ToString(),
+                Render.WorkHours(baseline.WorkMinutes),
+                baseline.Cost)
+            : null);
+
+    public static EvmJson ForEvm(int id, string name, EarnedValueData data) => new(
+        id, name, data.Bac, data.Bcws, data.Bcwp, data.Acwp, data.Sv, data.Cv, data.Spi, data.Cpi, data.Eac, data.Vac, data.Tcpi);
 
     public static AssignmentJson ForAssignment(Assignment assignment) => new(
         TaskUid: assignment.Task.UniqueId,
@@ -254,7 +290,8 @@ internal static class JsonShapes
             Calendars: [.. project.Calendars.Select(c => c.Name)],
             Resources: project.Resources.Count,
             Work: Render.WorkHours(project.TotalWorkMinutes),
-            Cost: project.TotalCost);
+            Cost: project.TotalCost,
+            StatusDate: project.StatusDate);
     }
 
     public static LinkJson ForLink(TaskDependency dependency, TimeSettings settings) => new(

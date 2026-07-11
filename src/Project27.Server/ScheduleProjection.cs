@@ -14,7 +14,8 @@ public sealed record ScheduleProjectDto(
     int MinutesPerDay,
     string Calendar,
     decimal TotalWorkMinutes,
-    decimal TotalCost);
+    decimal TotalCost,
+    DateTime? StatusDate);
 
 public sealed record ScheduleSegmentDto(DateTime Start, DateTime Finish);
 
@@ -44,7 +45,13 @@ public sealed record ScheduleTaskDto(
     decimal WorkMinutes,
     decimal Cost,
     IReadOnlyList<ScheduleSegmentDto> Segments,
-    IReadOnlyList<SchedulePredecessorDto> Predecessors);
+    IReadOnlyList<SchedulePredecessorDto> Predecessors,
+    int PercentComplete,
+    DateTime? ActualStart,
+    DateTime? ActualFinish,
+    DateTime? BaselineStart,
+    DateTime? BaselineFinish,
+    decimal? BaselineCost);
 
 public sealed record ScheduleDto(int Version, ScheduleProjectDto Project, IReadOnlyList<ScheduleTaskDto> Tasks);
 
@@ -67,7 +74,8 @@ public static class ScheduleProjection
                 project.TimeSettings.MinutesPerDay,
                 project.Calendar.Name,
                 project.TotalWorkMinutes,
-                project.TotalCost),
+                project.TotalCost,
+                project.StatusDate),
             [
                 .. project.Tasks.Select(task => new ScheduleTaskDto(
                     task.UniqueId,
@@ -96,7 +104,13 @@ public static class ScheduleProjection
                     [
                         .. task.Predecessors.Select(d => new SchedulePredecessorDto(
                             d.Predecessor.UniqueId, d.Type, d.Lag.Kind, d.Lag.Value)),
-                    ])),
+                    ],
+                    task.PercentComplete,
+                    task.ActualStart,
+                    task.ActualFinish,
+                    task.Baseline()?.Start,
+                    task.Baseline()?.Finish,
+                    task.Baseline()?.Cost)),
             ]);
     }
 }

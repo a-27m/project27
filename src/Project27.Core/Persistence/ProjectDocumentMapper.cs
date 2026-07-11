@@ -17,6 +17,7 @@ public static class ProjectDocumentMapper
             ScheduleFrom = project.ScheduleFrom,
             CalendarId = project.Calendar.Id,
             CriticalSlackThresholdMinutes = project.CriticalSlackThresholdMinutes,
+            StatusDate = project.StatusDate,
             TimeSettings = new TimeSettingsDocument
             {
                 MinutesPerDay = project.TimeSettings.MinutesPerDay,
@@ -44,6 +45,9 @@ public static class ProjectDocumentMapper
                         DelayMinutes = a.DelayMinutes,
                         RateTable = a.RateTable,
                         CostInput = a.Resource.Type == ResourceType.Cost ? a.CostInput : 0m,
+                        Baselines = a.BaselineSlots.Count == 0
+                            ? null
+                            : [.. a.BaselineSlots.OrderBy(pair => pair.Key).Select(pair => new AssignmentBaselineDocument(pair.Key, pair.Value.WorkMinutes, pair.Value.Cost))],
                     }),
             ],
             Dependencies =
@@ -65,7 +69,7 @@ public static class ProjectDocumentMapper
     public static Project FromDocument(ProjectDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
-        if (document.SchemaVersion is not (1 or 2))
+        if (document.SchemaVersion is not (1 or 2 or 3))
         {
             throw new NotSupportedException($"Project document schema {document.SchemaVersion} is not supported by this build.");
         }
@@ -123,6 +127,7 @@ public static class ProjectDocumentMapper
         project.TimeSettings.WeekStartsOn = settings.WeekStartsOn;
         project.TimeSettings.DefaultStartTime = settings.DefaultStartTime;
         project.TimeSettings.DefaultEndTime = settings.DefaultEndTime;
+        project.StatusDate = document.StatusDate;
 
         var tasks = new Dictionary<Guid, ProjectTask>();
         foreach (var taskDoc in document.Tasks)
@@ -153,6 +158,13 @@ public static class ProjectDocumentMapper
             if (taskDoc.SplitParts is { Count: > 1 } parts)
             {
                 task.RestoreSplitParts([.. parts.Select(p => (p.WorkMinutes, p.GapMinutes))]);
+            }
+
+            task.RestoreTracking(taskDoc.PercentComplete, taskDoc.ActualStart, taskDoc.ActualFinish);
+            foreach (var baselineDoc in taskDoc.Baselines ?? [])
+            {
+                task.SetBaselineSlot(baselineDoc.Slot, new TaskBaseline(
+                    baselineDoc.Start, baselineDoc.Finish, baselineDoc.DurationMinutes, baselineDoc.WorkMinutes, baselineDoc.Cost));
             }
 
             tasks.Add(taskDoc.Id, task);
@@ -199,6 +211,10 @@ public static class ProjectDocumentMapper
             assignment.DelayMinutes = assignmentDoc.DelayMinutes;
             assignment.RateTable = assignmentDoc.RateTable;
             assignment.RestoreCostInput(assignmentDoc.CostInput);
+            foreach (var baselineDoc in assignmentDoc.Baselines ?? [])
+            {
+                assignment.SetBaselineSlot(baselineDoc.Slot, new AssignmentBaseline(baselineDoc.WorkMinutes, baselineDoc.Cost));
+            }
         }
 
         return project;
@@ -297,6 +313,13 @@ public static class ProjectDocumentMapper
         IgnoresResourceCalendars = task.IgnoresResourceCalendars,
         FixedCost = task.FixedCost,
         FixedCostAccrual = task.FixedCostAccrual,
+        PercentComplete = task.IsSummary ? 0 : task.PercentComplete,
+        ActualStart = task.ActualStartRaw,
+        ActualFinish = task.IsSummary ? null : task.ActualFinish,
+        Baselines = task.BaselineSlots.Count == 0
+            ? null
+            : [.. task.BaselineSlots.OrderBy(pair => pair.Key).Select(pair => new TaskBaselineDocument(
+                pair.Key, pair.Value.Start, pair.Value.Finish, pair.Value.DurationMinutes, pair.Value.WorkMinutes, pair.Value.Cost))],
     };
 
 #pragma warning disable CA1859

@@ -451,6 +451,102 @@ public sealed class Project
     /// <summary>Runs the full forward/backward scheduling passes. Deterministic.</summary>
     public void Recalculate() => ProjectScheduler.Recalculate(this);
 
+    // -------------------------------------------------------------- tracking
+
+    public const int BaselineSlots = 11;
+
+    /// <summary>Progress reporting date for EVM and rescheduling; null falls back to the project finish.</summary>
+    public DateTime? StatusDate { get; set; }
+
+    /// <summary>
+    /// Captures the current schedule (dates, duration, work, cost) into a baseline
+    /// slot for the given tasks (default: all) and their assignments.
+    /// </summary>
+    public void SetBaseline(int slot = 0, IEnumerable<ProjectTask>? tasks = null)
+    {
+        ValidateSlot(slot);
+        foreach (var task in tasks ?? Tasks)
+        {
+            EnsureOwned(task);
+            task.SetBaselineSlot(slot, new TaskBaseline(task.Start, task.Finish, task.DurationMinutes, task.WorkMinutes, task.Cost));
+            foreach (var assignment in task.AssignmentsList)
+            {
+                assignment.SetBaselineSlot(slot, new AssignmentBaseline(assignment.WorkMinutes, assignment.Cost));
+            }
+        }
+    }
+
+    public void ClearBaseline(int slot = 0, IEnumerable<ProjectTask>? tasks = null)
+    {
+        ValidateSlot(slot);
+        foreach (var task in tasks ?? Tasks)
+        {
+            EnsureOwned(task);
+            task.ClearBaselineSlot(slot);
+            foreach (var assignment in task.AssignmentsList)
+            {
+                assignment.ClearBaselineSlot(slot);
+            }
+        }
+    }
+
+    private static void ValidateSlot(int slot)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(slot);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(slot, BaselineSlots);
+    }
+
+    /// <summary>
+    /// Pushes uncompleted work at or before the cutoff (default: status date) out
+    /// past it: started tasks split at their completion point (unless already
+    /// split — deviation #23); unstarted tasks get a start-no-earlier-than
+    /// constraint. Completed and manual tasks are untouched. Recalculates.
+    /// </summary>
+    public void RescheduleUncompletedWork(DateTime? after = null)
+    {
+        var cutoff = after
+            ?? StatusDate
+            ?? throw new InvalidOperationException("Rescheduling needs a cutoff: set the status date or pass one.");
+        Recalculate();
+
+        foreach (var task in Tasks)
+        {
+            if (task.IsSummary || !task.IsActive || task.Mode == TaskMode.Manual
+                || task.PercentComplete >= 100 || task.Start is not { } start)
+            {
+                continue;
+            }
+
+            var calendar = task.Calendar ?? Calendar;
+            if (task.PercentComplete == 0)
+            {
+                if (start < cutoff)
+                {
+                    task.SetConstraint(ConstraintType.StartNoEarlierThan, cutoff);
+                }
+
+                continue;
+            }
+
+            if (task.IsSplit)
+            {
+                continue;
+            }
+
+            var completed = task.CompletedMinutes;
+            var completionPoint = calendar.AddWork(start, completed);
+            var gap = calendar.WorkBetween(completionPoint, cutoff);
+            if (gap > 0)
+            {
+                task.SplitAt(
+                    new Duration(completed, DurationUnit.Minutes),
+                    new Duration(gap, DurationUnit.Minutes));
+            }
+        }
+
+        Recalculate();
+    }
+
     internal void InvalidateOutline() => _flattened = null;
 
     internal void EnsureOutline() => _ = Tasks;
