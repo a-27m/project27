@@ -151,7 +151,13 @@ public static class CommandExecutor
             ? new Duration(0, DurationUnit.Days)
             : command.Duration is { } text ? ParseDuration(text) : (Duration?)null;
         var parent = command.ParentUid is { } parentUid ? Task(project, parentUid) : null;
-        return project.AddTask(command.Name, duration, parent, command.At).UniqueId;
+        var task = project.AddTask(command.Name, duration, parent, command.At);
+        if (command.Name.Length == 0 && !command.Milestone)
+        {
+            task.IsMilestone = false; // blank spacer rows are nothing, not milestones
+        }
+
+        return task.UniqueId;
     }
 
     private static int? SetTask(Project project, SetTaskCommand command)

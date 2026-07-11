@@ -2,8 +2,9 @@
 
 Project management with MS Project desktop scope: a clean-room CPM engine with a
 CLI, a REST server, and a React web client. See `docs/guide.md` for a user
-guide, `docs/` for architecture/decisions/roadmap and per-phase specs, and
-`docs/progress.md` for current status. `docker-compose.yaml` starts server +
+guide, `docs/` for architecture/decisions/roadmap and per-phase specs,
+`docs/engineering-decisions.md` for the engineering rationale trace (read it
+before changing engine/serialization code), and `docs/progress.md` for status. `docker-compose.yaml` starts server +
 web for evaluation; the CLI packs as a dotnet tool
 (`dotnet pack src/Project27.Cli`).
 

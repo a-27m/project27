@@ -259,7 +259,8 @@ public sealed class Project
 
     public ProjectTask AddTask(string name, Duration? duration = null, ProjectTask? parent = null, int? at = null)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        // Empty names are legal: MSP-style blank spacer rows.
+        ArgumentNullException.ThrowIfNull(name);
         var target = parent ?? _root;
         if (parent is not null)
         {
