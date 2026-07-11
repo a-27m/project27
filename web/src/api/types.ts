@@ -171,6 +171,7 @@ export interface CommandsResponse {
   version: number
   createdUids: (number | null)[]
   schedule: Schedule
+  inverse: Command[] | null
 }
 
 export interface Checkout {

@@ -101,7 +101,11 @@ public sealed record UsageRowDto(
 
 public sealed record UsageDto(int Version, string Granularity, DayOfWeek WeekStartsOn, IReadOnlyList<UsageRowDto> Rows);
 
-public sealed record CommandsResponse(int Version, IReadOnlyList<int?> CreatedUids, ScheduleDto Schedule);
+public sealed record CommandsResponse(
+    int Version,
+    IReadOnlyList<int?> CreatedUids,
+    ScheduleDto Schedule,
+    IReadOnlyList<Core.Commands.ProjectCommand>? Inverse);
 
 // View-engine projection (12p-1): the CLI's JSON shape, server-side.
 

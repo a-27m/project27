@@ -32,12 +32,21 @@ export function ProjectSettings({ project, editable, onCommands, onClose }: Prop
   }
 
   return (
-    <div className="modal-backdrop" role="presentation" onClick={onClose}>
+    <div
+      className="modal-backdrop"
+      role="presentation"
+      onClick={onClose}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') onClose()
+      }}
+    >
       <div
         className="modal"
         role="dialog"
         aria-modal="true"
         aria-label="Project settings"
+        tabIndex={-1}
+        ref={(element) => element?.focus()}
         onClick={(event) => event.stopPropagation()}
       >
         <h3>Project settings</h3>

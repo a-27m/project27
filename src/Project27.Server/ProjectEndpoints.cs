@@ -234,10 +234,25 @@ public static class ProjectEndpoints
             var json = await store.GetDocument(id, cancellationToken)
                 ?? throw new InvalidOperationException($"Project {id:D} has no snapshot; the store is corrupt.");
             var project = ProjectDocumentMapper.FromDocument(ProjectDocumentSerializer.Deserialize(json));
-            IReadOnlyList<int?> createdUids;
+            var createdUids = new List<int?>();
+            var inverses = new List<ProjectCommand>();
+            var invertible = true;
             try
             {
-                createdUids = CommandExecutor.ApplyAll(project, commands);
+                foreach (var command in commands)
+                {
+                    var (createdUid, inverse) = CommandInverter.ApplyWithInverse(project, command);
+                    createdUids.Add(createdUid);
+                    if (inverse is null)
+                    {
+                        invertible = false;
+                    }
+                    else
+                    {
+                        inverses.Insert(0, inverse); // undo replays in reverse order
+                    }
+                }
+
                 project.Recalculate();
             }
             catch (Exception exception) when (exception is CommandException or InvalidOperationException)
@@ -254,7 +269,11 @@ public static class ProjectEndpoints
 
             await store.TryAcquireLock(id, userId, DateTime.UtcNow, cancellationToken);
             broker.Publish(id, "checkin", new { version = newVersion.Value, user = userId });
-            return Results.Ok(new CommandsResponse(newVersion.Value, createdUids, ScheduleProjection.From(project, newVersion.Value)));
+            return Results.Ok(new CommandsResponse(
+                newVersion.Value,
+                createdUids,
+                ScheduleProjection.From(project, newVersion.Value),
+                invertible ? inverses : null));
         });
 
         projects.MapPost("/{id:guid}/checkout", async (Guid id, ClaimsPrincipal user, IServerStore store, LockingOptions locking, ProjectEventBroker broker, CancellationToken cancellationToken) =>

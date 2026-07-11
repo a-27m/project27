@@ -286,12 +286,21 @@ export function RecurringTaskDialog({
 
 function Modal({ label, onClose, children }: { label: string; onClose: () => void; children: React.ReactNode }) {
   return (
-    <div className="modal-backdrop" role="presentation" onClick={onClose}>
+    <div
+      className="modal-backdrop"
+      role="presentation"
+      onClick={onClose}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') onClose()
+      }}
+    >
       <div
         className="modal wide"
         role="dialog"
         aria-modal="true"
         aria-label={label}
+        tabIndex={-1}
+        ref={(element) => element?.focus()}
         onClick={(event) => event.stopPropagation()}
       >
         <h3>{label}</h3>

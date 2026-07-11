@@ -38,6 +38,8 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
   const [viewMode, setViewMode] = useState<'gantt' | 'table' | 'network' | 'timeline' | 'usage' | 'resources'>('gantt')
   const [showSettings, setShowSettings] = useState(false)
   const [dialog, setDialog] = useState<'fields' | 'calendars' | 'recurring' | null>(null)
+  const [undoStack, setUndoStack] = useState<Command[][]>([])
+  const [redoStack, setRedoStack] = useState<Command[][]>([])
   const scrollerRef = useRef<HTMLDivElement>(null)
   const ganttScrollRef = useRef<HTMLDivElement>(null)
 
@@ -77,12 +79,13 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
   const holdsLock = info?.lock?.userId === userId
   const editable = holdsLock && (info?.role === 'editor' || info?.role === 'owner')
 
-  const sendCommands = useCallback(
-    async (commands: Command[]) => {
+  const post = useCallback(
+    async (commands: Command[], onInverse: (inverse: Command[] | null) => void) => {
       try {
         const response = await client.commands(projectId, commands)
         setSchedule(response.schedule)
         setError(null)
+        onInverse(response.inverse)
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause))
       }
@@ -90,9 +93,58 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
     [client, projectId],
   )
 
+  const sendCommands = useCallback(
+    (commands: Command[]) =>
+      post(commands, (inverse) => {
+        setRedoStack([])
+        setUndoStack((stack) => (inverse === null ? [] : [...stack, inverse].slice(-50)))
+      }),
+    [post],
+  )
+
+  const undo = useCallback(() => {
+    setUndoStack((stack) => {
+      const batch = stack[stack.length - 1]
+      if (batch !== undefined) {
+        void post(batch, (inverse) => {
+          if (inverse !== null) setRedoStack((redo) => [...redo, inverse])
+        })
+      }
+      return stack.slice(0, -1)
+    })
+  }, [post])
+
+  const redo = useCallback(() => {
+    setRedoStack((stack) => {
+      const batch = stack[stack.length - 1]
+      if (batch !== undefined) {
+        void post(batch, (inverse) => {
+          if (inverse !== null) setUndoStack((undoBatches) => [...undoBatches, inverse])
+        })
+      }
+      return stack.slice(0, -1)
+    })
+  }, [post])
+
+  // Keyboard undo/redo while holding the lock.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'z') return
+      const target = event.target as HTMLElement | null
+      if (target !== null && (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA')) return
+      event.preventDefault()
+      if (event.shiftKey) redo()
+      else undo()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [undo, redo])
+
   async function checkout() {
     try {
       await client.checkout(projectId)
+      setUndoStack([])
+      setRedoStack([])
       await refresh()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
@@ -102,6 +154,8 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
   async function checkin() {
     try {
       await client.unlock(projectId)
+      setUndoStack([])
+      setRedoStack([])
       await refresh()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
@@ -216,12 +270,18 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
           <option value="upcoming">Upcoming tasks</option>
         </select>
         <span className="spacer" />
-        {error !== null && <span className="error">{error}</span>}
+        {error !== null && <span className="error" role="alert">{error}</span>}
         {info !== null && !holdsLock && info.lock !== null && (
           <span className="lock-banner">checked out by {info.lock.userId}</span>
         )}
         {editable ? (
           <>
+            <button onClick={undo} disabled={undoStack.length === 0} aria-label="Undo" title="Undo (Ctrl+Z)">
+              ↶
+            </button>
+            <button onClick={redo} disabled={redoStack.length === 0} aria-label="Redo" title="Redo (Ctrl+Shift+Z)">
+              ↷
+            </button>
             <button onClick={() => addTask(false)}>+ Task</button>
             <button onClick={() => addTask(true)}>+ Milestone</button>
             <button

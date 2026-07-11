@@ -37,7 +37,13 @@ export function TaskInspector({ task, project, tasks, editable, client, projectI
   const rowOf = (uid: number) => tasks.find((t) => t.uid === uid)?.row ?? uid
 
   return (
-    <aside className="inspector" aria-label={`Task ${task.row} details`}>
+    <aside
+      className="inspector"
+      aria-label={`Task ${task.row} details`}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') onClose()
+      }}
+    >
       <header className="inspector-head">
         <strong>
           #{task.row} {task.name}
