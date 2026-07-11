@@ -20,7 +20,7 @@ Phases map 1:1 to the session task list. **Current status: see `progress.md`**
 | 9 | Views & fields | Usage views (time-phased editing), network diagram, calendar/timeline views, full field catalog, custom fields with formulas/indicators, filters/groups/sorts/tables |
 | 10 | Advanced scheduling | Resource leveling, inactive tasks, resource pools, task inspector/drivers. Master/subprojects and cross-project links: **extension point only** (interfaces + storage hooks), full implementation revisited at the very end (after 12/5) |
 | 11 | Reports | Dashboard/report set, PDF/PNG export, CLI report generation, print layouts |
-| 12 | Polish & packaging | Undo/redo surfaced everywhere, options parity, WCAG 2.2 AA, user docs, docker-compose deploy, `dotnet tool` packaging |
+| 12 | Polish & packaging | Undo/redo surfaced everywhere, options parity, WCAG 2.2 AA, user docs, docker-compose deploy, `dotnet tool` packaging, **full web/CLI feature parity** (spec 12 matrix) |
 
 ## Working agreements
 
