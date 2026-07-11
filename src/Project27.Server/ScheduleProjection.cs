@@ -55,10 +55,56 @@ public sealed record ScheduleTaskDto(
 
 public sealed record ScheduleDto(int Version, ScheduleProjectDto Project, IReadOnlyList<ScheduleTaskDto> Tasks);
 
+// Time-phased usage projection (docs/spec/09-views-fields.md §9c/9d).
+
+public sealed record UsageBucketDto(DateOnly Date, decimal WorkMinutes, decimal Cost);
+
+public sealed record UsageRowDto(
+    int Uid,
+    int Row,
+    string Name,
+    int OutlineLevel,
+    bool Summary,
+    IReadOnlyList<UsageBucketDto> Buckets,
+    decimal TotalWorkMinutes,
+    decimal TotalCost);
+
+public sealed record UsageDto(int Version, string Granularity, DayOfWeek WeekStartsOn, IReadOnlyList<UsageRowDto> Rows);
+
 public sealed record CommandsResponse(int Version, IReadOnlyList<int?> CreatedUids, ScheduleDto Schedule);
 
 public static class ScheduleProjection
 {
+    /// <summary>Time-phased work/cost per task; call after <see cref="Project.Recalculate"/>.</summary>
+    public static UsageDto Usage(Project project, int version, bool weekly)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+        return new UsageDto(
+            version,
+            weekly ? "week" : "day",
+            project.TimeSettings.WeekStartsOn,
+            [
+                .. project.Tasks.Select(task =>
+                {
+                    var buckets = Core.Usage.Timephased.ForTask(task);
+                    if (weekly)
+                    {
+                        buckets = Core.Usage.Timephased.ByWeek(buckets, project.TimeSettings.WeekStartsOn);
+                    }
+
+                    return new UsageRowDto(
+                        task.UniqueId,
+                        task.RowNumber,
+                        task.Name,
+                        task.OutlineLevel,
+                        task.IsSummary,
+                        [.. buckets.Select(b => new UsageBucketDto(b.Date, b.WorkMinutes, Math.Round(b.Cost, 2)))],
+                        buckets.Sum(b => b.WorkMinutes),
+                        Math.Round(buckets.Sum(b => b.Cost), 2));
+                }),
+            ]);
+    }
+
     /// <summary>Projects a recalculated aggregate; call after <see cref="Project.Recalculate"/>.</summary>
     public static ScheduleDto From(Project project, int version)
     {

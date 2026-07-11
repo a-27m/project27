@@ -1,4 +1,4 @@
-import type { Checkout, Command, CommandsResponse, Me, ProjectEvent, ProjectInfo, Schedule } from './types'
+import type { Checkout, Command, CommandsResponse, Me, ProjectEvent, ProjectInfo, Schedule, Usage } from './types'
 
 export interface Credentials {
   /** Server base URL; empty string = same origin (Vite dev proxy). */
@@ -46,6 +46,10 @@ export class ApiClient {
 
   schedule(id: string): Promise<Schedule> {
     return this.request('GET', `/api/projects/${id}/schedule`)
+  }
+
+  usage(id: string, granularity: 'day' | 'week'): Promise<Usage> {
+    return this.request('GET', `/api/projects/${id}/usage?granularity=${granularity}`)
   }
 
   checkout(id: string): Promise<Checkout> {

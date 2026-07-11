@@ -395,3 +395,166 @@ g:hover > .gantt-linkhandle,
 .hidden {
   display: none;
 }
+
+/* --------------------------------------------------------------- 9d views */
+
+.view-switch {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.view-switch button {
+  border: none;
+  border-radius: 0;
+  padding: 4px 12px;
+}
+
+.view-switch button.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.view-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.pad {
+  padding: 16px;
+}
+
+.network-scroll {
+  overflow: auto;
+  height: 100%;
+}
+
+.network-node rect {
+  fill: #fff;
+  stroke: var(--border);
+  stroke-width: 1.5;
+  cursor: pointer;
+}
+
+.network-node.critical rect {
+  stroke: var(--bar-critical);
+}
+
+.network-node.milestone rect {
+  fill: #f0f3f6;
+}
+
+.network-node.selected rect {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+.network-title {
+  font-size: 13px;
+  font-weight: 600;
+  fill: var(--text);
+}
+
+.network-meta {
+  font-size: 11px;
+  fill: var(--muted);
+}
+
+.timeline-bar {
+  fill: var(--bar);
+  stroke: #2f5c9e;
+  cursor: pointer;
+}
+
+.timeline-bar.summary {
+  fill: #37424e;
+  stroke: #1c232a;
+}
+
+.timeline-bar.critical {
+  fill: var(--bar-critical);
+  stroke: #9e2f2f;
+}
+
+.timeline-bar.selected {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+.timeline-bartext {
+  font-size: 12px;
+  fill: #fff;
+  pointer-events: none;
+}
+
+.timeline-label {
+  font-size: 12px;
+  fill: var(--text);
+}
+
+.usage {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.usage-controls {
+  display: flex;
+  gap: 16px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.usage-scroll {
+  overflow: auto;
+  flex: 1;
+}
+
+.usage-table {
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.usage-table th,
+.usage-table td {
+  padding: 4px 10px;
+  border-bottom: 1px solid #eaeef2;
+  border-right: 1px solid #eaeef2;
+  white-space: nowrap;
+}
+
+.usage-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
+}
+
+.usage-table .sticky-col {
+  position: sticky;
+  left: 0;
+  background: var(--bg);
+  z-index: 2;
+  min-width: 220px;
+  text-align: left;
+}
+
+.usage-table thead .sticky-col {
+  background: var(--surface);
+  z-index: 3;
+}
+
+.usage-table tr.summary td {
+  font-weight: 600;
+}
+
+.usage-table .num {
+  text-align: right;
+}
+
+.usage-table .total {
+  font-weight: 600;
+}

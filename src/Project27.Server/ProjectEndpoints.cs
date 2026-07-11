@@ -99,6 +99,32 @@ public static class ProjectEndpoints
             return Results.Ok(ScheduleProjection.From(project, access!.Project.Version));
         });
 
+        projects.MapGet("/{id:guid}/usage", async (Guid id, string? granularity, ClaimsPrincipal user, IServerStore store, CancellationToken cancellationToken) =>
+        {
+            var (access, error) = await Authorize(store, id, user, ProjectRole.Reader, cancellationToken);
+            if (error is not null)
+            {
+                return error;
+            }
+
+            var weekly = (granularity ?? "week").ToUpperInvariant() switch
+            {
+                "DAY" => false,
+                "WEEK" => true,
+                _ => (bool?)null,
+            };
+            if (weekly is null)
+            {
+                return Problem(422, $"Unknown granularity '{granularity}'; use day or week.");
+            }
+
+            var json = await store.GetDocument(id, cancellationToken)
+                ?? throw new InvalidOperationException($"Project {id:D} has no snapshot; the store is corrupt.");
+            var project = ProjectDocumentMapper.FromDocument(ProjectDocumentSerializer.Deserialize(json));
+            project.Recalculate();
+            return Results.Ok(ScheduleProjection.Usage(project, access!.Project.Version, weekly.Value));
+        });
+
         projects.MapPost("/{id:guid}/commands", async (Guid id, List<ProjectCommand> commands, ClaimsPrincipal user, IServerStore store, ProjectEventBroker broker, CancellationToken cancellationToken) =>
         {
             var (access, error) = await Authorize(store, id, user, ProjectRole.Editor, cancellationToken);

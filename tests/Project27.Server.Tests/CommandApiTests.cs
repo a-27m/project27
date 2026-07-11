@@ -79,6 +79,44 @@ public sealed class CommandApiTests
     }
 
     [Fact]
+    public async Task Usage_projection_returns_time_phased_buckets()
+    {
+        var (id, alice) = await CreateProject("Usage-" + Guid.NewGuid().ToString("N"));
+
+        // Assignments aren't editable via commands yet: check a document in that has one.
+        var project = new Project27.Core.Project("Usage", new DateTime(2026, 1, 5, 8, 0, 0), id: id);
+        var dev = project.AddResource("Dev");
+        dev.RateTable(Project27.Core.CostRateTableId.A).SetRate(DateTime.MinValue, new Project27.Core.Rate(60m, Project27.Core.RateUnit.Hour));
+        var build = project.AddTask("Build", Project27.Core.Time.Duration.Parse("3d"));
+        project.Assign(build, dev);
+        project.Recalculate();
+        var document = Project27.Storage.ProjectDocumentSerializer.Serialize(
+            Project27.Core.Persistence.ProjectDocumentMapper.ToDocument(project));
+
+        var checkoutResponse = await alice.PostAsync($"/api/projects/{id:D}/checkout", null, Token);
+        var version = (await checkoutResponse.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("version").GetInt32();
+        using var putRequest = new HttpRequestMessage(HttpMethod.Put, $"/api/projects/{id:D}/document")
+        {
+            Content = new System.Net.Http.StringContent(document, System.Text.Encoding.UTF8, "application/json"),
+        };
+        putRequest.Headers.TryAddWithoutValidation("If-Match", $"\"{version}\"");
+        var checkin = await alice.SendAsync(putRequest, Token);
+        Assert.Equal(HttpStatusCode.OK, checkin.StatusCode);
+
+        var usage = await alice.GetFromJsonAsync<JsonElement>($"/api/projects/{id:D}/usage?granularity=day", Token);
+        var row = usage.GetProperty("rows").EnumerateArray().Single(r => r.GetProperty("name").GetString() == "Build");
+        Assert.Equal(3, row.GetProperty("buckets").GetArrayLength());
+        Assert.Equal(480m, row.GetProperty("buckets")[0].GetProperty("workMinutes").GetDecimal());
+        Assert.Equal(1440m, row.GetProperty("totalWorkMinutes").GetDecimal());
+
+        var weekly = await alice.GetFromJsonAsync<JsonElement>($"/api/projects/{id:D}/usage", Token);
+        Assert.Equal("week", weekly.GetProperty("granularity").GetString());
+
+        var bad = await alice.GetAsync($"/api/projects/{id:D}/usage?granularity=hour", Token);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, bad.StatusCode);
+    }
+
+    [Fact]
     public async Task Schedule_projection_is_readable_by_readers()
     {
         var (id, alice) = await CreateProject("Sched-" + Guid.NewGuid().ToString("N"));

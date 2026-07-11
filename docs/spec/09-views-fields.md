@@ -95,11 +95,25 @@ p27 customfield list | remove <id|alias>
 p27 task set <ref> --field Phase="Rollout" [--field number2=42]
 ```
 
-## 9c / 9d (later increments)
+## 9c — Time-phased usage (done)
 
-Time-phased assignment buckets (day granularity) with contour distribution,
-usage views (task×time, resource×time) in CLI and web, real BCWS/ACWP
-proration (retires deviations #14/#19/#20 approximations), per-assignment
-actual work; then the network diagram and calendar/timeline web views, and the
-unification of the server `ScheduleProjection`/CLI `JsonShapes` onto catalog
-projections.
+`Core.Usage.Timephased`: daily work/cost buckets per assignment — the contour's
+decile pattern over the assignment span on its schedule, exactly conserving
+totals; per-use/material/expense costs by resource accrual; task/summary merge
+and week aggregation. CLI `p27 usage`. Note: BCWS's linear proration *is* flat
+time-phasing of the baseline (no contour is stored), so EVM stands; deviation
+#19 now concerns accrual only. Usage *editing* awaits a real actual-work model
+(deviation #20).
+
+## 9d — View surfaces (done)
+
+- Server `GET /api/projects/{id}/usage?granularity=day|week` (reader role).
+- Web view switcher on the project page: **Gantt** (the phase-7 split view),
+  **Network** (PDM diagram: leaf tasks in dependency-rank columns, critical
+  highlighting), **Timeline** (lane-packed top-level band with milestone
+  callouts), **Usage** (task × time grid, work or cost, day/week).
+- Layout logic (`network.ts` rank/lane assignment, `lanes.ts` interval
+  packing) is pure and Vitest-covered.
+- Projection unification (server `ScheduleProjection`/CLI `JsonShapes` onto
+  catalog projections) intentionally deferred to phase 12 polish: both wire
+  contracts are stable and consumer-specific; churning them now buys nothing.

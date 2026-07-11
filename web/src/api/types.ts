@@ -74,6 +74,12 @@ export interface ScheduleTask {
   cost: number
   segments: ScheduleSegment[]
   predecessors: SchedulePredecessor[]
+  percentComplete: number
+  actualStart: string | null
+  actualFinish: string | null
+  baselineStart: string | null
+  baselineFinish: string | null
+  baselineCost: number | null
 }
 
 export interface ScheduleProject {
@@ -86,12 +92,37 @@ export interface ScheduleProject {
   calendar: string
   totalWorkMinutes: number
   totalCost: number
+  statusDate: string | null
 }
 
 export interface Schedule {
   version: number
   project: ScheduleProject
   tasks: ScheduleTask[]
+}
+
+export interface UsageBucket {
+  date: string
+  workMinutes: number
+  cost: number
+}
+
+export interface UsageRow {
+  uid: number
+  row: number
+  name: string
+  outlineLevel: number
+  summary: boolean
+  buckets: UsageBucket[]
+  totalWorkMinutes: number
+  totalCost: number
+}
+
+export interface Usage {
+  version: number
+  granularity: 'day' | 'week'
+  weekStartsOn: string
+  rows: UsageRow[]
 }
 
 export interface CommandsResponse {

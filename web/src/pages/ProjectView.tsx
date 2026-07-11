@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ApiClient } from '../api/client'
 import type { Command, ProjectInfo, Schedule } from '../api/types'
 import { Gantt } from '../components/Gantt'
+import { NetworkView } from '../components/NetworkView'
 import { TaskSheet } from '../components/TaskSheet'
+import { TimelineView } from '../components/TimelineView'
+import { UsageView } from '../components/UsageView'
 import { SHEET_COLUMNS, SHEET_WIDTH } from '../components/sheetColumns'
 import { durationDays, fromWireDate } from '../lib/format'
 import { makeScale, ticks, monthTicks } from '../lib/timescale'
@@ -27,6 +30,7 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
   const [scrollTop, setScrollTop] = useState(0)
   const [viewportHeight, setViewportHeight] = useState(600)
   const [splitX, setSplitX] = useState(Math.min(SHEET_WIDTH + 12, 560))
+  const [viewMode, setViewMode] = useState<'gantt' | 'network' | 'timeline' | 'usage'>('gantt')
   const scrollerRef = useRef<HTMLDivElement>(null)
   const ganttScrollRef = useRef<HTMLDivElement>(null)
 
@@ -128,6 +132,17 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
           {schedule !== null &&
             `v${schedule.version} · ${durationDays(schedule.project.totalWorkMinutes, schedule.project.minutesPerDay)} work`}
         </span>
+        <nav className="view-switch" aria-label="View">
+          {(['gantt', 'network', 'timeline', 'usage'] as const).map((mode) => (
+            <button
+              key={mode}
+              className={viewMode === mode ? 'active' : ''}
+              onClick={() => setViewMode(mode)}
+            >
+              {mode === 'gantt' ? 'Gantt' : mode === 'network' ? 'Network' : mode === 'timeline' ? 'Timeline' : 'Usage'}
+            </button>
+          ))}
+        </nav>
         <span className="spacer" />
         {error !== null && <span className="error">{error}</span>}
         {info !== null && !holdsLock && info.lock !== null && (
@@ -174,7 +189,36 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
         )}
       </div>
 
-      <div className="split" style={{ gridTemplateColumns: `${splitX}px 6px 1fr` }}>
+      {viewMode === 'network' && (
+        <div className="view-body">
+          <NetworkView
+            tasks={tasks}
+            minutesPerDay={schedule?.project.minutesPerDay ?? 480}
+            selectedUid={selectedUid}
+            onSelect={setSelectedUid}
+          />
+        </div>
+      )}
+      {viewMode === 'timeline' && schedule !== null && (
+        <div className="view-body">
+          <TimelineView
+            tasks={tasks}
+            projectStart={schedule.project.start}
+            projectFinish={schedule.project.finish}
+            selectedUid={selectedUid}
+            onSelect={setSelectedUid}
+          />
+        </div>
+      )}
+      {viewMode === 'usage' && (
+        <div className="view-body">
+          <UsageView client={client} projectId={projectId} version={schedule?.version ?? 0} />
+        </div>
+      )}
+      <div
+        className="split"
+        style={{ gridTemplateColumns: `${splitX}px 6px 1fr`, display: viewMode === 'gantt' ? undefined : 'none' }}
+      >
         <div
           className="pane"
           ref={scrollerRef}
