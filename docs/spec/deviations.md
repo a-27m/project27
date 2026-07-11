@@ -28,3 +28,5 @@ from MS Project desktop. Entries are added as phases land.
 | 21 | Interim plans | Subsumed by full baseline slots 1–10 plus server snapshot history | Interim plans store start/finish only | Strictly more information retained |
 | 22 | Tracking | Summary percent complete is read-only (rolls up) | Editing a summary % distributes to children | Distribution rules are opaque; explicit per-leaf updates are safer |
 | 23 | Rescheduling | Already-split in-progress tasks are left alone by reschedule-uncompleted-work | Moves remaining segments | Split-of-split complexity deferred until demanded |
+| 24 | Tables | Built-in tables (entry, schedule, cost, work, tracking, variance, evm, summary) are clean-room field selections | Table definitions differ in detail | Selections chosen for coherence; users can pass --fields |
+| 25 | Views | Sorting or grouping flattens the view to leaf tasks | Optional "keep outline structure" reorders within the hierarchy | Deterministic and simple; hierarchy-preserving sort deferred |
