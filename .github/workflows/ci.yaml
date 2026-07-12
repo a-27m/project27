@@ -63,3 +63,10 @@ jobs:
       contents: write
       packages: write
     secrets: inherit
+
+  helm:
+    uses: ./.github/workflows/helm.yaml
+    needs: [docker-backend, docker-web]
+    permissions:
+      contents: write
+      packages: write

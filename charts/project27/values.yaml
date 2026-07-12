@@ -1,0 +1,99 @@
+# Default values for project27.
+
+image:
+  registry: ghcr.io
+  owner: "a-27m"
+  tag: ""              # falls back to .Chart.AppVersion if empty
+  pullPolicy: Always
+
+# e.g. [{ name: ghcr-creds }] — GHCR images are typically private.
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+server:
+  # No replicaCount here: it's fixed at 1 in templates/server-deployment.yaml.
+  # Per-project checkout/edit locks and SSE fan-out live in server in-process
+  # memory (docs/architecture.md D6), and SQLite isn't safe for concurrent
+  # multi-process writers — both independently forbid running more than one
+  # server pod at a time.
+  resources: {}
+
+  persistence:
+    enabled: true
+    # Set to reuse a pre-provisioned/pre-populated claim instead of creating one.
+    existingClaim: ""
+    size: 100Mi
+    storageClassName: ""
+
+  podSecurityContext:
+    fsGroup: 1654
+
+  securityContext:
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+
+  probes:
+    healthPath: /healthz
+    startup:
+      failureThreshold: 30
+      periodSeconds: 2
+    liveness:
+      periodSeconds: 10
+      failureThreshold: 3
+    readiness:
+      periodSeconds: 10
+      failureThreshold: 3
+
+web:
+  replicaCount: 2
+  resources: {}
+
+# OIDC settings the server needs to start (decision D5). authority is required
+# unless devAuth.enabled — `helm install` fails fast with a clear error rather
+# than the server crash-looping on a startup InvalidOperationException.
+auth:
+  authority: ""
+  audience: ""
+
+# Development-only auth (decision D5): auto-login via X-Dev-User, no OIDC
+# provider needed. Enabling this also sets ASPNETCORE_ENVIRONMENT=Development,
+# which additionally turns on the unauthenticated /openapi endpoint
+# (Program.cs gates it on IsDevelopment()). Never enable on a
+# publicly-reachable cluster.
+devAuth:
+  enabled: false
+  # Overrides Auth:DevUsers (default alice/bob/carol from appsettings.json)
+  # if non-empty.
+  users: []
+
+locking:
+  staleAfterMinutes: 30
+
+serviceAccount:
+  create: true
+  name: ""
+
+# How external traffic reaches the web/server services.
+#   istio:   Gateway + VirtualService (default) — needs Istio installed in-cluster.
+#   ingress: plain networking.k8s.io/Ingress, ingress-nginx-flavored default
+#            annotations (override via routing.ingress.annotations for other
+#            controllers).
+#   none:    no routing resource created; reach the services via port-forward
+#            or your own routing.
+routing:
+  provider: istio
+  host: project27.example.com
+
+  istio:
+    tls:
+      enabled: false
+      # Name of the Istio-mesh TLS secret (e.g. provisioned by cert-manager)
+      # to terminate at the gateway. Required when tls.enabled=true.
+      credentialName: ""
+
+  ingress:
+    className: nginx
+    annotations: {}
+    tls: []

@@ -1,0 +1,34 @@
+Project27 has been deployed.
+
+{{- if eq .Values.routing.provider "istio" }}
+
+Routing: Istio Gateway + VirtualService, host {{ .Values.routing.host }}.
+Point DNS at your Istio ingress gateway's external IP/hostname, e.g.:
+  kubectl get svc -n istio-system istio-ingressgateway
+
+{{- else if eq .Values.routing.provider "ingress" }}
+
+Routing: networking.k8s.io/Ingress (class: {{ .Values.routing.ingress.className }}),
+host {{ .Values.routing.host }}.
+Point DNS at your ingress controller's external IP/hostname.
+
+{{- else }}
+
+Routing: none configured (routing.provider=none). Reach the app via port-forward:
+
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "project27.fullname" . }}-web 8080:80
+
+Then open http://localhost:8080/. Routing is Istio/Ingress-only in this
+chart -- /api is not proxied from here; port-forward
+svc/{{ include "project27.fullname" . }}-server separately to reach the API.
+
+{{- end }}
+
+Server storage is SQLite on a PersistentVolumeClaim (server.persistence). The
+server Deployment is fixed at 1 replica — see values.yaml for why.
+{{- if .Values.devAuth.enabled }}
+
+*** devAuth is ON: ASPNETCORE_ENVIRONMENT=Development, the OpenAPI endpoint is
+*** exposed unauthenticated, and any client can log in as any configured user
+*** via the X-Dev-User header. Do not point this release at a public cluster.
+{{- end }}

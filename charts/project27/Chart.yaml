@@ -1,0 +1,6 @@
+apiVersion: v2
+name: project27
+description: Project27 — scheduling engine server (ASP.NET Core) and web SPA (nginx)
+type: application
+version: 0.1.0
+appVersion: "0.1.46"

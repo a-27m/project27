@@ -1,0 +1,144 @@
+---
+name: Helm Chart - Lint, Test & Publish
+
+on:
+  workflow_call:
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  lint:
+    name: Lint Helm Chart
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: '3.16.2'
+
+      - name: Lint chart
+        run: |
+          helm lint charts/project27
+
+  checkov:
+    name: Security Scan with Checkov
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: '3.16.2'
+
+      - name: Render templates
+        run: |
+          helm template project27 charts/project27 \
+            --set auth.authority=https://ci-placeholder.example.com \
+            > /tmp/rendered-manifests.yaml
+          echo "Rendered manifests:"
+          wc -l /tmp/rendered-manifests.yaml
+
+      - name: Run Checkov
+        uses: bridgecrewio/checkov-action@master
+        with:
+          file: /tmp/rendered-manifests.yaml
+          framework: kubernetes
+          soft_fail: false
+          output_format: cli
+
+  test-render:
+    name: Test Template Rendering
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: '3.16.2'
+
+      - name: Test template rendering with various configurations
+        run: |
+          echo "=== ingress routing ==="
+          helm template project27 charts/project27 \
+            --set auth.authority=https://ci-placeholder.example.com \
+            --set routing.provider=ingress > /tmp/ingress.yaml
+          kubectl apply --dry-run=client -f /tmp/ingress.yaml
+
+          echo "=== no routing layer ==="
+          helm template project27 charts/project27 \
+            --set auth.authority=https://ci-placeholder.example.com \
+            --set routing.provider=none > /tmp/none.yaml
+          kubectl apply --dry-run=client -f /tmp/none.yaml
+
+          echo "=== istio routing (render only -- CRDs not installed here) ==="
+          helm template project27 charts/project27 \
+            --set auth.authority=https://ci-placeholder.example.com \
+            --set routing.provider=istio > /tmp/istio.yaml
+
+          echo "=== devAuth enabled, no authority needed ==="
+          helm template project27 charts/project27 \
+            --set devAuth.enabled=true > /tmp/devauth.yaml
+          kubectl apply --dry-run=client -f /tmp/devauth.yaml
+
+          echo "All rendering tests passed!"
+
+  semver:
+    name: Generate Version
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/semver-tag.yaml
+    with:
+      service-name: project27-chart
+
+  package-publish:
+    name: Package and Publish Chart
+    if: github.ref == 'refs/heads/main'
+    needs: [lint, checkov, test-render, semver]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: '3.16.2'
+
+      - name: Package Helm chart
+        run: |
+          helm package charts/project27 --destination /tmp/ \
+            --version "${{ needs.semver.outputs.version }}" \
+            --app-version "${{ needs.semver.outputs.version }}"
+
+          echo "Packaged chart:"
+          ls -lh /tmp/*.tgz
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push chart to GHCR
+        run: |
+          helm push /tmp/project27-${{ needs.semver.outputs.version }}.tgz \
+            oci://ghcr.io/${{ github.repository_owner }}/helm-charts
+
+          echo "Chart pushed to ghcr.io/${{ github.repository_owner }}/helm-charts/project27:${{ needs.semver.outputs.version }}"
