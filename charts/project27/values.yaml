@@ -50,14 +50,11 @@ web:
   replicaCount: 2
   resources: {}
 
-  # Deliberately not mirroring server's runAsNonRoot/capability drop: stock
-  # nginx:alpine runs as root to bind port 80 and to setuid() down to its
-  # "nginx" worker user, so forcing non-root here without switching to an
-  # unprivileged nginx image (a Dockerfile change) would just crash-loop the
-  # container. allowPrivilegeEscalation:false is safe and free -- it blocks
-  # exec-based escalation, unrelated to nginx's internal setuid privilege drop.
+  # Runs on nginxinc/nginx-unprivileged, which listens on 8080 and starts as
+  # uid 101 directly (no root, no setuid step), so it can run fully locked down.
   podSecurityContext: {}
   securityContext:
+    runAsNonRoot: true
     allowPrivilegeEscalation: false
 
 # OIDC settings the server needs to start (decision D5). authority is required
