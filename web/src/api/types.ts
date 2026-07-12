@@ -24,6 +24,10 @@ export interface Me {
   name: string
 }
 
+export interface VersionInfo {
+  imageTag: string
+}
+
 export type DependencyType = 'finishToStart' | 'startToStart' | 'finishToFinish' | 'startToFinish'
 export type LagKind = 'working' | 'elapsed' | 'percent'
 export type TaskMode = 'auto' | 'manual'

@@ -51,6 +51,16 @@ public sealed class ProjectApiTests
     }
 
     [Fact]
+    public async Task Version_is_anonymous_and_defaults_to_dev()
+    {
+        var anonymous = _server.Client(user: null);
+        var response = await anonymous.GetAsync("/api/version", Token);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(Token);
+        Assert.Equal("dev", body.GetProperty("imageTag").GetString());
+    }
+
+    [Fact]
     public async Task Unknown_dev_user_is_rejected()
     {
         var mallory = _server.Client("mallory");

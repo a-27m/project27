@@ -13,6 +13,7 @@ export function ProjectList({ client, onOpen }: Props) {
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
+  const [imageTag, setImageTag] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     try {
@@ -26,6 +27,15 @@ export function ProjectList({ client, onOpen }: Props) {
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  useEffect(() => {
+    client
+      .version()
+      .then((info) => setImageTag(info.imageTag))
+      .catch(() => {
+        /* cosmetic only; leave blank if unavailable */
+      })
+  }, [client])
 
   async function create(event: React.FormEvent) {
     event.preventDefault()
@@ -70,6 +80,7 @@ export function ProjectList({ client, onOpen }: Props) {
     <div className="page">
       <div className="page-header">
         <h2>Projects</h2>
+        {imageTag !== null && <span className="muted">v{imageTag}</span>}
         <form className="inline-form" onSubmit={create}>
           <input
             value={name}

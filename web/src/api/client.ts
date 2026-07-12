@@ -1,4 +1,4 @@
-import type { Checkout, Command, CommandsResponse, Me, ProjectEvent, ProjectInfo, Schedule, SnapshotInfo, TaskDriver, Usage, ViewResult } from './types'
+import type { Checkout, Command, CommandsResponse, Me, ProjectEvent, ProjectInfo, Schedule, SnapshotInfo, TaskDriver, Usage, VersionInfo, ViewResult } from './types'
 
 export interface Credentials {
   /** Server base URL; empty string = same origin (Vite dev proxy). */
@@ -26,6 +26,10 @@ export class ApiClient {
 
   me(): Promise<Me> {
     return this.request('GET', '/api/me')
+  }
+
+  version(): Promise<VersionInfo> {
+    return this.request('GET', '/api/version')
   }
 
   listProjects(): Promise<ProjectInfo[]> {

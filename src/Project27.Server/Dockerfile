@@ -9,9 +9,11 @@ COPY src/Project27.Server/ src/Project27.Server/
 RUN dotnet publish src/Project27.Server -c Release -o /app
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
+ARG VERSION=dev
 WORKDIR /app
 COPY --from=build /app .
 ENV ASPNETCORE_URLS=http://0.0.0.0:8080
+ENV IMAGE_TAG=$VERSION
 EXPOSE 8080
 RUN mkdir -p /data && chown $APP_UID:$APP_UID /data
 VOLUME /data

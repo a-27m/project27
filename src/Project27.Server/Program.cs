@@ -27,6 +27,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.MapGet("/healthz", () => Results.Ok()).AllowAnonymous();
+app.MapGet("/api/version", () => Results.Ok(new { imageTag = app.Configuration["IMAGE_TAG"] ?? "dev" })).AllowAnonymous();
 
 app.MapProjectApi();
 
