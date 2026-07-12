@@ -34,7 +34,7 @@ services:
       - "5173:80"
 
   postgres:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     profiles: [postgres]
     environment:
       POSTGRES_DB: project27
