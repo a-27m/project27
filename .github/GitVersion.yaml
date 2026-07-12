@@ -1,9 +1,9 @@
 ---
-mode: ContinuousDelivery
+mode: ContinuousDeployment
 branches:
   main:
     regex: ^main$
-    mode: ContinuousDelivery
+    mode: ContinuousDeployment
     tag: ''
     increment: Patch
     prevent-increment-of-merged-branch-version: true
@@ -13,7 +13,7 @@ branches:
     is-release-branch: true
   feature:
     regex: ^feature[/-]
-    mode: ContinuousDelivery
+    mode: ContinuousDeployment
     tag: feature-{BranchName}
     increment: Minor
     source-branches:
@@ -21,7 +21,7 @@ branches:
     is-mainline: false
   pull-request:
     regex: ^(pull|pull\-requests|pr)[/-]
-    mode: ContinuousDelivery
+    mode: ContinuousDeployment
     tag: PullRequest
     increment: Inherit
     tag-number-pattern: '[/-](?<number>\d+)'
