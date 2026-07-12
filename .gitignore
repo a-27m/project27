@@ -23,3 +23,6 @@ appsettings.*.local.json
 
 # OS
 .DS_Store
+
+# Default location of the database file
+src/Project27.Server/project27-server.db
