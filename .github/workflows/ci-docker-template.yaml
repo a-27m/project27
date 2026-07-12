@@ -41,7 +41,7 @@ permissions:
 
 jobs:
   setup:
-    name: Setup Configuration
+    name: Configuration
     runs-on: ubuntu-latest
     outputs:
       service-name: ${{ steps.config.outputs.service-name }}
@@ -68,7 +68,7 @@ jobs:
           echo "Image: $IMAGE_NAME"
 
   semver:
-    name: Generate Version
+    name: Version
     if: github.ref == 'refs/heads/main'
     needs: [setup]
     uses: ./.github/workflows/semver-tag.yaml
@@ -78,7 +78,7 @@ jobs:
       service-name: ${{ needs.setup.outputs.service-name }}
 
   build-docker:
-    name: Build and Push Docker Image
+    name: Docker Build
     if: github.ref == 'refs/heads/main'
     needs: [setup, semver]
     uses: ./.github/workflows/build-docker.yaml

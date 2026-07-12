@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   lint:
-    name: Lint Helm Chart
+    name: Lint
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -24,11 +24,10 @@ jobs:
           version: '4.2.3'
 
       - name: Lint chart
-        run: |
-          helm lint charts/project27
+        run: helm lint charts/project27
 
   checkov:
-    name: Security Scan with Checkov
+    name: Checkov
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -49,7 +48,7 @@ jobs:
           echo "Rendered manifests:"
           wc -l /tmp/rendered-manifests.yaml
 
-      - name: Run Checkov
+      - name: Checkov
         uses: bridgecrewio/checkov-action@master
         with:
           file: /tmp/rendered-manifests.yaml
@@ -58,14 +57,14 @@ jobs:
           output_format: cli
 
   semver:
-    name: Generate Version
+    name: Version
     if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/semver-tag.yaml
     with:
       service-name: project27-chart
 
   package-publish:
-    name: Package and Publish Chart
+    name: Publish
     if: github.ref == 'refs/heads/main'
     needs: [lint, checkov, semver]
     runs-on: ubuntu-latest
@@ -80,7 +79,7 @@ jobs:
         with:
           version: '4.2.3'
 
-      - name: Package Helm chart
+      - name: Package chart
         run: |
           helm package charts/project27 --destination /tmp/ \
             --version "${{ needs.semver.outputs.version }}" \

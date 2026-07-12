@@ -10,7 +10,7 @@ branches:
     track-merge-target: false
     source-branches: []
     is-mainline: true
-    is-release-branch: false
+    is-release-branch: true
   feature:
     regex: ^feature[/-]
     mode: ContinuousDelivery

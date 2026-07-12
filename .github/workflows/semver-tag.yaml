@@ -42,25 +42,18 @@ jobs:
         with:
           fetch-depth: 0  # Required for GitVersion
 
-      - name: Install GitVersion
+      - name: Set up GitVersion
         uses: gittools/actions/gitversion/setup@v4.7.0
         with:
           versionSpec: '6.x'
 
-      - name: Setup GitVersion config with fallback
-        id: setup-config
-        run: |
-          echo "Using service repo GitVersion config"
-          echo "config-path=.github/GitVersion.yaml" >> $GITHUB_OUTPUT
-
-      - name: Determine Version
+      - name: Determine version
         id: gitversion
         uses: gittools/actions/gitversion/execute@v4.7.0
         with:
-          useConfigFile: true
-          configFilePath: ${{ steps.setup-config.outputs.config-path }}
+          configFilePath: .github/GitVersion.yaml
 
-      - name: Display Version
+      - name: Display version info
         run: |
           echo "SemVer: ${{ steps.gitversion.outputs.semVer }}"
           echo "Major: ${{ steps.gitversion.outputs.major }}"
