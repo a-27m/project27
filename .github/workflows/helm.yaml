@@ -79,6 +79,10 @@ jobs:
         with:
           version: '4.2.3'
 
+      - name: Update Chart version
+        run: |
+          yq -i '.version = "${{ needs.semver.outputs.version }}" | .appVersion = "${{ needs.semver.outputs.version }}"' charts/project27/Chart.yaml
+
       - name: Package chart
         run: |
           helm package charts/project27 --destination /tmp/ \
