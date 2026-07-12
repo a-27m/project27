@@ -254,3 +254,10 @@ export interface TaskDriver {
   date: string | null
   predecessorUid: number | null
 }
+
+export interface SnapshotInfo {
+  version: number
+  savedBy: string
+  savedAt: string
+  label: string | null
+}

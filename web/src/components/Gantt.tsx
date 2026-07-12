@@ -20,7 +20,7 @@ interface Props {
   rowHeight: number
   window_: RowWindow
   editable: boolean
-  selectedUid: number | null
+  selectedUids: ReadonlySet<number>
   onSelect: (uid: number | null) => void
   onCommands: (commands: Command[]) => void
 }
@@ -35,7 +35,7 @@ export function Gantt({
   rowHeight,
   window_,
   editable,
-  selectedUid,
+  selectedUids,
   onSelect,
   onCommands,
 }: Props) {
@@ -84,7 +84,7 @@ export function Gantt({
     if (drag.kind === 'bar') {
       const result = endBarDrag(drag)
       if (result === null) {
-        onSelect(drag.uid === selectedUid ? null : drag.uid)
+        onSelect(selectedUids.has(drag.uid) && selectedUids.size === 1 ? null : drag.uid)
         return
       }
       const day = dayAt(scale, result.newBarStartX)
@@ -164,10 +164,10 @@ export function Gantt({
       {/* bars */}
       {visible.map((task) => {
         const index = indexByUid.get(task.uid)!
-        if (task.start === null || task.finish === null) return null
+        if (task.start === null || task.finish === null || task.name === '') return null
         const dragging = drag?.kind === 'bar' && drag.uid === task.uid
         const shift = dragging ? drag.currentX - drag.originX : 0
-        const selected = task.uid === selectedUid
+        const selected = selectedUids.has(task.uid)
 
         if (task.milestone) {
           const x = xOf(scale, fromWireDate(task.finish)) + shift
@@ -194,7 +194,7 @@ export function Gantt({
               key={task.uid}
               d={summaryPath(x, y, width, barHeight)}
               className={'gantt-summary' + (selected ? ' selected' : '')}
-              onClick={() => onSelect(task.uid === selectedUid ? null : task.uid)}
+              onClick={() => onSelect(selectedUids.has(task.uid) && selectedUids.size === 1 ? null : task.uid)}
             >
               <title>{task.name}</title>
             </path>
@@ -216,6 +216,7 @@ export function Gantt({
                   (task.critical ? ' critical' : '') +
                   (selected ? ' selected' : '') +
                   (task.active ? '' : ' inactive') +
+                  (task.mode === 'manual' ? ' manual' : '') +
                   (editable && task.mode === 'auto' ? ' draggable' : '')
                 }
                 onPointerDown={(event) => beginBar(task, event)}

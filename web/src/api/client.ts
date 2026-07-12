@@ -1,4 +1,4 @@
-import type { Checkout, Command, CommandsResponse, Me, ProjectEvent, ProjectInfo, Schedule, TaskDriver, Usage, ViewResult } from './types'
+import type { Checkout, Command, CommandsResponse, Me, ProjectEvent, ProjectInfo, Schedule, SnapshotInfo, TaskDriver, Usage, ViewResult } from './types'
 
 export interface Credentials {
   /** Server base URL; empty string = same origin (Vite dev proxy). */
@@ -72,6 +72,36 @@ export class ApiClient {
     return this.request('GET', `/api/projects/${id}/usage?granularity=${granularity}`)
   }
 
+  history(id: string): Promise<SnapshotInfo[]> {
+    return this.request('GET', `/api/projects/${id}/history`)
+  }
+
+  labelVersion(id: string, label: string, version?: number): Promise<void> {
+    return this.request('POST', `/api/projects/${id}/label`, { label, version: version ?? null })
+  }
+
+  revert(id: string, version: number, label?: string): Promise<CommandsResponse> {
+    return this.request('POST', `/api/projects/${id}/revert`, { version, label: label ?? null })
+  }
+
+  importMspdi(xml: string): Promise<ProjectInfo> {
+    return this.request('POST', '/api/projects/import/mspdi', undefined, xml)
+  }
+
+  /** Fetches a binary/text endpoint with auth and triggers a browser download. */
+  async download(path: string, fallbackName: string): Promise<void> {
+    const response = await fetch(this.credentials.serverUrl + path, { headers: this.headers() })
+    if (!response.ok) throw new ApiError(response.status, await problemDetail(response))
+    const blob = await response.blob()
+    const disposition = response.headers.get('Content-Disposition') ?? ''
+    const match = /filename="?([^";]+)"?/.exec(disposition)
+    const anchor = document.createElement('a')
+    anchor.href = URL.createObjectURL(blob)
+    anchor.download = match?.[1] ?? fallbackName
+    anchor.click()
+    setTimeout(() => URL.revokeObjectURL(anchor.href), 60_000)
+  }
+
   checkout(id: string): Promise<Checkout> {
     return this.request('POST', `/api/projects/${id}/checkout`)
   }
@@ -124,15 +154,16 @@ export class ApiClient {
     return headers
   }
 
-  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  private async request<T>(method: string, path: string, body?: unknown, rawBody?: string): Promise<T> {
     const headers = this.headers()
     if (body !== undefined) headers['Content-Type'] = 'application/json'
+    if (rawBody !== undefined) headers['Content-Type'] = 'application/xml'
     let response: Response
     try {
       response = await fetch(this.credentials.serverUrl + path, {
         method,
         headers,
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body: rawBody ?? (body === undefined ? undefined : JSON.stringify(body)),
       })
     } catch (error) {
       throw new ApiError(0, `cannot reach the server: ${error instanceof Error ? error.message : String(error)}`)

@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import type { Command, ScheduleProject } from '../api/types'
+import { useEffect, useState } from 'react'
+import type { ApiClient } from '../api/client'
+import type { Command, ScheduleProject, SnapshotInfo } from '../api/types'
 
 // Custom-field and calendar management dialogs + the recurring-task dialog (12p-4).
 
@@ -280,6 +281,91 @@ export function RecurringTaskDialog({
           Create
         </button>
       </div>
+    </Modal>
+  )
+}
+
+export function HistoryDialog({
+  client,
+  projectId,
+  editable,
+  onReverted,
+  onClose,
+}: {
+  client: ApiClient
+  projectId: string
+  editable: boolean
+  onReverted: () => void
+  onClose: () => void
+}) {
+  const [history, setHistory] = useState<SnapshotInfo[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    client
+      .history(projectId)
+      .then((result) => {
+        if (!cancelled) setHistory(result)
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [client, projectId])
+
+  return (
+    <Modal label="Version history" onClose={onClose}>
+      {error !== null && <p className="error">{error}</p>}
+      {history === null ? (
+        <p className="muted">Loading…</p>
+      ) : (
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Version</th>
+              <th>Label</th>
+              <th>By</th>
+              <th>When</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {history.map((snapshot, index) => (
+              <tr key={snapshot.version}>
+                <td>
+                  v{snapshot.version}
+                  {index === 0 ? ' (current)' : ''}
+                </td>
+                <td>{snapshot.label ?? ''}</td>
+                <td>{snapshot.savedBy}</td>
+                <td>{snapshot.savedAt.slice(0, 16).replace('T', ' ')}</td>
+                <td>
+                  {editable && index > 0 && (
+                    <button
+                      onClick={() => {
+                        if (!window.confirm(`Revert the plan to v${snapshot.version}? The current state stays in history.`)) return
+                        client
+                          .revert(projectId, snapshot.version)
+                          .then(() => {
+                            onReverted()
+                            onClose()
+                          })
+                          .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
+                      }}
+                    >
+                      Revert to this
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {!editable && <p className="muted">Check the project out to revert.</p>}
     </Modal>
   )
 }

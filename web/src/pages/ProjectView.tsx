@@ -3,7 +3,7 @@ import type { ApiClient } from '../api/client'
 import type { Command, ProjectInfo, Schedule } from '../api/types'
 import { Gantt } from '../components/Gantt'
 import { NetworkView } from '../components/NetworkView'
-import { CalendarManager, CustomFieldsManager, RecurringTaskDialog } from '../components/Managers'
+import { CalendarManager, CustomFieldsManager, HistoryDialog, RecurringTaskDialog } from '../components/Managers'
 import { ProjectSettings } from '../components/ProjectSettings'
 import { TableView } from '../components/TableView'
 import { ResourcesView } from '../components/ResourcesView'
@@ -11,14 +11,21 @@ import { TaskInspector } from '../components/TaskInspector'
 import { TaskSheet } from '../components/TaskSheet'
 import { TimelineView } from '../components/TimelineView'
 import { UsageView } from '../components/UsageView'
-import { SHEET_COLUMNS, SHEET_WIDTH } from '../components/sheetColumns'
+import {
+  AVAILABLE_COLUMNS,
+  columnsFor,
+  loadColumnKeys,
+  saveColumnKeys,
+  sheetWidth,
+} from '../components/sheetColumns'
 import { durationDays, fromWireDate } from '../lib/format'
+import { pruneNested, rangeBetween, siblingMove } from '../lib/outline'
 import { makeScale, ticks, monthTicks } from '../lib/timescale'
 import { windowRange } from '../lib/virtualize'
 
 const ROW_HEIGHT = 28
-const PX_PER_DAY = 24
 const HEADER_HEIGHT = 40
+const ZOOM_LEVELS = [6, 10, 16, 24, 36, 56] as const
 
 interface Props {
   client: ApiClient
@@ -27,17 +34,22 @@ interface Props {
   onBack: () => void
 }
 
+type ViewMode = 'gantt' | 'table' | 'network' | 'timeline' | 'usage' | 'resources'
+type Dialog = 'fields' | 'calendars' | 'recurring' | 'history' | 'columns' | 'settings' | null
+
 export function ProjectView({ client, projectId, userId, onBack }: Props) {
   const [schedule, setSchedule] = useState<Schedule | null>(null)
   const [info, setInfo] = useState<ProjectInfo | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [selectedUid, setSelectedUid] = useState<number | null>(null)
+  const [selectedUids, setSelectedUids] = useState<ReadonlySet<number>>(new Set())
+  const [anchorUid, setAnchorUid] = useState<number | null>(null)
   const [scrollTop, setScrollTop] = useState(0)
   const [viewportHeight, setViewportHeight] = useState(600)
-  const [splitX, setSplitX] = useState(Math.min(SHEET_WIDTH + 12, 560))
-  const [viewMode, setViewMode] = useState<'gantt' | 'table' | 'network' | 'timeline' | 'usage' | 'resources'>('gantt')
-  const [showSettings, setShowSettings] = useState(false)
-  const [dialog, setDialog] = useState<'fields' | 'calendars' | 'recurring' | null>(null)
+  const [splitX, setSplitX] = useState(620)
+  const [viewMode, setViewMode] = useState<ViewMode>('gantt')
+  const [dialog, setDialog] = useState<Dialog>(null)
+  const [zoomIndex, setZoomIndex] = useState(3) // 24 px/day
+  const [columnKeys, setColumnKeys] = useState<string[]>(loadColumnKeys)
   const [undoStack, setUndoStack] = useState<Command[][]>([])
   const [redoStack, setRedoStack] = useState<Command[][]>([])
   const scrollerRef = useRef<HTMLDivElement>(null)
@@ -126,20 +138,6 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
     })
   }, [post])
 
-  // Keyboard undo/redo while holding the lock.
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'z') return
-      const target = event.target as HTMLElement | null
-      if (target !== null && (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA')) return
-      event.preventDefault()
-      if (event.shiftKey) redo()
-      else undo()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [undo, redo])
-
   async function checkout() {
     try {
       await client.checkout(projectId)
@@ -153,6 +151,10 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
 
   async function checkin() {
     try {
+      const label = window.prompt('Name this revision (optional):', '')
+      if (label !== null && label.trim() !== '') {
+        await client.labelVersion(projectId, label.trim())
+      }
       await client.unlock(projectId)
       setUndoStack([])
       setRedoStack([])
@@ -166,26 +168,170 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
   const indexByUid = useMemo(() => new Map(tasks.map((task, index) => [task.uid, index])), [tasks])
   const rowByUid = useMemo(() => new Map(tasks.map((task) => [task.uid, task.row])), [tasks])
   const window_ = windowRange(scrollTop, viewportHeight, ROW_HEIGHT, tasks.length)
+  const columns = useMemo(() => columnsFor(columnKeys), [columnKeys])
+  const columnContext = useMemo(
+    () => ({ minutesPerDay: schedule?.project.minutesPerDay ?? 480, rowByUid }),
+    [schedule, rowByUid],
+  )
 
+  const pxPerDay = ZOOM_LEVELS[zoomIndex]
   const scale = useMemo(() => {
-    if (schedule === null) return makeScale(new Date(), new Date(), PX_PER_DAY)
+    if (schedule === null) return makeScale(new Date(), new Date(), pxPerDay)
     const start = fromWireDate(schedule.project.start)
     const finish = schedule.project.finish !== null ? fromWireDate(schedule.project.finish) : start
-    return makeScale(start, finish, PX_PER_DAY)
-  }, [schedule])
+    return makeScale(start, finish, pxPerDay)
+  }, [schedule, pxPerDay])
 
-  const selected = selectedUid !== null ? (tasks[indexByUid.get(selectedUid) ?? -1] ?? null) : null
+  // Selection: click = single; Ctrl/Cmd = toggle; Shift = range from the anchor.
+  const selectTask = useCallback(
+    (uid: number | null, modifiers?: { toggle: boolean; range: boolean }) => {
+      if (uid === null) {
+        setSelectedUids(new Set())
+        setAnchorUid(null)
+        return
+      }
+      setSelectedUids((current) => {
+        if (modifiers?.range && anchorUid !== null) {
+          return new Set(rangeBetween(tasks, anchorUid, uid))
+        }
+        if (modifiers?.toggle) {
+          const next = new Set(current)
+          if (next.has(uid)) next.delete(uid)
+          else next.add(uid)
+          return next
+        }
+        return new Set([uid])
+      })
+      if (!modifiers?.range) setAnchorUid(uid)
+    },
+    [anchorUid, tasks],
+  )
 
-  function addTask(milestone: boolean) {
-    const name = milestone ? 'New milestone' : 'New task'
-    const command: Command = selected?.summary
-      ? { op: 'addTask', name, parentUid: selected.uid, milestone }
-      : { op: 'addTask', name, milestone }
+  const selected = selectedUids.size === 1 ? (tasks[indexByUid.get([...selectedUids][0]) ?? -1] ?? null) : null
+  const selectionRoots = useMemo(() => pruneNested(tasks, selectedUids), [tasks, selectedUids])
+  const selectedLeaves = useMemo(
+    () => [...selectedUids].filter((uid) => tasks[indexByUid.get(uid) ?? -1]?.summary === false),
+    [selectedUids, tasks, indexByUid],
+  )
+
+  function addTask(kind: 'task' | 'milestone' | 'blank') {
+    const command: Command = {
+      op: 'addTask',
+      name: kind === 'blank' ? '' : kind === 'milestone' ? 'New milestone' : 'New task',
+      ...(kind === 'milestone' ? { milestone: true } : {}),
+      ...(kind === 'blank' ? { duration: '0d' } : {}),
+      ...(selected?.summary ? { parentUid: selected.uid } : {}),
+    }
     void sendCommands([command])
   }
 
+  function forSelection(op: 'indentTask' | 'outdentTask'): void {
+    if (selectionRoots.length === 0) return
+    void sendCommands(selectionRoots.map((uid) => ({ op, uid })))
+  }
+
+  function deleteSelection(): void {
+    if (selectionRoots.length === 0) return
+    const label = selectionRoots.length === 1
+      ? `'${tasks[indexByUid.get(selectionRoots[0]) ?? -1]?.name ?? ''}'`
+      : `${selectionRoots.length} tasks`
+    if (!window.confirm(`Delete ${label} (including subtasks)?`)) return
+    selectTask(null)
+    void sendCommands(selectionRoots.map((uid) => ({ op: 'removeTask', uid })))
+  }
+
+  function moveSelection(direction: 'up' | 'down'): void {
+    if (selected === null) return
+    const move = siblingMove(tasks, selected.uid, direction)
+    if (move !== null) void sendCommands([{ op: 'moveTask', ...move }])
+  }
+
+  function setPercent(percent: number): void {
+    if (selectedLeaves.length === 0) return
+    void sendCommands(selectedLeaves.map((uid) => ({ op: 'setTask', uid, percentComplete: percent })))
+  }
+
+  function assignToSelection(resource: string): void {
+    const targets = selectedLeaves.filter(
+      (uid) => !tasks[indexByUid.get(uid) ?? -1]?.assignments.some((a) => a.resource === resource),
+    )
+    if (targets.length > 0) {
+      void sendCommands(targets.map((uid) => ({ op: 'assign', uid, resource })))
+    }
+  }
+
+  // Keyboard: navigation and editing shortcuts (outside form fields).
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null
+      if (target !== null && ['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName)) return
+
+      const meta = event.metaKey || event.ctrlKey
+      if (meta && event.key.toLowerCase() === 'z') {
+        event.preventDefault()
+        if (event.shiftKey) redo()
+        else undo()
+        return
+      }
+
+      if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+        event.preventDefault()
+        if (meta && editable) {
+          moveSelection(event.key === 'ArrowUp' ? 'up' : 'down')
+          return
+        }
+        const currentIndex = anchorUid !== null ? (indexByUid.get(anchorUid) ?? -1) : -1
+        const nextIndex = event.key === 'ArrowUp'
+          ? (currentIndex <= 0 ? 0 : currentIndex - 1)
+          : Math.min(tasks.length - 1, currentIndex + 1)
+        const next = tasks[nextIndex]
+        if (next !== undefined) selectTask(next.uid, { toggle: false, range: event.shiftKey })
+        return
+      }
+
+      if (editable && event.altKey && event.shiftKey && (event.key === 'ArrowRight' || event.key === 'ArrowLeft')) {
+        event.preventDefault()
+        forSelection(event.key === 'ArrowRight' ? 'indentTask' : 'outdentTask')
+        return
+      }
+
+      if (editable && (event.key === 'Delete' || (event.key === 'Backspace' && meta))) {
+        event.preventDefault()
+        deleteSelection()
+        return
+      }
+
+      if (event.key === 'Escape') {
+        selectTask(null)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  })
+
+  function download(kind: 'p27' | 'mspdi') {
+    const path = kind === 'p27' ? `/api/projects/${projectId}/file` : `/api/projects/${projectId}/export/mspdi`
+    void client
+      .download(path, kind === 'p27' ? 'project.p27' : 'project.xml')
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
+  }
+
+  function openReport(name: string) {
+    void client
+      .reportHtml(projectId, name)
+      .then((html) => {
+        const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }))
+        window.open(url, '_blank', 'noopener')
+        setTimeout(() => URL.revokeObjectURL(url), 60_000)
+      })
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
+  }
+
+  const gridWidth = sheetWidth(columns)
+
   return (
     <div className="project-view">
+      {/* Row 1: identity, view switch, session */}
       <div className="toolbar">
         <button onClick={onBack}>← Projects</button>
         <h2>{schedule?.project.name ?? '…'}</h2>
@@ -195,140 +341,172 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
         </span>
         <nav className="view-switch" aria-label="View">
           {(['gantt', 'table', 'network', 'timeline', 'usage', 'resources'] as const).map((mode) => (
-            <button
-              key={mode}
-              className={viewMode === mode ? 'active' : ''}
-              onClick={() => setViewMode(mode)}
-            >
+            <button key={mode} className={viewMode === mode ? 'active' : ''} onClick={() => setViewMode(mode)}>
               {mode.charAt(0).toUpperCase() + mode.slice(1)}
             </button>
           ))}
         </nav>
-        {editable ? (
-          <>
-          <button className="primary" onClick={() => void checkin()}>
-              Check in
-            </button>
-          </>
-
-          ) : (
-            (info?.role === 'editor' || info?.role === 'owner') && (
-            <button className="primary" onClick={() => void checkout()}>
-              Checkout to edit
-            </button>
-            )
-          )
-        }
-        </div>
-        <div className="toolbar">
-        {editable && (
-          <select
-            className="report-menu"
-            aria-label="Plan actions"
-            value=""
-            onChange={(event) => {
-              const action = event.target.value
-              event.target.value = ''
-              if (action === 'baseline') void sendCommands([{ op: 'setBaseline' }])
-              else if (action === 'clearBaseline') void sendCommands([{ op: 'clearBaseline' }])
-              else if (action === 'level') void sendCommands([{ op: 'level' }])
-              else if (action === 'clearLeveling') void sendCommands([{ op: 'clearLeveling' }])
-              else if (action === 'reschedule') void sendCommands([{ op: 'reschedule' }])
-            }}
-          >
-            <option value="">Plan…</option>
-            <option value="baseline">Set baseline</option>
-            <option value="clearBaseline">Clear baseline</option>
-            <option value="level">Level resources</option>
-            <option value="clearLeveling">Clear leveling</option>
-            <option value="reschedule">Reschedule uncompleted work</option>
-          </select>
-        )}
-        <button onClick={() => setShowSettings(true)}>Settings</button>
-        <select
-          className="report-menu"
-          aria-label="Manage"
-          value=""
-          onChange={(event) => {
-            const choice = event.target.value
-            event.target.value = ''
-            if (choice === 'fields' || choice === 'calendars' || choice === 'recurring') setDialog(choice)
-          }}
-        >
-          <option value="">Manage…</option>
-          <option value="fields">Custom fields</option>
-          <option value="calendars">Calendars</option>
-          <option value="recurring">Add recurring task</option>
-        </select>
-        <select
-          className="report-menu"
-          aria-label="Reports"
-          value=""
-          onChange={(event) => {
-            const name = event.target.value
-            if (name === '') return
-            event.target.value = ''
-            void client
-              .reportHtml(projectId, name)
-              .then((html) => {
-                const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }))
-                window.open(url, '_blank', 'noopener')
-                setTimeout(() => URL.revokeObjectURL(url), 60_000)
-              })
-              .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
-          }}
-        >
-          <option value="">Reports…</option>
-          <option value="overview">Project overview</option>
-          <option value="critical">Critical tasks</option>
-          <option value="late">Late tasks</option>
-          <option value="resources">Resource overview</option>
-          <option value="costs">Cost overview</option>
-          <option value="upcoming">Upcoming tasks</option>
-        </select>
         <span className="spacer" />
-        {error !== null && <span className="error" role="alert">{error}</span>}
         {info !== null && !holdsLock && info.lock !== null && (
           <span className="lock-banner">checked out by {info.lock.userId}</span>
         )}
         {editable ? (
-          <>
-            <button onClick={undo} disabled={undoStack.length === 0} aria-label="Undo" title="Undo (Ctrl+Z)">
-              ↶
-            </button>
-            <button onClick={redo} disabled={redoStack.length === 0} aria-label="Redo" title="Redo (Ctrl+Shift+Z)">
-              ↷
-            </button>
-            <button onClick={() => addTask(false)}>+ Task</button>
-            <button onClick={() => addTask(true)}>+ Milestone</button>
-            <button
-              disabled={selected === null}
-              onClick={() => selected !== null && void sendCommands([{ op: 'indentTask', uid: selected.uid }])}
-            >
-              Indent
-            </button>
-            <button
-              disabled={selected === null}
-              onClick={() => selected !== null && void sendCommands([{ op: 'outdentTask', uid: selected.uid }])}
-            >
-              Outdent
-            </button>
-            <button
-              className="danger"
-              disabled={selected === null}
-              onClick={() => {
-                if (selected !== null && window.confirm(`Delete '${selected.name}' and its subtasks?`)) {
-                  setSelectedUid(null)
-                  void sendCommands([{ op: 'removeTask', uid: selected.uid }])
-                }
-              }}
-            >
-              Delete
-            </button>
-          </>
+          <button className="primary" onClick={() => void checkin()}>
+            Check in
+          </button>
         ) : (
-          <></>
+          (info?.role === 'editor' || info?.role === 'owner') && (
+            <button className="primary" onClick={() => void checkout()}>
+              Checkout to edit
+            </button>
+          )
         )}
+      </div>
+
+      {/* Row 2: editing tools (left) and project-wide actions (right) */}
+      <div className="toolbar secondary">
+        {editable && (
+          <>
+            <span className="tool-group">
+              <button onClick={undo} disabled={undoStack.length === 0} aria-label="Undo" title="Undo (Ctrl+Z)">
+                ↶
+              </button>
+              <button onClick={redo} disabled={redoStack.length === 0} aria-label="Redo" title="Redo (Ctrl+Shift+Z)">
+                ↷
+              </button>
+            </span>
+            <span className="tool-group">
+              <button onClick={() => addTask('task')}>+ Task</button>
+              <button onClick={() => addTask('milestone')}>+ Milestone</button>
+              <button onClick={() => addTask('blank')} title="Insert a blank spacer row">
+                + Blank
+              </button>
+            </span>
+            <span className="tool-group">
+              <button
+                disabled={selectionRoots.length === 0}
+                onClick={() => forSelection('indentTask')}
+                title="Indent (Alt+Shift+→)"
+              >
+                ⇥
+              </button>
+              <button
+                disabled={selectionRoots.length === 0}
+                onClick={() => forSelection('outdentTask')}
+                title="Outdent (Alt+Shift+←)"
+              >
+                ⇤
+              </button>
+              <button disabled={selected === null} onClick={() => moveSelection('up')} title="Move up (Ctrl+↑)">
+                ↑
+              </button>
+              <button disabled={selected === null} onClick={() => moveSelection('down')} title="Move down (Ctrl+↓)">
+                ↓
+              </button>
+              <button className="danger" disabled={selectionRoots.length === 0} onClick={deleteSelection} title="Delete (Del)">
+                ✕
+              </button>
+            </span>
+            <span className="tool-group" role="group" aria-label="Set percent complete">
+              {[0, 25, 50, 75, 100].map((percent) => (
+                <button key={percent} disabled={selectedLeaves.length === 0} onClick={() => setPercent(percent)}>
+                  {percent}%
+                </button>
+              ))}
+            </span>
+            {selectedLeaves.length > 0 && (schedule?.project.resources.length ?? 0) > 0 && (
+              <select
+                className="menu"
+                aria-label="Assign resource to selection"
+                value=""
+                onChange={(event) => {
+                  const resource = event.target.value
+                  event.target.value = ''
+                  if (resource !== '') assignToSelection(resource)
+                }}
+              >
+                <option value="">Assign to {selectedLeaves.length} selected…</option>
+                {schedule?.project.resources.map((resource) => (
+                  <option key={resource.uid} value={resource.name}>
+                    {resource.name}
+                  </option>
+                ))}
+              </select>
+            )}
+            <Menu
+              label="Plan…"
+              options={[
+                ['baseline', 'Set baseline'],
+                ['clearBaseline', 'Clear baseline'],
+                ['level', 'Level resources'],
+                ['clearLeveling', 'Clear leveling'],
+                ['reschedule', 'Reschedule uncompleted work'],
+              ]}
+              onPick={(action) => {
+                const ops: Record<string, Command> = {
+                  baseline: { op: 'setBaseline' },
+                  clearBaseline: { op: 'clearBaseline' },
+                  level: { op: 'level' },
+                  clearLeveling: { op: 'clearLeveling' },
+                  reschedule: { op: 'reschedule' },
+                }
+                void sendCommands([ops[action]])
+              }}
+            />
+          </>
+        )}
+        <span className="spacer" />
+        {error !== null && (
+          <span className="error" role="alert">
+            {error}
+          </span>
+        )}
+        {viewMode === 'gantt' && (
+          <span className="tool-group" role="group" aria-label="Zoom">
+            <button onClick={() => setZoomIndex((z) => Math.max(0, z - 1))} disabled={zoomIndex === 0} title="Zoom out">
+              −
+            </button>
+            <button
+              onClick={() => setZoomIndex((z) => Math.min(ZOOM_LEVELS.length - 1, z + 1))}
+              disabled={zoomIndex === ZOOM_LEVELS.length - 1}
+              title="Zoom in"
+            >
+              +
+            </button>
+            <button onClick={() => setDialog('columns')}>Columns</button>
+          </span>
+        )}
+        <Menu
+          label="Manage…"
+          options={[
+            ['fields', 'Custom fields'],
+            ['calendars', 'Calendars'],
+            ['recurring', 'Add recurring task'],
+          ]}
+          onPick={(choice) => setDialog(choice as Dialog)}
+        />
+        <Menu
+          label="Reports…"
+          options={[
+            ['overview', 'Project overview'],
+            ['critical', 'Critical tasks'],
+            ['late', 'Late tasks'],
+            ['resources', 'Resource overview'],
+            ['costs', 'Cost overview'],
+            ['upcoming', 'Upcoming tasks'],
+          ]}
+          onPick={openReport}
+        />
+        <Menu
+          label="Download…"
+          options={[
+            ['p27', 'Project file (.p27)'],
+            ['mspdi', 'MS Project XML'],
+          ]}
+          onPick={(kind) => download(kind as 'p27' | 'mspdi')}
+        />
+        <button onClick={() => setDialog('history')}>History</button>
+        <button onClick={() => setDialog('settings')}>Settings</button>
       </div>
 
       {viewMode === 'network' && (
@@ -336,8 +514,8 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
           <NetworkView
             tasks={tasks}
             minutesPerDay={schedule?.project.minutesPerDay ?? 480}
-            selectedUid={selectedUid}
-            onSelect={setSelectedUid}
+            selectedUid={selected?.uid ?? null}
+            onSelect={(uid) => selectTask(uid)}
           />
         </div>
       )}
@@ -347,8 +525,8 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
             tasks={tasks}
             projectStart={schedule.project.start}
             projectFinish={schedule.project.finish}
-            selectedUid={selectedUid}
-            onSelect={setSelectedUid}
+            selectedUid={selected?.uid ?? null}
+            onSelect={(uid) => selectTask(uid)}
           />
         </div>
       )}
@@ -380,8 +558,8 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
           ref={scrollerRef}
           onScroll={(event) => syncScroll(event.currentTarget, ganttScrollRef.current, setScrollTop)}
         >
-          <div className="sheet-header" style={{ width: SHEET_WIDTH, height: HEADER_HEIGHT }}>
-            {SHEET_COLUMNS.map((column) => (
+          <div className="sheet-header" style={{ width: gridWidth, height: HEADER_HEIGHT }}>
+            {columns.map((column) => (
               <span key={column.key} className="cell header" style={{ width: column.width }}>
                 {column.label}
               </span>
@@ -389,17 +567,17 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
           </div>
           <TaskSheet
             tasks={tasks}
-            rowByUid={rowByUid}
-            minutesPerDay={schedule?.project.minutesPerDay ?? 480}
+            columns={columns}
+            context={columnContext}
             rowHeight={ROW_HEIGHT}
             window_={window_}
             editable={editable}
-            selectedUid={selectedUid}
-            onSelect={setSelectedUid}
+            selectedUids={selectedUids}
+            onSelect={(uid, modifiers) => selectTask(uid, modifiers)}
             onCommands={(commands) => void sendCommands(commands)}
           />
         </div>
-        <Splitter onMove={(dx) => setSplitX((x) => Math.max(160, Math.min(1000, x + dx)))} />
+        <Splitter onMove={(dx) => setSplitX((x) => Math.max(160, Math.min(1100, x + dx)))} />
         <div
           className="pane"
           ref={ganttScrollRef}
@@ -435,8 +613,8 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
             rowHeight={ROW_HEIGHT}
             window_={window_}
             editable={editable}
-            selectedUid={selectedUid}
-            onSelect={setSelectedUid}
+            selectedUids={selectedUids}
+            onSelect={(uid) => selectTask(uid)}
             onCommands={(commands) => void sendCommands(commands)}
           />
         </div>
@@ -465,12 +643,31 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
           onClose={() => setDialog(null)}
         />
       )}
-      {showSettings && schedule !== null && (
+      {dialog === 'history' && (
+        <HistoryDialog
+          client={client}
+          projectId={projectId}
+          editable={editable}
+          onReverted={() => void refresh()}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog === 'columns' && (
+        <ColumnsDialog
+          columnKeys={columnKeys}
+          onChange={(keys) => {
+            setColumnKeys(keys)
+            saveColumnKeys(keys)
+          }}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog === 'settings' && schedule !== null && (
         <ProjectSettings
           project={schedule.project}
           editable={editable}
           onCommands={(commands) => void sendCommands(commands)}
-          onClose={() => setShowSettings(false)}
+          onClose={() => setDialog(null)}
         />
       )}
       {selected !== null && schedule !== null && (
@@ -482,19 +679,101 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
           client={client}
           projectId={projectId}
           onCommands={(commands) => void sendCommands(commands)}
-          onClose={() => setSelectedUid(null)}
+          onClose={() => selectTask(null)}
         />
       )}
     </div>
   )
 }
 
+/** A native-select styled as a menu button; resets after each pick. */
+function Menu({
+  label,
+  options,
+  onPick,
+}: {
+  label: string
+  options: [string, string][]
+  onPick: (value: string) => void
+}) {
+  return (
+    <select
+      className="menu"
+      aria-label={label.replace('…', '')}
+      value=""
+      onChange={(event) => {
+        const value = event.target.value
+        event.target.value = ''
+        if (value !== '') onPick(value)
+      }}
+    >
+      <option value="">{label}</option>
+      {options.map(([value, text]) => (
+        <option key={value} value={value}>
+          {text}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+function ColumnsDialog({
+  columnKeys,
+  onChange,
+  onClose,
+}: {
+  columnKeys: string[]
+  onChange: (keys: string[]) => void
+  onClose: () => void
+}) {
+  return (
+    <div
+      className="modal-backdrop"
+      role="presentation"
+      onClick={onClose}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') onClose()
+      }}
+    >
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Sheet columns"
+        tabIndex={-1}
+        ref={(element) => element?.focus()}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <h3>Sheet columns</h3>
+        <div className="checks column-checks">
+          {AVAILABLE_COLUMNS.map((column) => (
+            <label key={column.key}>
+              <input
+                type="checkbox"
+                checked={columnKeys.includes(column.key)}
+                disabled={column.key === 'name'}
+                onChange={(event) =>
+                  onChange(
+                    event.target.checked
+                      ? AVAILABLE_COLUMNS.filter((c) => columnKeys.includes(c.key) || c.key === column.key).map((c) => c.key)
+                      : columnKeys.filter((key) => key !== column.key),
+                  )
+                }
+              />
+              {column.key === 'mode' ? 'Mode (manual ✋)' : column.label}
+            </label>
+          ))}
+        </div>
+        <div className="modal-actions">
+          <button onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /** Mirrors vertical scroll between the sheet and Gantt panes. */
-function syncScroll(
-  source: HTMLDivElement,
-  other: HTMLDivElement | null,
-  setScrollTop: (top: number) => void,
-) {
+function syncScroll(source: HTMLDivElement, other: HTMLDivElement | null, setScrollTop: (top: number) => void) {
   setScrollTop(source.scrollTop)
   if (other !== null && other.scrollTop !== source.scrollTop) {
     other.scrollTop = source.scrollTop
