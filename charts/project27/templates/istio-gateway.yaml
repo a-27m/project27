@@ -1,5 +1,5 @@
 {{- if eq .Values.routing.provider "istio" }}
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: {{ include "project27.fullname" . }}
@@ -9,6 +9,20 @@ spec:
   selector:
     istio: ingressgateway
   servers:
+    # Always present: plain HTTP on 80. When TLS is on, it exists solely to
+    # redirect to HTTPS (no listener at all on 80 would otherwise leave
+    # http://<host> with no route on this Gateway -- whatever the shared
+    # ingress gateway's default vhost does, typically a 404).
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - {{ .Values.routing.host | quote }}
+      {{- if .Values.routing.istio.tls.enabled }}
+      tls:
+        httpsRedirect: true
+      {{- end }}
     {{- if .Values.routing.istio.tls.enabled }}
     - port:
         number: 443
@@ -17,13 +31,6 @@ spec:
       tls:
         mode: SIMPLE
         credentialName: {{ required "routing.istio.tls.credentialName is required when routing.istio.tls.enabled=true" .Values.routing.istio.tls.credentialName }}
-      hosts:
-        - {{ .Values.routing.host | quote }}
-    {{- else }}
-    - port:
-        number: 80
-        name: http
-        protocol: HTTP
       hosts:
         - {{ .Values.routing.host | quote }}
     {{- end }}
