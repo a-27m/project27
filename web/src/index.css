@@ -72,6 +72,20 @@ button.link {
   text-decoration: underline;
 }
 
+.button-like {
+  font: inherit;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.button-like:hover {
+  background: #eef1f4;
+}
+
 input {
   font: inherit;
   padding: 4px 8px;

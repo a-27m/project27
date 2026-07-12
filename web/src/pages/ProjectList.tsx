@@ -12,6 +12,7 @@ export function ProjectList({ client, onOpen }: Props) {
   const [projects, setProjects] = useState<ProjectInfo[] | null>(null)
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [importing, setImporting] = useState(false)
 
   const refresh = useCallback(async () => {
     try {
@@ -38,6 +39,23 @@ export function ProjectList({ client, onOpen }: Props) {
     }
   }
 
+  async function importMspdi(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    setImporting(true)
+    try {
+      const xml = await file.text()
+      const created = await client.importMspdi(xml)
+      setError(null)
+      onOpen(created)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setImporting(false)
+    }
+  }
+
   async function remove(project: ProjectInfo) {
     if (!window.confirm(`Delete project '${project.name}'? This cannot be undone.`)) return
     try {
@@ -61,6 +79,16 @@ export function ProjectList({ client, onOpen }: Props) {
           />
           <button type="submit">Create</button>
         </form>
+        <label className="button-like">
+          {importing ? 'Importing…' : 'Import MSPDI…'}
+          <input
+            type="file"
+            accept=".xml,application/xml"
+            onChange={(event) => void importMspdi(event)}
+            disabled={importing}
+            hidden
+          />
+        </label>
       </div>
       {error !== null && <p className="error">{error}</p>}
       {projects === null ? (
