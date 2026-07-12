@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "project27.fullname" . }}-server
+  labels:
+    {{- include "project27.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  # Fixed at 1 — do not make configurable. Per-project checkout/edit locks and
+  # SSE fan-out live in server in-process memory (docs/architecture.md D6), and
+  # SQLite isn't safe for concurrent multi-process writers. Either constraint
+  # alone rules out replicas > 1.
+  replicas: 1
+  # RollingUpdate would try to schedule a second pod while the first still
+  # holds the ReadWriteOnce PVC, and deadlock. Recreate tears the old pod down
+  # before starting the new one.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "project27.selectorLabels.server" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "project27.selectorLabels.server" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "project27.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.server.podSecurityContext | nindent 8 }}
+      containers:
+        - name: server
+          image: "{{ .Values.image.registry }}/{{ .Values.image.owner }}/project27-server:{{ include "project27.imageTag" . }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.server.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            {{- if .Values.devAuth.enabled }}
+            - name: ASPNETCORE_ENVIRONMENT
+              value: Development
+            - name: Auth__DevAuth
+              value: "true"
+            {{- range $i, $u := .Values.devAuth.users }}
+            - name: Auth__DevUsers__{{ $i }}
+              value: {{ $u | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.auth.authority }}
+            - name: Auth__Authority
+              value: {{ .Values.auth.authority | quote }}
+            {{- else if not .Values.devAuth.enabled }}
+            - name: Auth__Authority
+              value: {{ required "auth.authority is required (OIDC) unless devAuth.enabled=true -- the server refuses to start without one of the two, decision D5." .Values.auth.authority | quote }}
+            {{- end }}
+            {{- if .Values.auth.audience }}
+            - name: Auth__Audience
+              value: {{ .Values.auth.audience | quote }}
+            {{- end }}
+            - name: Locking__StaleAfterMinutes
+              value: {{ .Values.locking.staleAfterMinutes | quote }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          startupProbe:
+            httpGet:
+              path: {{ .Values.server.probes.healthPath }}
+              port: http
+            periodSeconds: {{ .Values.server.probes.startup.periodSeconds }}
+            failureThreshold: {{ .Values.server.probes.startup.failureThreshold }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.server.probes.healthPath }}
+              port: http
+            periodSeconds: {{ .Values.server.probes.liveness.periodSeconds }}
+            failureThreshold: {{ .Values.server.probes.liveness.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.server.probes.healthPath }}
+              port: http
+            periodSeconds: {{ .Values.server.probes.readiness.periodSeconds }}
+            failureThreshold: {{ .Values.server.probes.readiness.failureThreshold }}
+          resources:
+            {{- toYaml .Values.server.resources | nindent 12 }}
+      volumes:
+        - name: data
+          {{- if .Values.server.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.server.persistence.existingClaim | default (printf "%s-server-data" (include "project27.fullname" .)) }}
+          {{- else }}
+          # persistence.enabled=false: ephemeral storage, the SQLite file is
+          # lost on every pod restart. Fine for a quick smoke test, not for
+          # anything you care about.
+          emptyDir: {}
+          {{- end }}

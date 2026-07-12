@@ -177,3 +177,44 @@ Specs: `docs/spec/01…04, 06, 07, 08, 09`. Deviations from MS Project: `docs/sp
   mirror task synced from another server project), (b) master projects as a
   web-side composition view, (c) leave as extension point. Needs a product
   call before implementation.
+
+## Kubernetes deployment (epic, 2026-07-12) essentials
+
+- `charts/project27/` — one flat Helm chart (no subcharts) covering both
+  images CI already builds (`ghcr.io/<owner>/project27-server`,
+  `-web`). Storage is **SQLite only** (Postgres from D1 explicitly deferred);
+  server `replicas` is hardcoded at 1 in `server-deployment.yaml` (not a
+  values knob) — per-project checkout/edit locks + SSE fan-out are in-process
+  (D6), and SQLite has no concurrent-writer story, so replicas > 1 would
+  silently corrupt state rather than degrade. Deployment `strategy.type:
+  Recreate` (RollingUpdate would deadlock two pods on one RWO PVC).
+- Routing is pluggable via `values.routing.provider`: `istio` (Gateway +
+  VirtualService, default — `/api` routed before `/`, `timeout: 0s` +
+  `retries.attempts: 0` on the whole `/api` route since Istio-level retry/
+  timeout on the SSE stream (`GET /projects/{id}/events`) would corrupt or
+  kill it), `ingress` (plain `networking.k8s.io/Ingress`, ingress-nginx
+  annotation defaults, fully overridable for other controllers), or `none`
+  (Services only). Both Service ports are named `http` — Istio silently
+  falls back to opaque TCP (no path routing, no timeout/retry) on unnamed
+  ports, easy to miss.
+- `web-configmap-nginx.yaml` templates the web image's baked-in
+  `nginx.conf` (which hardcodes `proxy_pass http://server:8080`) to the
+  real Helm-computed backend Service name — keeps the web pod's `/api/`
+  proxy working standalone (port-forward, `routing.provider: none`) even
+  though Istio mode normally routes `/api` straight to the backend first.
+- `auth.authority` uses a Helm `required` guard — fails `helm install`
+  immediately instead of a crash-looping pod (D5's startup
+  `InvalidOperationException` otherwise only surfaces via `kubectl logs`).
+- Two small server-side prerequisites this chart depends on: unauthenticated
+  `GET /healthz` (`Program.cs`, `AllowAnonymous()`, outside the
+  `/api`-`RequireAuthorization()` group) for probes, and `USER $APP_UID` in
+  `src/Project27.Server/Dockerfile`'s runtime stage (image ran as root
+  before this) — paired with an explicit `chown` of `/data` in the same
+  Dockerfile stage so the existing docker-compose eval flow keeps working
+  under the new non-root user.
+- Verified: `helm lint`, `helm template` for all three routing modes +
+  `kubectl apply --dry-run=client` (istio CRDs excepted — no CRDs in a
+  plain client-side dry-run without Istio installed), `dotnet build` (0
+  warnings), full `dotnet test` (339 passing, incl. new `HealthzTests`).
+  Not done: a live cluster smoke test (kind/minikube) — no cluster
+  available in this environment; recommended manual follow-up.

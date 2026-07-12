@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "project27.fullname" . }}-web
+  labels:
+    {{- include "project27.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "project27.selectorLabels.web" . | nindent 4 }}
+  ports:
+    # Named "http" so Istio classifies this port for L7 (HTTP) routing.
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

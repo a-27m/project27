@@ -1,0 +1,30 @@
+{{- if eq .Values.routing.provider "istio" }}
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: {{ include "project27.fullname" . }}
+  labels:
+    {{- include "project27.labels" . | nindent 4 }}
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+    {{- if .Values.routing.istio.tls.enabled }}
+    - port:
+        number: 443
+        name: https
+        protocol: HTTPS
+      tls:
+        mode: SIMPLE
+        credentialName: {{ required "routing.istio.tls.credentialName is required when routing.istio.tls.enabled=true" .Values.routing.istio.tls.credentialName }}
+      hosts:
+        - {{ .Values.routing.host | quote }}
+    {{- else }}
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - {{ .Values.routing.host | quote }}
+    {{- end }}
+{{- end }}

@@ -1,0 +1,37 @@
+{{- if eq .Values.routing.provider "istio" }}
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: {{ include "project27.fullname" . }}
+  labels:
+    {{- include "project27.labels" . | nindent 4 }}
+spec:
+  hosts:
+    - {{ .Values.routing.host | quote }}
+  gateways:
+    - {{ include "project27.fullname" . }}
+  http:
+    # /api must come before / — Istio matches routes in order, first match wins.
+    - match:
+        - uri:
+            prefix: /api
+      route:
+        - destination:
+            host: {{ include "project27.fullname" . }}-server
+            port:
+              number: 8080
+      # Disabled blanket across the whole /api prefix, not just the SSE
+      # endpoint (GET /projects/{id}/events): retrying a long-lived
+      # server-sent-events stream is meaningless (a retry just reopens a
+      # fresh stream), and a finite Istio-level timeout would kill the SSE
+      # connection outright regardless of app intent. Ordinary REST calls
+      # under /api lose the Istio-level timeout ceiling as a tradeoff.
+      # TODO timeout: 0s
+      retries:
+        attempts: 0
+    - route:
+        - destination:
+            host: {{ include "project27.fullname" . }}-web
+            port:
+              number: 80
+{{- end }}

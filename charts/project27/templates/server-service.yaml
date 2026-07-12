@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "project27.fullname" . }}-server
+  labels:
+    {{- include "project27.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "project27.selectorLabels.server" . | nindent 4 }}
+  ports:
+    # Named "http" so Istio classifies this port for L7 (HTTP) routing instead
+    # of falling back to opaque TCP passthrough, which would silently no-op
+    # the VirtualService's path match/timeout/retries.
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP

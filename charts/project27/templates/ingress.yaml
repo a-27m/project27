@@ -1,0 +1,45 @@
+{{- if eq .Values.routing.provider "ingress" }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "project27.fullname" . }}
+  labels:
+    {{- include "project27.labels" . | nindent 4 }}
+  annotations:
+    # Defaults target ingress-nginx (SSE needs buffering off + long timeouts,
+    # matching web/nginx.conf's own handling of the same endpoint). Other
+    # controllers need different annotations entirely -- override via
+    # routing.ingress.annotations, which is merged in below and wins on
+    # conflicting keys.
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    {{- with .Values.routing.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.routing.ingress.className }}
+  {{- with .Values.routing.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.routing.host | quote }}
+      http:
+        paths:
+          # /api must come before / -- more specific prefix first.
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "project27.fullname" . }}-server
+                port:
+                  number: 8080
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "project27.fullname" . }}-web
+                port:
+                  number: 80
+{{- end }}
