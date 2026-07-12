@@ -26,6 +26,8 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
+app.MapGet("/healthz", () => Results.Ok()).AllowAnonymous();
+
 app.MapProjectApi();
 
 await app.Services.GetRequiredService<IServerStore>().Initialize(CancellationToken.None).ConfigureAwait(false);

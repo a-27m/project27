@@ -13,6 +13,8 @@ WORKDIR /app
 COPY --from=build /app .
 ENV ASPNETCORE_URLS=http://0.0.0.0:8080
 EXPOSE 8080
+RUN mkdir -p /data && chown $APP_UID:$APP_UID /data
 VOLUME /data
 ENV Storage__Provider=sqlite Storage__Path=/data/project27-server.db
+USER $APP_UID
 ENTRYPOINT ["dotnet", "Project27.Server.dll"]
