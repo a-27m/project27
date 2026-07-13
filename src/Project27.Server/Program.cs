@@ -28,6 +28,13 @@ if (app.Environment.IsDevelopment())
 
 app.MapGet("/healthz", () => Results.Ok()).AllowAnonymous();
 app.MapGet("/api/version", () => Results.Ok(new { imageTag = app.Configuration["IMAGE_TAG"] ?? "dev" })).AllowAnonymous();
+app.MapGet("/api/auth/config", () => Results.Ok(new
+{
+    devAuth = app.Configuration.GetValue<bool>("Auth:DevAuth"),
+    authority = app.Configuration["Auth:Authority"],
+    clientId = app.Configuration["Auth:ClientId"],
+    scopes = app.Configuration["Auth:Scopes"] ?? "openid profile offline_access",
+})).AllowAnonymous();
 
 app.MapProjectApi();
 

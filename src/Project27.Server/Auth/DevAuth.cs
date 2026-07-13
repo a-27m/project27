@@ -57,6 +57,9 @@ public static class AuthSetup
     /// <summary>
     /// OIDC bearer (when `Auth:Authority` is set) plus DevAuth (when `Auth:DevAuth`
     /// is true — Development only). A policy scheme routes per request by header.
+    /// `Auth:Scopes` (consumed by the web SPA via `GET /api/auth/config`) must include
+    /// whatever scope the provider maps to `Auth:Audience`, or the access token's `aud`
+    /// won't match and every request will 401 despite a successful sign-in.
     /// </summary>
     public static IServiceCollection AddProject27Auth(
         this IServiceCollection services,
