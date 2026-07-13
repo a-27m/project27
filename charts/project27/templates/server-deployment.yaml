@@ -63,6 +63,12 @@ spec:
             - name: Auth__Audience
               value: {{ .Values.auth.audience | quote }}
             {{- end }}
+            {{- if .Values.auth.clientId }}
+            - name: Auth__ClientId
+              value: {{ .Values.auth.clientId | quote }}
+            {{- end }}
+            - name: Auth__Scopes
+              value: {{ .Values.auth.scopes | quote }}
             - name: Locking__StaleAfterMinutes
               value: {{ .Values.locking.staleAfterMinutes | quote }}
           volumeMounts:

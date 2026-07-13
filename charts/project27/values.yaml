@@ -63,6 +63,11 @@ web:
 auth:
   authority: ""
   audience: ""
+  # Consumed by the web SPA via GET /api/auth/config (D5a) for its Authorization
+  # Code + PKCE flow. scopes must include whatever scope the provider maps to
+  # `audience`, or issued access tokens won't validate against it.
+  clientId: ""
+  scopes: "openid profile offline_access"
 
 # Development-only auth (decision D5): auto-login via X-Dev-User, no OIDC
 # provider needed. Enabling this also sets ASPNETCORE_ENVIRONMENT=Development,
