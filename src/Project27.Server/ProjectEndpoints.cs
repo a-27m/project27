@@ -18,7 +18,7 @@ public static class ProjectEndpoints
         var api = app.MapGroup("/api").RequireAuthorization();
 
         api.MapGet("/me", (ClaimsPrincipal user) =>
-            Results.Ok(new MeDto(UserId(user), user.FindFirstValue(ClaimTypes.Name) ?? UserId(user))));
+            Results.Ok(new MeDto(UserId(user), DisplayName(user))));
 
         var projects = api.MapGroup("/projects");
 
@@ -665,6 +665,16 @@ public static class ProjectEndpoints
         => user.FindFirstValue(ClaimTypes.NameIdentifier)
             ?? user.FindFirstValue("sub")
             ?? throw new InvalidOperationException("The authenticated principal has no user id claim.");
+
+    /// <summary>
+    /// `AddJwtBearer` (`Auth/DevAuth.cs`) doesn't map inbound claims, so an OIDC token's
+    /// `name` claim stays under its raw JWT name rather than becoming `ClaimTypes.Name` —
+    /// only DevAuth sets the mapped type explicitly. Falls back through both.
+    /// </summary>
+    private static string DisplayName(ClaimsPrincipal user)
+        => user.FindFirstValue(ClaimTypes.Name)
+            ?? user.FindFirstValue("name")
+            ?? UserId(user);
 
     private static string SafeFileName(string name)
         => string.Concat(name.Select(c => Path.GetInvalidFileNameChars().Contains(c) || c == ' ' ? '-' : c)).ToLowerInvariant();
