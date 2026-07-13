@@ -1,31 +1,47 @@
 import { useState } from 'react'
-import { ApiClient, type Credentials } from '../api/client'
+import { ApiClient } from '../api/client'
+import { beginSignIn } from '../lib/oidc'
+import type { Session } from '../state/auth'
 
 interface Props {
-  onSignedIn: (credentials: Credentials, userName: string) => void
+  onSignedIn: (session: Session, userName: string) => void
+  /** Surfaced from an OIDC callback that failed before a session could be established
+   *  (e.g. `App.tsx` catching a failed code exchange) — this component has no way to
+   *  produce that error itself, since the redirect unmounts and remounts it. */
+  error?: string | null
 }
 
-/** Sign-in: server URL plus either a bearer token (OIDC) or a DevAuth user. */
-export function SignIn({ onSignedIn }: Props) {
+/** Sign-in: server URL, then dev user (Development only), a pasted bearer token (manual/testing),
+ *  or SSO — redirects to the provider's OIDC authorization endpoint (Authorization Code + PKCE). */
+export function SignIn({ onSignedIn, error: externalError }: Props) {
   const [serverUrl, setServerUrl] = useState('')
-  const [mode, setMode] = useState<'dev' | 'token'>('dev')
+  const [mode, setMode] = useState<'dev' | 'token' | 'sso'>('dev')
   const [devUser, setDevUser] = useState('alice')
   const [token, setToken] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const shownError = error ?? externalError ?? null
 
   async function signIn(event: React.FormEvent) {
     event.preventDefault()
     setBusy(true)
     setError(null)
-    const credentials: Credentials = {
-      serverUrl: serverUrl.trim().replace(/\/+$/, ''),
-      token: mode === 'token' ? token.trim() : undefined,
-      devUser: mode === 'dev' ? devUser.trim() : undefined,
-    }
+    const trimmedServerUrl = serverUrl.trim().replace(/\/+$/, '')
     try {
+      if (mode === 'sso') {
+        await beginSignIn(trimmedServerUrl)
+        return // browser is navigating away
+      }
+      const session: Session =
+        mode === 'dev'
+          ? { mode: 'dev', serverUrl: trimmedServerUrl, devUser: devUser.trim() }
+          : { mode: 'token', serverUrl: trimmedServerUrl, token: token.trim() }
+      const credentials =
+        session.mode === 'dev'
+          ? { serverUrl: session.serverUrl, devUser: session.devUser }
+          : { serverUrl: session.serverUrl, token: session.token }
       const me = await new ApiClient(credentials).me()
-      onSignedIn(credentials, me.name)
+      onSignedIn(session, me.name)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
     } finally {
@@ -48,6 +64,10 @@ export function SignIn({ onSignedIn }: Props) {
         </label>
         <div className="signin-mode" role="radiogroup" aria-label="Authentication">
           <label>
+            <input type="radio" checked={mode === 'sso'} onChange={() => setMode('sso')} />
+            Single sign-on
+          </label>
+          <label>
             <input type="radio" checked={mode === 'dev'} onChange={() => setMode('dev')} />
             Dev user
           </label>
@@ -56,20 +76,21 @@ export function SignIn({ onSignedIn }: Props) {
             Bearer token
           </label>
         </div>
-        {mode === 'dev' ? (
+        {mode === 'dev' && (
           <label>
             User
             <input value={devUser} onChange={(event) => setDevUser(event.target.value)} />
           </label>
-        ) : (
+        )}
+        {mode === 'token' && (
           <label>
             Token
             <input value={token} onChange={(event) => setToken(event.target.value)} type="password" />
           </label>
         )}
-        {error !== null && <p className="error">{error}</p>}
+        {shownError !== null && <p className="error">{shownError}</p>}
         <button type="submit" disabled={busy}>
-          {busy ? 'Signing in…' : 'Sign in'}
+          {busy ? 'Signing in…' : mode === 'sso' ? 'Continue' : 'Sign in'}
         </button>
       </form>
     </div>

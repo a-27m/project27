@@ -3,7 +3,10 @@ import type { Checkout, Command, CommandsResponse, Me, ProjectEvent, ProjectInfo
 export interface Credentials {
   /** Server base URL; empty string = same origin (Vite dev proxy). */
   serverUrl: string
+  /** Static bearer token (manual/testing entry). Ignored when `getToken` is set. */
   token?: string
+  /** Live token source for OIDC sessions, re-read on every request so refresh/rotation is picked up. */
+  getToken?: () => Promise<string | null>
   devUser?: string
 }
 
@@ -54,7 +57,7 @@ export class ApiClient {
 
   async reportHtml(id: string, name: string): Promise<string> {
     const response = await fetch(`${this.credentials.serverUrl}/api/projects/${id}/reports/${name}`, {
-      headers: this.headers(),
+      headers: await this.headers(),
     })
     if (!response.ok) throw new ApiError(response.status, await problemDetail(response))
     return response.text()
@@ -94,7 +97,7 @@ export class ApiClient {
 
   /** Fetches a binary/text endpoint with auth and triggers a browser download. */
   async download(path: string, fallbackName: string): Promise<void> {
-    const response = await fetch(this.credentials.serverUrl + path, { headers: this.headers() })
+    const response = await fetch(this.credentials.serverUrl + path, { headers: await this.headers() })
     if (!response.ok) throw new ApiError(response.status, await problemDetail(response))
     const blob = await response.blob()
     const disposition = response.headers.get('Content-Disposition') ?? ''
@@ -131,7 +134,7 @@ export class ApiClient {
   }
 
   private async stream(path: string, signal: AbortSignal, onEvent: (event: ProjectEvent) => void): Promise<void> {
-    const response = await fetch(this.credentials.serverUrl + path, { headers: this.headers(), signal })
+    const response = await fetch(this.credentials.serverUrl + path, { headers: await this.headers(), signal })
     if (!response.ok || response.body === null) return
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
@@ -151,15 +154,16 @@ export class ApiClient {
     }
   }
 
-  private headers(): Record<string, string> {
+  private async headers(): Promise<Record<string, string>> {
     const headers: Record<string, string> = { Accept: 'application/json' }
-    if (this.credentials.token) headers.Authorization = `Bearer ${this.credentials.token}`
+    const token = this.credentials.getToken ? await this.credentials.getToken() : (this.credentials.token ?? null)
+    if (token) headers.Authorization = `Bearer ${token}`
     if (this.credentials.devUser) headers['X-Dev-User'] = this.credentials.devUser
     return headers
   }
 
   private async request<T>(method: string, path: string, body?: unknown, rawBody?: string): Promise<T> {
-    const headers = this.headers()
+    const headers = await this.headers()
     if (body !== undefined) headers['Content-Type'] = 'application/json'
     if (rawBody !== undefined) headers['Content-Type'] = 'application/xml'
     let response: Response

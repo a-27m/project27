@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { UserManager } from 'oidc-client-ts'
 import { ApiClient, type Credentials } from './api/client'
-import { loadCredentials, saveCredentials } from './state/auth'
+import { loadSession, saveSession, type Session } from './state/auth'
+import { completeSignIn, isCallbackPath, restoreSession, signOut as oidcSignOut, watchForExpiry } from './lib/oidc'
 import { ProjectList } from './pages/ProjectList'
 import { ProjectView } from './pages/ProjectView'
 import { SignIn } from './pages/SignIn'
@@ -12,12 +14,108 @@ function routeFromHash(): Route {
   return match !== null ? { page: 'project', id: match[1] } : { page: 'list' }
 }
 
-export default function App() {
-  const [credentials, setCredentials] = useState<Credentials | null>(loadCredentials)
-  const [userId, setUserId] = useState<string | null>(null)
-  const [route, setRoute] = useState<Route>(routeFromHash)
+function credentialsFor(session: Session, userManager: UserManager | null): Credentials {
+  switch (session.mode) {
+    case 'dev':
+      return { serverUrl: session.serverUrl, devUser: session.devUser }
+    case 'token':
+      return { serverUrl: session.serverUrl, token: session.token }
+    case 'oidc':
+      return {
+        serverUrl: session.serverUrl,
+        getToken: async () => (userManager === null ? null : ((await userManager.getUser())?.access_token ?? null)),
+      }
+  }
+}
 
+export default function App() {
+  const [session, setSession] = useState<Session | null>(null)
+  const [userManager, setUserManager] = useState<UserManager | null>(null)
+  const [resolving, setResolving] = useState(true)
+  const [userId, setUserId] = useState<string | null>(null)
+  const [userName, setUserName] = useState<string | null>(null)
+  const [route, setRoute] = useState<Route>(routeFromHash)
+  const [signInError, setSignInError] = useState<string | null>(null)
+  // The authorization code is single-use: React StrictMode double-invokes this effect in
+  // development, and a second redemption attempt would fail with invalid_grant. Guard it.
+  const callbackHandled = useRef(false)
+
+  const credentials = useMemo(() => (session !== null ? credentialsFor(session, userManager) : null), [session, userManager])
   const client = useMemo(() => (credentials !== null ? new ApiClient(credentials) : null), [credentials])
+
+  /** Clears the local session only — no provider round-trip. For internal failure recovery
+   *  (an expired/invalid token, a failed `/api/me`): those shouldn't force a full redirect
+   *  through the IdP's logout endpoint, just drop back to the sign-in screen. */
+  function clearLocalSession() {
+    saveSession(null)
+    setSession(null)
+    setUserManager(null)
+    window.location.hash = ''
+  }
+
+  /** User-initiated sign-out: also ends the provider session. Bound to the header button only. */
+  function signOut() {
+    const outgoingUserManager = userManager
+    clearLocalSession()
+    if (outgoingUserManager !== null) void oidcSignOut(outgoingUserManager)
+  }
+
+  // Resolve the initial session: an OIDC redirect callback, or a previously persisted session.
+  useEffect(() => {
+    let cancelled = false
+    async function resolve() {
+      if (isCallbackPath()) {
+        if (callbackHandled.current) return
+        callbackHandled.current = true
+        // No `cancelled` short-circuit here: the ref above already guarantees this is the
+        // one invocation doing real work, and under StrictMode it's also the one whose
+        // `cancelled` flips true before the await settles — bailing on it would skip
+        // `setResolving(false)` below and leave the app stuck on the loading screen.
+        try {
+          const { serverUrl, userManager: manager } = await completeSignIn()
+          window.history.replaceState(null, '', '/')
+          saveSession({ mode: 'oidc', serverUrl })
+          setUserManager(manager)
+          setSession({ mode: 'oidc', serverUrl })
+        } catch (cause) {
+          window.history.replaceState(null, '', '/')
+          setSignInError(cause instanceof Error ? cause.message : String(cause))
+        } finally {
+          setResolving(false)
+        }
+        return
+      }
+      const stored = loadSession()
+      if (stored === null) {
+        setResolving(false)
+        return
+      }
+      if (stored.mode === 'oidc') {
+        const restored = await restoreSession(stored.serverUrl).catch(() => null)
+        if (!cancelled) {
+          if (restored === null) {
+            saveSession(null)
+          } else {
+            setUserManager(restored.userManager)
+            setSession(stored)
+          }
+        }
+      } else {
+        setSession(stored)
+      }
+      if (!cancelled) setResolving(false)
+    }
+    void resolve()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Refresh-token grant (rotation) when available; falls back to a redirect through the provider's session.
+  useEffect(() => {
+    if (userManager === null) return
+    return watchForExpiry(userManager, clearLocalSession)
+  }, [userManager])
 
   useEffect(() => {
     const onHashChange = () => setRoute(routeFromHash())
@@ -25,35 +123,43 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onHashChange)
   }, [])
 
-  // Resolve the session's user id (needed for lock-ownership checks).
+  // Resolve the session's user id (needed for lock-ownership checks) and display name.
   useEffect(() => {
     if (client === null) {
       setUserId(null)
+      setUserName(null)
       return
     }
     let cancelled = false
     client
       .me()
       .then((me) => {
-        if (!cancelled) setUserId(me.id)
+        if (!cancelled) {
+          setUserId(me.id)
+          setUserName(me.name)
+        }
       })
       .catch(() => {
-        if (!cancelled) {
-          setCredentials(null)
-          saveCredentials(null)
-        }
+        if (!cancelled) clearLocalSession()
       })
     return () => {
       cancelled = true
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client])
 
-  if (credentials === null || client === null) {
+  if (resolving) {
+    return <p className="muted">Loading…</p>
+  }
+
+  if (session === null || client === null) {
     return (
       <SignIn
+        error={signInError}
         onSignedIn={(next) => {
-          saveCredentials(next)
-          setCredentials(next)
+          setSignInError(null)
+          saveSession(next)
+          setSession(next)
         }}
       />
     )
@@ -64,16 +170,8 @@ export default function App() {
       <header className="app-bar">
         <span className="brand">Project27</span>
         <span className="spacer" />
-        <span className="muted">{credentials.devUser ?? userId ?? ''}</span>
-        <button
-          onClick={() => {
-            saveCredentials(null)
-            setCredentials(null)
-            window.location.hash = ''
-          }}
-        >
-          Sign out
-        </button>
+        <span className="muted">{session.mode === 'dev' ? session.devUser : (userName ?? userId ?? '')}</span>
+        <button onClick={signOut}>Sign out</button>
       </header>
       {route.page === 'list' ? (
         <ProjectList
