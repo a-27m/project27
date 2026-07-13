@@ -397,6 +397,15 @@ and upgrade liability). Consequences that look odd but are intentional:
 hash-based routing in `App.tsx`, hand-rolled virtualization
 (`lib/virtualize.ts`), custom SVG Gantt, `localStorage` state helpers.
 
+**Amendment (2026-07-13):** `oidc-client-ts` is an approved exception. OIDC
+Authorization Code + PKCE, token refresh/rotation, and callback handling are
+security-sensitive enough that hand-rolling them is a worse liability than the
+dependency itself — a subtly wrong `state`/PKCE check or refresh race is an
+auth bypass, not a UI bug. The library is provider-agnostic (any standard
+OIDC/OAuth2 issuer), and the SPA still never validates token signatures —
+that stays server-side in `JwtBearer` (D5). No other exceptions are implied;
+this does not reopen the router/grid/state-library constraints.
+
 ### E27. Pure-logic modules + thin components
 
 Anything with arithmetic or a state machine lives in `web/src/lib/*` as pure

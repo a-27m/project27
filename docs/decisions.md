@@ -45,6 +45,16 @@ from a static list, issuing the same claims shape as OIDC. The server **refuses 
 start** if DevAuth is enabled in a non-Development environment. Per-project roles:
 owner / editor / reader.
 
+### D5a — Amendment (2026-07-13): web SPA runs Authorization Code + PKCE
+
+`web/` performs the OIDC login itself (not deployed behind an auth proxy). The
+server exposes `GET /api/auth/config` (`Auth:Authority`/`Auth:ClientId`/`Auth:Scopes`,
+unauthenticated) so the provider is swappable via server config alone, no SPA
+rebuild. The SPA never validates a token — `JwtBearer` on the server still owns
+that — it only acquires and forwards a bearer token. `oidc-client-ts` is an
+approved exception to E26 (see engineering-decisions.md) since hand-rolling
+PKCE/state/refresh is a worse liability than the dependency.
+
 ## D6 — Server concurrency: checkout/check-in locking
 
 One editor per project at a time. Explicit checkout to edit, check-in to release;

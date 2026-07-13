@@ -218,3 +218,65 @@ Specs: `docs/spec/01…04, 06, 07, 08, 09`. Deviations from MS Project: `docs/sp
   warnings), full `dotnet test` (339 passing, incl. new `HealthzTests`).
   Not done: a live cluster smoke test (kind/minikube) — no cluster
   available in this environment; recommended manual follow-up.
+
+## OIDC in the web SPA (2026-07-13, decision D5a)
+
+`web/` now performs its own Authorization Code + PKCE login instead of only
+accepting a manually pasted bearer token — production is not expected to sit
+behind an auth proxy. `oidc-client-ts` is an approved exception to E26 (see
+engineering-decisions.md); everything else stays dependency-free.
+
+- `GET /api/auth/config` (unauthenticated, `Program.cs`) serves
+  `Auth:Authority`/`Auth:ClientId`/`Auth:Scopes`/`Auth:DevAuth` so the SPA
+  never bakes provider config into the build — swapping providers is a server
+  config change only. New config keys default to
+  `Auth:Scopes = "openid profile offline_access"` (`offline_access` for
+  refresh-token rotation; must also carry whatever scope the provider maps to
+  `Auth:Audience`, or issued tokens 401 against the API — see the doc comment
+  on `AuthSetup.AddProject27Auth`).
+- `web/src/lib/oidc.ts`: PKCE flow via `UserManager` — `beginSignIn`,
+  `completeSignIn` (redirect target is `/callback`, works because both
+  nginx's and Vite's dev fallback serve `index.html` for any path),
+  `restoreSession` on reload, `watchForExpiry` (refresh-token grant when the
+  provider issues one; falls back to a full `signinRedirect` on renewal
+  failure — that redirect does interrupt an in-progress edit, a known
+  tradeoff of not running a silent iframe renew, which needs 3rd-party
+  cookies).
+- `state/auth.ts` now persists a `Session` discriminated union
+  (`dev`/`token`/`oidc`) instead of a single `Credentials` shape; OIDC tokens
+  themselves live in `oidc-client-ts`'s own `localStorage`-backed store, not
+  in ours.
+- `api/client.ts`'s `Credentials.getToken` is re-read on every request so
+  rotation is picked up without re-plumbing callers.
+- `charts/project27`: added `auth.clientId`/`auth.scopes` values, wired to
+  `Auth__ClientId`/`Auth__Scopes` env vars, so a real deployment can actually
+  use this.
+- Verified: `dotnet build` (0 warnings), `npm run build` / `lint` / `test`
+  (32 passing) in `web/`, `helm lint`, and a live smoke check — started the
+  dev server and `curl`'d `/api/auth/config`, started Vite and confirmed
+  `/callback` resolves (200, SPA fallback). **Not done:** an actual IdP
+  round-trip (needs a real OIDC provider registration) — no browser or
+  external IdP available in this environment; recommended manual follow-up
+  before relying on this in production.
+- **Azure AD gotcha found via manual round-trip (2026-07-13): `Auth:Authority`
+  must include `/v2.0`.** `oidc-client-ts` fetches the discovery document from
+  exactly `{authority}/.well-known/openid-configuration` — it does not append
+  `/v2.0`. `https://login.microsoftonline.com/<tenant-or-common>` (no
+  suffix) resolves Azure's legacy v1/ADAL metadata (`issuer:
+  https://sts.windows.net/{tenantid}/`, endpoints under `/oauth2/...` not
+  `/oauth2/v2.0/...`), which for custom (non-Microsoft) API resources issues
+  **opaque access tokens** regardless of the API's `accessTokenAcceptedVersion:
+  2` setting — that manifest flag only takes effect when the v2 endpoint is
+  actually used. Symptom fingerprint, in case it recurs: `id_token` decodes
+  fine (JWT), `access_token` doesn't (`IDX14100: no dots` server-side), the
+  `/token` response body has no `scope` field (v1 uses different fields), and
+  the requested scope/consent/tenant all check out correctly — because none of
+  those are actually the problem. Fix: use
+  `https://login.microsoftonline.com/<tenant-id-or-common-or-organizations>/v2.0`.
+  Cheapest way to confirm which metadata a given `Authority` value resolves
+  to, before chasing consent/audience/account-type theories: `curl
+  {authority}/.well-known/openid-configuration` and check `issuer` — a v2
+  issuer is `https://login.microsoftonline.com/{tenantid}/v2.0`; a v1 issuer
+  is `https://sts.windows.net/{tenantid}/`. This is a five-second, fully
+  local, reversible check — run it before any live Azure-side change
+  (`signInAudience`, admin consent) when access tokens come back opaque.
