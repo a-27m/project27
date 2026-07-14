@@ -1,0 +1,57 @@
+/* project27 · Typography — IBM Plex + Carbon type scale (Productive).
+   Font sizes/line-heights are the exact Carbon token values.
+   Sourced verbatim from the project27 Claude Design system (tokens/typography.css). */
+:root {
+  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
+
+  --fw-light: 300;
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+
+  /* Type-scale tokens: size / line-height / weight / letter-spacing */
+  --type-caption-01: 400 12px/16px var(--font-sans);      /* labels, captions */
+  --type-label-01: 400 12px/16px var(--font-sans);
+  --type-label-02: 400 14px/18px var(--font-sans);
+  --type-helper-01: 400 12px/16px var(--font-sans);
+  --type-body-compact-01: 400 14px/18px var(--font-sans);
+  --type-body-compact-02: 400 16px/22px var(--font-sans);
+  --type-body-01: 400 14px/20px var(--font-sans);
+  --type-body-02: 400 16px/24px var(--font-sans);
+  --type-code-01: 400 12px/16px var(--font-mono);
+  --type-code-02: 400 14px/20px var(--font-mono);
+  --type-heading-compact-01: 600 14px/18px var(--font-sans);
+  --type-heading-compact-02: 600 16px/22px var(--font-sans);
+  --type-heading-01: 600 14px/20px var(--font-sans);
+  --type-heading-02: 600 16px/24px var(--font-sans);
+  --type-heading-03: 400 20px/28px var(--font-sans);
+  --type-heading-04: 400 28px/36px var(--font-sans);
+  --type-heading-05: 400 32px/40px var(--font-sans);
+  --type-heading-06: 300 42px/50px var(--font-sans);
+  --type-heading-07: 300 54px/64px var(--font-sans);
+  --type-fluid-display-01: 300 42px/48px var(--font-sans);
+  --type-fluid-display-02: 300 54px/60px var(--font-sans);
+}
+
+/* Utility classes — apply the token + its letter-spacing */
+.p27-label-01{font:var(--type-label-01);letter-spacing:.32px}
+.p27-label-02{font:var(--type-label-02);letter-spacing:.16px}
+.p27-helper-01{font:var(--type-helper-01);letter-spacing:.32px}
+.p27-body-compact-01{font:var(--type-body-compact-01);letter-spacing:.16px}
+.p27-body-compact-02{font:var(--type-body-compact-02);letter-spacing:0}
+.p27-body-01{font:var(--type-body-01);letter-spacing:.16px}
+.p27-body-02{font:var(--type-body-02);letter-spacing:0}
+.p27-code-01{font:var(--type-code-01);letter-spacing:.32px}
+.p27-code-02{font:var(--type-code-02);letter-spacing:.32px}
+.p27-heading-compact-01{font:var(--type-heading-compact-01);letter-spacing:.16px}
+.p27-heading-compact-02{font:var(--type-heading-compact-02);letter-spacing:0}
+.p27-heading-01{font:var(--type-heading-01);letter-spacing:.16px}
+.p27-heading-02{font:var(--type-heading-02);letter-spacing:0}
+.p27-heading-03{font:var(--type-heading-03);letter-spacing:0}
+.p27-heading-04{font:var(--type-heading-04);letter-spacing:0}
+.p27-heading-05{font:var(--type-heading-05);letter-spacing:0}
+.p27-heading-06{font:var(--type-heading-06);letter-spacing:0}
+.p27-heading-07{font:var(--type-heading-07);letter-spacing:0}
+.p27-display-01{font:var(--type-fluid-display-01);letter-spacing:0}
+.p27-display-02{font:var(--type-fluid-display-02);letter-spacing:0}

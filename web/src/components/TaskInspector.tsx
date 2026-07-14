@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { ApiClient } from '../api/client'
 import type { Command, ScheduleProject, ScheduleTask, TaskDriver } from '../api/types'
 import { dateTime, durationDays, fromWireDate, toWireDate } from '../lib/format'
+import { Icon } from './icons/Icon'
 
 interface Props {
   task: ScheduleTask
@@ -12,6 +13,7 @@ interface Props {
   projectId: string
   onCommands: (commands: Command[]) => void
   onClose: () => void
+  onCollapse: () => void
 }
 
 type Section = 'general' | 'advanced' | 'tracking' | 'links' | 'resources' | 'custom' | 'drivers'
@@ -31,7 +33,7 @@ const LINK_TYPES = ['finishToStart', 'startToStart', 'finishToFinish', 'startToF
 const CONTOURS = ['flat', 'backLoaded', 'frontLoaded', 'doublePeak', 'earlyPeak', 'latePeak', 'bell', 'turtle'] as const
 
 /** Full-field task editor (docs/spec/12-polish.md parity matrix, 12p-2). */
-export function TaskInspector({ task, project, tasks, editable, client, projectId, onCommands, onClose }: Props) {
+export function TaskInspector({ task, project, tasks, editable, client, projectId, onCommands, onClose, onCollapse }: Props) {
   const [section, setSection] = useState<Section>('general')
   const set = (patch: Record<string, unknown>) => onCommands([{ op: 'setTask', uid: task.uid, ...patch }])
   const rowOf = (uid: number) => tasks.find((t) => t.uid === uid)?.row ?? uid
@@ -48,8 +50,12 @@ export function TaskInspector({ task, project, tasks, editable, client, projectI
         <strong>
           #{task.row} {task.name}
         </strong>
+        <span className="spacer" />
+        <button className="inspector-collapse" onClick={onCollapse} title="Collapse inspector" aria-label="Collapse inspector">
+          <Icon name="ChevronRight" size={14} />
+        </button>
         <button onClick={onClose} aria-label="Close inspector">
-          ✕
+          <Icon name="Close" size={14} />
         </button>
       </header>
       <nav className="inspector-tabs" role="tablist">

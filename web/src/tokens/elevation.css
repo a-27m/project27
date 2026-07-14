@@ -1,0 +1,24 @@
+/* project27 · Elevation & motion — Carbon drop shadows + easing/duration tokens.
+   Sourced verbatim from the project27 Claude Design system (tokens/elevation.css). */
+:root {
+  /* Elevation — Carbon uses subtle shadows sparingly (menus, popovers, modals) */
+  --shadow-sm: 0 2px 6px rgba(0,0,0,0.2);
+  --shadow-md: 0 2px 12px rgba(0,0,0,0.3);
+  --shadow-lg: 0 4px 24px rgba(0,0,0,0.35);
+  --shadow-overlay: 0 8px 32px rgba(0,0,0,0.5);
+
+  /* Motion — Carbon standard easings */
+  --ease-productive-standard: cubic-bezier(0.2, 0, 0.38, 0.9);
+  --ease-productive-entrance: cubic-bezier(0, 0, 0.38, 0.9);
+  --ease-productive-exit: cubic-bezier(0.2, 0, 1, 0.9);
+  --ease-expressive-standard: cubic-bezier(0.4, 0.14, 0.3, 1);
+  --ease-expressive-entrance: cubic-bezier(0, 0, 0.3, 1);
+  --ease-expressive-exit: cubic-bezier(0.4, 0.14, 1, 1);
+
+  --duration-fast-01: 70ms;
+  --duration-fast-02: 110ms;
+  --duration-moderate-01: 150ms;
+  --duration-moderate-02: 240ms;
+  --duration-slow-01: 400ms;
+  --duration-slow-02: 700ms;
+}

@@ -11,6 +11,8 @@ import { TaskInspector } from '../components/TaskInspector'
 import { TaskSheet } from '../components/TaskSheet'
 import { TimelineView } from '../components/TimelineView'
 import { UsageView } from '../components/UsageView'
+import { DropdownMenu, DropdownTrigger, type MenuGroup } from '../components/DropdownMenu'
+import { Icon } from '../components/icons/Icon'
 import {
   AVAILABLE_COLUMNS,
   columnsFor,
@@ -19,9 +21,10 @@ import {
   sheetWidth,
 } from '../components/sheetColumns'
 import { buildDisplayRows, displayIndexByUid } from '../lib/displayRows'
-import { durationDays, fromWireDate } from '../lib/format'
+import { dateOnly, durationDays, fromWireDate } from '../lib/format'
 import { pruneNested, rangeBetween, siblingMove } from '../lib/outline'
 import { makeScale, ticks, monthTicks } from '../lib/timescale'
+import { useOutsideClose } from '../lib/useOutsideClose'
 import { windowRange } from '../lib/virtualize'
 
 const ROW_HEIGHT = 28
@@ -32,13 +35,17 @@ interface Props {
   client: ApiClient
   projectId: string
   userId: string
+  userDisplayName: string
+  dark: boolean
+  onToggleTheme: () => void
+  onSignOut: () => void
   onBack: () => void
 }
 
 type ViewMode = 'gantt' | 'table' | 'network' | 'timeline' | 'usage' | 'resources'
 type Dialog = 'fields' | 'calendars' | 'recurring' | 'history' | 'columns' | 'settings' | null
 
-export function ProjectView({ client, projectId, userId, onBack }: Props) {
+export function ProjectView({ client, projectId, userId, userDisplayName, dark, onToggleTheme, onSignOut, onBack }: Props) {
   const [schedule, setSchedule] = useState<Schedule | null>(null)
   const [info, setInfo] = useState<ProjectInfo | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -53,6 +60,8 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
   const [columnKeys, setColumnKeys] = useState<string[]>(loadColumnKeys)
   const [undoStack, setUndoStack] = useState<Command[][]>([])
   const [redoStack, setRedoStack] = useState<Command[][]>([])
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(false)
+  const [checkinOpen, setCheckinOpen] = useState(false)
   const scrollerRef = useRef<HTMLDivElement>(null)
   const ganttScrollRef = useRef<HTMLDivElement>(null)
 
@@ -150,15 +159,15 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
     }
   }
 
-  async function checkin() {
+  async function checkin(label?: string) {
     try {
-      const label = window.prompt('Name this revision (optional):', '')
-      if (label !== null && label.trim() !== '') {
+      if (label !== undefined && label.trim() !== '') {
         await client.labelVersion(projectId, label.trim())
       }
       await client.unlock(projectId)
       setUndoStack([])
       setRedoStack([])
+      setCheckinOpen(false)
       await refresh()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
@@ -208,6 +217,7 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
         return new Set([uid])
       })
       if (!modifiers?.range) setAnchorUid(uid)
+      setInspectorCollapsed(false)
     },
     [anchorUid, tasks],
   )
@@ -343,15 +353,71 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
 
   const gridWidth = sheetWidth(columns)
 
+  /** Rare/global actions that don't belong on the hot path: grouped under the ⋯ menu.
+   *  Available to readers too (D6, readers never blocked) — Reports/Export/Manage all view state. */
+  const overflowGroups: MenuGroup[] = [
+    {
+      heading: 'MANAGE',
+      items: [
+        { label: 'Custom fields', onClick: () => setDialog('fields') },
+        { label: 'Calendars', onClick: () => setDialog('calendars') },
+        { label: 'Add recurring task', onClick: () => setDialog('recurring') },
+        { label: 'Project settings', onClick: () => setDialog('settings') },
+        { label: 'Version history', onClick: () => setDialog('history') },
+      ],
+    },
+    {
+      heading: 'REPORTS',
+      items: [
+        { label: 'Project overview', onClick: () => openReport('overview') },
+        { label: 'Critical tasks', onClick: () => openReport('critical') },
+        { label: 'Late tasks', onClick: () => openReport('late') },
+        { label: 'Resource overview', onClick: () => openReport('resources') },
+        { label: 'Cost overview', onClick: () => openReport('costs') },
+        { label: 'Upcoming tasks', onClick: () => openReport('upcoming') },
+      ],
+    },
+    {
+      heading: 'EXPORT',
+      items: [
+        { label: 'Project file (.p27)', onClick: () => download('p27') },
+        { label: 'MS Project XML', onClick: () => download('mspdi') },
+      ],
+    },
+  ]
+
   return (
     <div className="project-view">
-      {/* Row 1: identity, view switch, session */}
+      {/* Top bar: workspace, identity, view switch, session */}
       <div className="toolbar">
-        <button onClick={onBack}>← Projects</button>
-        <h2>{schedule?.project.name ?? '…'}</h2>
+        <DropdownMenu
+          ariaLabel="Workspace menu"
+          trigger={({ open, toggle }) => (
+            <button className="icon-btn" onClick={toggle} title="Workspace menu" aria-label="Workspace menu" aria-haspopup="menu" aria-expanded={open}>
+              <Icon name="Menu" size={16} />
+            </button>
+          )}
+          groups={[{ heading: 'WORKSPACE', items: [{ label: 'All projects', onClick: onBack }] }]}
+        />
+        <button
+          className="project-btn"
+          onClick={() => setDialog('settings')}
+          title="Project info & settings"
+        >
+          {schedule?.project.name ?? '…'}
+        </button>
+        {schedule !== null && (
+          <button className="version-chip" onClick={() => setDialog('history')} title="Version history">
+            v{schedule.version}
+          </button>
+        )}
+        {schedule !== null && (
+          <span className="status-chip" title="Status date — the as-of date for tracking & earned value">
+            STATUS {schedule.project.statusDate !== null ? dateOnly(schedule.project.statusDate) : '—'}
+          </span>
+        )}
         <span className="muted">
-          {schedule !== null &&
-            `v${schedule.version} · ${durationDays(schedule.project.totalWorkMinutes, schedule.project.minutesPerDay)} work`}
+          {schedule !== null && `${durationDays(schedule.project.totalWorkMinutes, schedule.project.minutesPerDay)} work`}
         </span>
         <nav className="view-switch" aria-label="View">
           {(['gantt', 'table', 'network', 'timeline', 'usage', 'resources'] as const).map((mode) => (
@@ -365,9 +431,21 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
           <span className="lock-banner">checked out by {info.lock.userId}</span>
         )}
         {editable ? (
-          <button className="primary" onClick={() => void checkin()}>
-            Check in
-          </button>
+          <span className="dropdown checkin-split">
+            <button className="primary checkin-main" onClick={() => void checkin()} title="Check in — releases your lock">
+              Check in
+            </button>
+            <button
+              className="primary checkin-caret"
+              onClick={() => setCheckinOpen((o) => !o)}
+              title="Check in with a comment…"
+              aria-haspopup="dialog"
+              aria-expanded={checkinOpen}
+            >
+              <Icon name="CaretDown" size={12} />
+            </button>
+            {checkinOpen && <CheckinPopover version={schedule?.version ?? 0} onCheckin={(comment) => void checkin(comment)} onClose={() => setCheckinOpen(false)} />}
+          </span>
         ) : (
           (info?.role === 'editor' || info?.role === 'owner') && (
             <button className="primary" onClick={() => void checkout()}>
@@ -375,111 +453,94 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
             </button>
           )
         )}
+        <DropdownMenu
+          ariaLabel="Account"
+          align="right"
+          trigger={({ open, toggle }) => (
+            <button className="avatar-btn" onClick={toggle} title={`${userDisplayName} — account`} aria-haspopup="menu" aria-expanded={open}>
+              <span className="avatar-circle">{userDisplayName.charAt(0).toUpperCase()}</span>
+              {userDisplayName}
+              <Icon name="CaretDown" size={12} />
+            </button>
+          )}
+          groups={[
+            { items: [{ label: dark ? 'Switch to light theme' : 'Switch to dark theme', onClick: onToggleTheme }] },
+            { items: [{ label: 'Sign out', onClick: onSignOut }] },
+          ]}
+        />
       </div>
 
-      {/* Row 2: editing tools (left) and project-wide actions (right) */}
-      <div className="toolbar secondary">
+      {/* Context action bar: only ever shows verbs legal for the current selection */}
+      <div className="action-bar">
         {editable && (
           <>
-            <span className="tool-group">
-              <button onClick={undo} disabled={undoStack.length === 0} aria-label="Undo" title="Undo (Ctrl+Z)">
+            <span className="action-group">
+              <button className="icon-btn" onClick={undo} disabled={undoStack.length === 0} aria-label="Undo" title="Undo (Ctrl+Z)">
                 ↶
               </button>
-              <button onClick={redo} disabled={redoStack.length === 0} aria-label="Redo" title="Redo (Ctrl+Shift+Z)">
+              <button className="icon-btn" onClick={redo} disabled={redoStack.length === 0} aria-label="Redo" title="Redo (Ctrl+Shift+Z)">
                 ↷
               </button>
             </span>
-            <span className="tool-group">
-              <button onClick={() => addTask('task')}>+ Task</button>
+            <span className="action-group">
+              <button onClick={() => addTask('task')} title="Add task (N)">
+                <Icon name="Add" size={12} /> Task
+              </button>
               <button onClick={() => addTask('milestone')}>+ Milestone</button>
             </span>
-            <span className="tool-group">
-              <button
-                disabled={selectedUids.size === 0}
-                onClick={() => setSpaceAfter(1)}
-                title="Add space below the selected row(s)"
-              >
-                Space +
-              </button>
-              <button
-                disabled={selectedUids.size === 0}
-                onClick={() => setSpaceAfter(-1)}
-                title="Remove space below the selected row(s)"
-              >
-                Space −
-              </button>
-            </span>
-            <span className="tool-group">
-              <button
-                disabled={selectionRoots.length === 0}
-                onClick={() => forSelection('indentTask')}
-                title="Indent (Alt+Shift+→)"
-              >
-                ⇥
-              </button>
-              <button
-                disabled={selectionRoots.length === 0}
-                onClick={() => forSelection('outdentTask')}
-                title="Outdent (Alt+Shift+←)"
-              >
-                ⇤
-              </button>
-              <button disabled={selected === null} onClick={() => moveSelection('up')} title="Move up (Ctrl+↑)">
-                ↑
-              </button>
-              <button disabled={selected === null} onClick={() => moveSelection('down')} title="Move down (Ctrl+↓)">
-                ↓
-              </button>
-              <button className="danger" disabled={selectionRoots.length === 0} onClick={deleteSelection} title="Delete (Del)">
-                ✕
-              </button>
-            </span>
-            <span className="tool-group" role="group" aria-label="Set percent complete">
-              {[0, 25, 50, 75, 100].map((percent) => (
-                <button key={percent} disabled={selectedLeaves.length === 0} onClick={() => setPercent(percent)}>
-                  {percent}%
+            {selectionRoots.length > 0 && (
+              <span className="action-group" role="group" aria-label="Structure">
+                <button className="icon-btn" onClick={() => setSpaceAfter(1)} title="Add space below the selected row(s)">
+                  Space +
                 </button>
-              ))}
-            </span>
-            {selectedLeaves.length > 0 && (schedule?.project.resources.length ?? 0) > 0 && (
-              <select
-                className="menu"
-                aria-label="Assign resource to selection"
-                value=""
-                onChange={(event) => {
-                  const resource = event.target.value
-                  event.target.value = ''
-                  if (resource !== '') assignToSelection(resource)
-                }}
-              >
-                <option value="">Assign to {selectedLeaves.length} selected…</option>
-                {schedule?.project.resources.map((resource) => (
-                  <option key={resource.uid} value={resource.name}>
-                    {resource.name}
-                  </option>
-                ))}
-              </select>
+                <button className="icon-btn" onClick={() => setSpaceAfter(-1)} title="Remove space below the selected row(s)">
+                  Space −
+                </button>
+                <button className="icon-btn" onClick={() => forSelection('indentTask')} title="Indent (Alt+Shift+→)" aria-label="Indent">
+                  <Icon name="ArrowRight" size={14} />
+                </button>
+                <button className="icon-btn" onClick={() => forSelection('outdentTask')} title="Outdent (Alt+Shift+←)" aria-label="Outdent">
+                  <Icon name="ArrowLeft" size={14} />
+                </button>
+                <button className="icon-btn" disabled={selected === null} onClick={() => moveSelection('up')} title="Move up (Ctrl+↑)" aria-label="Move up">
+                  <Icon name="ArrowUp" size={14} />
+                </button>
+                <button className="icon-btn" disabled={selected === null} onClick={() => moveSelection('down')} title="Move down (Ctrl+↓)" aria-label="Move down">
+                  <Icon name="ArrowDown" size={14} />
+                </button>
+                <button className="icon-btn danger" onClick={deleteSelection} title="Delete (Del)" aria-label="Delete">
+                  <Icon name="Close" size={14} />
+                </button>
+              </span>
             )}
-            <Menu
-              label="Plan…"
-              options={[
-                ['baseline', 'Set baseline'],
-                ['clearBaseline', 'Clear baseline'],
-                ['level', 'Level resources'],
-                ['clearLeveling', 'Clear leveling'],
-                ['reschedule', 'Reschedule uncompleted work'],
-              ]}
-              onPick={(action) => {
-                const ops: Record<string, Command> = {
-                  baseline: { op: 'setBaseline' },
-                  clearBaseline: { op: 'clearBaseline' },
-                  level: { op: 'level' },
-                  clearLeveling: { op: 'clearLeveling' },
-                  reschedule: { op: 'reschedule' },
-                }
-                void sendCommands([ops[action]])
-              }}
-            />
+            {selectedLeaves.length > 0 && (
+              <span className="action-group" role="group" aria-label="Progress & assignment">
+                {[0, 25, 50, 75, 100].map((percent) => (
+                  <button key={percent} className="icon-btn" onClick={() => setPercent(percent)}>
+                    {percent}%
+                  </button>
+                ))}
+                {(schedule?.project.resources.length ?? 0) > 0 && (
+                  <select
+                    className="menu"
+                    aria-label="Assign resource to selection"
+                    value=""
+                    onChange={(event) => {
+                      const resource = event.target.value
+                      event.target.value = ''
+                      if (resource !== '') assignToSelection(resource)
+                    }}
+                  >
+                    <option value="">Assign to {selectedLeaves.length} selected…</option>
+                    {schedule?.project.resources.map((resource) => (
+                      <option key={resource.uid} value={resource.name}>
+                        {resource.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </span>
+            )}
           </>
         )}
         <span className="spacer" />
@@ -488,52 +549,68 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
             {error}
           </span>
         )}
+        <span className="action-group">
+          {editable && (
+            <>
+              <DropdownMenu
+                ariaLabel="Baseline"
+                trigger={({ open, toggle }) => <DropdownTrigger label="Baseline" open={open} onClick={toggle} />}
+                groups={[
+                  {
+                    items: [
+                      { label: 'Set baseline', onClick: () => void sendCommands([{ op: 'setBaseline' }]) },
+                      { label: 'Clear baseline', onClick: () => void sendCommands([{ op: 'clearBaseline' }]) },
+                    ],
+                  },
+                ]}
+              />
+              <DropdownMenu
+                ariaLabel="Level"
+                trigger={({ open, toggle }) => <DropdownTrigger label="Level" open={open} onClick={toggle} />}
+                groups={[
+                  {
+                    items: [
+                      { label: 'Level resources', onClick: () => void sendCommands([{ op: 'level' }]) },
+                      { label: 'Clear leveling', onClick: () => void sendCommands([{ op: 'clearLeveling' }]) },
+                    ],
+                  },
+                ]}
+              />
+              <button className="icon-btn" onClick={() => void sendCommands([{ op: 'reschedule' }])} title="Push uncompleted work past the status date">
+                Reschedule
+              </button>
+            </>
+          )}
+          {/* Rare/global actions, incl. read-only ones (Reports, Download): available to readers too — D6, readers never blocked. */}
+          <DropdownMenu
+            ariaLabel="More project actions"
+            align="right"
+            trigger={({ open, toggle }) => (
+              <button className="icon-btn" onClick={toggle} title="More project actions" aria-haspopup="menu" aria-expanded={open}>
+                <Icon name="OverflowMenuHorizontal" size={16} />
+              </button>
+            )}
+            groups={overflowGroups}
+          />
+        </span>
         {viewMode === 'gantt' && (
-          <span className="tool-group" role="group" aria-label="Zoom">
-            <button onClick={() => setZoomIndex((z) => Math.max(0, z - 1))} disabled={zoomIndex === 0} title="Zoom out">
-              −
+          <span className="action-group" role="group" aria-label="Zoom" style={{ borderRight: 'none' }}>
+            <button className="icon-btn" onClick={() => setZoomIndex((z) => Math.max(0, z - 1))} disabled={zoomIndex === 0} title="Zoom out" aria-label="Zoom out">
+              <Icon name="Subtract" size={14} />
             </button>
+            <span className="muted mono">{pxPerDay}px/d</span>
             <button
+              className="icon-btn"
               onClick={() => setZoomIndex((z) => Math.min(ZOOM_LEVELS.length - 1, z + 1))}
               disabled={zoomIndex === ZOOM_LEVELS.length - 1}
               title="Zoom in"
+              aria-label="Zoom in"
             >
-              +
+              <Icon name="Add" size={14} />
             </button>
-            <button onClick={() => setDialog('columns')}>Columns</button>
+            <button className="icon-btn" onClick={() => setDialog('columns')}>Columns</button>
           </span>
         )}
-        <Menu
-          label="Manage…"
-          options={[
-            ['fields', 'Custom fields'],
-            ['calendars', 'Calendars'],
-            ['recurring', 'Add recurring task'],
-          ]}
-          onPick={(choice) => setDialog(choice as Dialog)}
-        />
-        <Menu
-          label="Reports…"
-          options={[
-            ['overview', 'Project overview'],
-            ['critical', 'Critical tasks'],
-            ['late', 'Late tasks'],
-            ['resources', 'Resource overview'],
-            ['costs', 'Cost overview'],
-            ['upcoming', 'Upcoming tasks'],
-          ]}
-          onPick={openReport}
-        />
-        <Menu
-          label="Download…"
-          options={[
-            ['p27', 'Project file (.p27)'],
-            ['mspdi', 'MS Project XML'],
-          ]}
-          onPick={(kind) => download(kind as 'p27' | 'mspdi')}
-        />
-        <button onClick={() => setDialog('history')}>History</button>
-        <button onClick={() => setDialog('settings')}>Settings</button>
       </div>
 
       {viewMode === 'network' && (
@@ -697,7 +774,7 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
           onClose={() => setDialog(null)}
         />
       )}
-      {selected !== null && schedule !== null && (
+      {selected !== null && schedule !== null && !inspectorCollapsed && (
         <TaskInspector
           task={selected}
           project={schedule.project}
@@ -707,40 +784,45 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
           projectId={projectId}
           onCommands={(commands) => void sendCommands(commands)}
           onClose={() => selectTask(null)}
+          onCollapse={() => setInspectorCollapsed(true)}
         />
+      )}
+      {selected !== null && inspectorCollapsed && (
+        <button
+          className="inspector-tab"
+          onClick={() => setInspectorCollapsed(false)}
+          title="Open inspector"
+          aria-label="Open inspector"
+        >
+          <Icon name="ChevronLeft" size={14} />
+          <span>INSPECTOR</span>
+        </button>
       )}
     </div>
   )
 }
 
-/** A native-select styled as a menu button; resets after each pick. */
-function Menu({
-  label,
-  options,
-  onPick,
-}: {
-  label: string
-  options: [string, string][]
-  onPick: (value: string) => void
-}) {
+/** Check-in-with-comment popover, opened from the check-in split button's caret. */
+function CheckinPopover({ version, onCheckin, onClose }: { version: number; onCheckin: (comment: string) => void; onClose: () => void }) {
+  const [comment, setComment] = useState('')
+  const ref = useRef<HTMLDivElement>(null)
+  useOutsideClose(ref, true, onClose)
   return (
-    <select
-      className="menu"
-      aria-label={label.replace('…', '')}
-      value=""
-      onChange={(event) => {
-        const value = event.target.value
-        event.target.value = ''
-        if (value !== '') onPick(value)
-      }}
-    >
-      <option value="">{label}</option>
-      {options.map(([value, text]) => (
-        <option key={value} value={value}>
-          {text}
-        </option>
-      ))}
-    </select>
+    <div className="dropdown-panel align-right checkin-popover" ref={ref} role="dialog" aria-label="Check in with a comment">
+      <span className="dropdown-heading">CHECK-IN COMMENT · v{version + 1}</span>
+      <textarea
+        autoFocus
+        value={comment}
+        onChange={(event) => setComment(event.target.value)}
+        placeholder="What changed in this revision?"
+      />
+      <div className="checkin-actions">
+        <button onClick={onClose}>Cancel</button>
+        <button className="primary" onClick={() => onCheckin(comment)}>
+          Check in
+        </button>
+      </div>
+    </div>
   )
 }
 

@@ -3,6 +3,8 @@ import type { UserManager } from 'oidc-client-ts'
 import { ApiClient, type Credentials } from './api/client'
 import { loadSession, saveSession, type Session } from './state/auth'
 import { completeSignIn, isCallbackPath, restoreSession, signOut as oidcSignOut, watchForExpiry } from './lib/oidc'
+import { loadTheme, saveTheme, type Theme } from './lib/theme'
+import { Icon } from './components/icons/Icon'
 import { ProjectList } from './pages/ProjectList'
 import { ProjectView } from './pages/ProjectView'
 import { SignIn } from './pages/SignIn'
@@ -36,6 +38,11 @@ export default function App() {
   const [userName, setUserName] = useState<string | null>(null)
   const [route, setRoute] = useState<Route>(routeFromHash)
   const [signInError, setSignInError] = useState<string | null>(null)
+  const [theme, setTheme] = useState<Theme | null>(loadTheme)
+
+  useEffect(() => {
+    saveTheme(theme)
+  }, [theme])
   // The authorization code is single-use: React StrictMode double-invokes this effect in
   // development, and a second redemption attempt would fail with invalid_grant. Guard it.
   const callbackHandled = useRef(false)
@@ -165,21 +172,30 @@ export default function App() {
     )
   }
 
+  const displayName = session.mode === 'dev' ? session.devUser : (userName ?? userId ?? '')
+  const dark = theme !== 'light'
+  const toggleTheme = () => setTheme(dark ? 'light' : 'dark')
+
   return (
     <div className="app">
-      <header className="app-bar">
-        <span className="brand">Project27</span>
-        <span className="spacer" />
-        <span className="muted">{session.mode === 'dev' ? session.devUser : (userName ?? userId ?? '')}</span>
-        <button onClick={signOut}>Sign out</button>
-      </header>
       {route.page === 'list' ? (
-        <ProjectList
-          client={client}
-          onOpen={(project) => {
-            window.location.hash = `#/p/${project.id}`
-          }}
-        />
+        <>
+          <header className="app-bar">
+            <span className="brand">Project27</span>
+            <span className="spacer" />
+            <span className="muted">{displayName}</span>
+            <button onClick={toggleTheme} title={dark ? 'Switch to light theme' : 'Switch to dark theme'} aria-label="Toggle theme">
+              <Icon name="Moon" size={16} />
+            </button>
+            <button onClick={signOut}>Sign out</button>
+          </header>
+          <ProjectList
+            client={client}
+            onOpen={(project) => {
+              window.location.hash = `#/p/${project.id}`
+            }}
+          />
+        </>
       ) : userId === null ? (
         <p className="muted">Loading…</p>
       ) : (
@@ -187,6 +203,10 @@ export default function App() {
           client={client}
           projectId={route.id}
           userId={userId}
+          userDisplayName={displayName}
+          dark={dark}
+          onToggleTheme={toggleTheme}
+          onSignOut={signOut}
           onBack={() => {
             window.location.hash = ''
           }}
