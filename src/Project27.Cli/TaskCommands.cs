@@ -225,6 +225,7 @@ internal static class TaskCommands
         var activeOpt = new Option<string?>("--active") { HelpName = "bool" };
         var milestoneOpt = new Option<string?>("--milestone") { HelpName = "bool" };
         var priorityOpt = new Option<int?>("--priority") { Description = "0-1000, default 500." };
+        var spaceAfterOpt = new Option<int?>("--space-after") { Description = "Blank rows shown after this task, 0-20; 0 clears it." };
         var deadlineOpt = new Option<string?>("--deadline") { HelpName = "date|none" };
         var constraintOpt = new Option<string?>("--constraint") { HelpName = "asap|alap|snet|snlt|fnet|fnlt|mso|mfo" };
         var constraintDateOpt = new Option<string?>("--constraint-date") { HelpName = "date" };
@@ -249,7 +250,7 @@ internal static class TaskCommands
         };
         var command = new Command("set", "Change task fields; recalculates and saves.")
         {
-            refArg, nameOpt, durationOpt, modeOpt, activeOpt, milestoneOpt, priorityOpt, deadlineOpt,
+            refArg, nameOpt, durationOpt, modeOpt, activeOpt, milestoneOpt, priorityOpt, spaceAfterOpt, deadlineOpt,
             constraintOpt, constraintDateOpt, calendarOpt, wbsOpt, manualStartOpt, manualFinishOpt,
             typeOpt, effortOpt, fixedCostOpt, accrualOpt, ignoreResCalOpt,
             percentOpt, actualStartOpt, actualFinishOpt, remainingOpt, fieldOpt,
@@ -262,6 +263,7 @@ internal static class TaskCommands
 
             if (parseResult.GetValue(nameOpt) is { } name)
             {
+                ArgumentException.ThrowIfNullOrWhiteSpace(name);
                 task.Name = name;
             }
 
@@ -319,6 +321,13 @@ internal static class TaskCommands
             if (parseResult.GetValue(priorityOpt) is { } priority)
             {
                 task.Priority = priority;
+            }
+
+            if (parseResult.GetValue(spaceAfterOpt) is { } spaceAfter)
+            {
+                var formatting = task.Formatting ?? new TaskFormatting();
+                formatting.SpaceAfter = spaceAfter;
+                task.Formatting = formatting.IsDefault ? null : formatting;
             }
 
             if (parseResult.GetValue(deadlineOpt) is { } deadline)

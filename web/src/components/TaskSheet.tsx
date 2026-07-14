@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import type { Command, ScheduleTask } from '../api/types'
+import type { DisplayRow } from '../lib/displayRows'
 import { durationDays } from '../lib/format'
 import type { RowWindow } from '../lib/virtualize'
 import type { ColumnContext, SheetColumn } from './sheetColumns'
 
 interface Props {
-  tasks: ScheduleTask[]
+  displayRows: DisplayRow<ScheduleTask>[]
   columns: readonly SheetColumn[]
   context: ColumnContext
   rowHeight: number
@@ -24,7 +25,7 @@ interface CellEdit {
 
 /** The sheet body rows; the header lives in the parent so both panes share one scroller. */
 export function TaskSheet({
-  tasks,
+  displayRows,
   columns,
   context,
   rowHeight,
@@ -38,11 +39,12 @@ export function TaskSheet({
 
   function commitEdit() {
     if (edit === null) return
-    const task = tasks.find((candidate) => candidate.uid === edit.uid)
+    const row = displayRows.find((candidate) => candidate.kind === 'task' && candidate.task.uid === edit.uid)
+    const task = row?.kind === 'task' ? row.task : undefined
     setEdit(null)
     if (task === undefined) return
     const value = edit.value.trim()
-    if (edit.field === 'name' && value !== task.name) {
+    if (edit.field === 'name' && value !== '' && value !== task.name) {
       onCommands([{ op: 'setTask', uid: task.uid, name: value }])
     } else if (edit.field === 'duration' && value !== '' && value !== durationDays(task.durationMinutes, context.minutesPerDay)) {
       onCommands([{ op: 'setTask', uid: task.uid, duration: value }])
@@ -51,7 +53,7 @@ export function TaskSheet({
 
   function beginEdit(task: ScheduleTask, field: CellEdit['field']) {
     if (!editable) return
-    if (field === 'duration' && (task.summary || task.name === '')) return
+    if (field === 'duration' && task.summary) return
     setEdit({
       uid: task.uid,
       field,
@@ -59,13 +61,25 @@ export function TaskSheet({
     })
   }
 
-  const visible = tasks.slice(window_.first, window_.last)
+  const visible = displayRows.slice(window_.first, window_.last)
 
   return (
     <div className="sheet-body" style={{ height: window_.totalHeight }} role="grid" aria-label="Tasks">
       <div style={{ transform: `translateY(${window_.offsetY}px)` }}>
-        {visible.map((task) => {
-          const blank = task.name === ''
+        {visible.map((row) => {
+          if (row.kind === 'gap') {
+            return (
+              <div
+                key={`gap-${row.afterUid}-${row.index}`}
+                role="presentation"
+                aria-hidden="true"
+                className="sheet-row sheet-gap"
+                style={{ height: rowHeight }}
+              />
+            )
+          }
+
+          const task = row.task
           return (
             <div
               key={task.uid}
@@ -75,8 +89,7 @@ export function TaskSheet({
                 'sheet-row' +
                 (selectedUids.has(task.uid) ? ' selected' : '') +
                 (task.summary ? ' summary' : '') +
-                (task.active ? '' : ' inactive') +
-                (blank ? ' blank' : '')
+                (task.active ? '' : ' inactive')
               }
               style={{ height: rowHeight }}
               onClick={(event) =>
@@ -98,12 +111,10 @@ export function TaskSheet({
                       ...(isName ? { paddingLeft: 8 + task.outlineLevel * 16 } : {}),
                     }}
                     onDoubleClick={editableCell ? () => beginEdit(task, isName ? 'name' : 'duration') : undefined}
-                    title={isName && !blank ? `${task.wbs} ${task.name} (uid:${task.uid})` : undefined}
+                    title={isName ? `${task.wbs} ${task.name} (uid:${task.uid})` : undefined}
                   >
                     {editing && edit !== null ? (
                       <EditInput edit={edit} onChange={setEdit} onCommit={commitEdit} onCancel={() => setEdit(null)} />
-                    ) : blank && !isName && column.key !== 'row' && column.key !== 'uid' ? (
-                      ''
                     ) : (
                       column.render(task, context)
                     )}

@@ -34,6 +34,7 @@ public sealed class InverterTests
             Name = "Changed",
             Duration = "5d",
             Priority = 900,
+            SpaceAfter = 4,
             ClearDeadline = true,
             PercentComplete = 60,
         });
@@ -41,8 +42,27 @@ public sealed class InverterTests
         Assert.Equal("Original", task.Name);
         Assert.Equal(960m, task.DurationMinutes);
         Assert.Equal(500, task.Priority);
+        Assert.Null(task.Formatting);
         Assert.Equal(At("2026-02-01 17:00"), task.Deadline);
         Assert.Equal(0, task.PercentComplete);
+    }
+
+    [Fact]
+    public void Space_after_undo_redo_round_trips_through_a_null_baseline()
+    {
+        var project = NewProject();
+        var task = project.AddTask("A", Duration.Parse("1d"));
+        project.Recalculate();
+
+        var setCommand = new SetTaskCommand { Uid = task.UniqueId, SpaceAfter = 5 };
+        var (_, undoSet) = CommandInverter.ApplyWithInverse(project, setCommand);
+        Assert.Equal(5, task.Formatting?.SpaceAfter);
+
+        CommandExecutor.Apply(project, undoSet!); // undo: back to no formatting
+        Assert.Null(task.Formatting);
+
+        CommandExecutor.Apply(project, setCommand); // redo
+        Assert.Equal(5, task.Formatting?.SpaceAfter);
     }
 
     [Fact]

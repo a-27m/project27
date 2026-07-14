@@ -164,6 +164,7 @@ public static class CommandInverter
             Active = command.Active is null ? null : task.IsActive,
             Milestone = command.Milestone is null ? null : task.IsMilestone,
             Priority = command.Priority is null ? null : task.Priority,
+            SpaceAfter = command.SpaceAfter is null ? null : task.Formatting?.SpaceAfter ?? 0,
             Deadline = (command.Deadline is null && !command.ClearDeadline) ? null : task.Deadline,
             ClearDeadline = (command.Deadline is not null || command.ClearDeadline) && task.Deadline is null,
             Constraint = command.Constraint is null && command.ConstraintDate is null ? null : task.Constraint,

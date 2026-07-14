@@ -86,6 +86,8 @@ export interface ScheduleTask {
   baselineCost: number | null
   levelingDelayMinutes: number
   priority: number
+  /** Blank display rows shown after this task; cosmetic only, never scheduled or linked. */
+  spaceAfter: number
   type: 'fixedUnits' | 'fixedDuration' | 'fixedWork'
   effortDriven: boolean
   ignoresResourceCalendars: boolean
@@ -201,6 +203,7 @@ export type Command =
       active?: boolean
       milestone?: boolean
       priority?: number
+      spaceAfter?: number
       deadline?: string
       clearDeadline?: boolean
       constraint?: ConstraintType

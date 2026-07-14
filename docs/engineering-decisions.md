@@ -495,6 +495,59 @@ pins breaks the build by design.
   override for testability — the report takes `StatusDate ?? Now`, tests set a
   status date.
 
+### E35. Blank rows retracted as tasks; cosmetic spacing lives on the task as a formatting bag
+
+**Chose:** the empty-name "blank spacer row" task kind was removed outright —
+`ProjectTask.Name`/`SetTaskCommand.Name` now reject blank/whitespace at every
+mutation entry point (`Project.AddTask`, `CommandExecutor.SetTask`, the CLI
+`task set --name` path — deliberately *not* the `Name` setter or the
+`RestoreTask` deserialization path, so schema ≤5 documents with legacy blanks
+still load; they just can't be created or renamed-to-blank anymore). Purely
+cosmetic vertical spacing is now `ProjectTask.Formatting?.SpaceAfter` (schema
+6, `TaskFormattingDocument`) — a nullable bag on the *existing* task, not a
+new row/entity. The web never sends it to the server as a display concept:
+`web/src/lib/displayRows.ts` expands the real task list into task rows plus
+inert synthetic gap rows client-side, purely for the fixed-row-height
+virtualizer (E27); gap rows have no uid, are never selected, never receive
+keyboard focus, and are invisible to Network/Gantt link logic.
+
+**Rejected:**
+1. Blank rows as a first-class `TaskKind.Blank` that still lives in the
+   outline as a real, uid-addressed task, with the engine (`Link`,
+   `AddAssignment`, CPM) hardened to reject/exclude it. This was the
+   original fix under consideration — it centralizes correctness in Core,
+   but was overtaken by the product call to drop the feature entirely rather
+   than keep policing a "task that isn't really a task."
+2. "Page break after task #uid" as metadata anchored to a task uid but
+   modeled as a Core-level construct in its own right. Rejected for the same
+   reason as (1) plus new edge cases (anchor task deleted, gap before the
+   first row) that a plain per-task property doesn't have.
+3. Storing spacing purely client-side (`localStorage`/a UI-preferences
+   blob), never persisted server-side. Rejected: this is a shared,
+   checked-out/checked-in document (D6); spacing one editor adds should
+   survive a checkout from a different machine or by a different user, not
+   silently reset.
+
+**Why:** the original blank-row feature let an empty-name, zero-duration
+task participate in everything a real task can — `Link` and `AddAssignment`
+had no guard against it, so it could pick up predecessors/successors and be
+pulled into the critical-path graph. The Network diagram bug (blank rows
+rendering as nodes) was a symptom of that, not the root cause: `network.ts`
+already excludes summaries but nothing excluded blanks, and the same
+`task.name === ''` convention was independently re-implemented in
+`TaskSheet.tsx` and `Gantt.tsx` and simply missing in `network.ts` and in the
+engine. A property that was never a graph node in the first place can't leak
+into CPM, WBS, Network, or MSPDI/CSV export — there's no entity to
+remember to filter.
+
+**Trap:** `CommandInverter.PrepareInverse` runs *before* `CommandExecutor.Apply`
+(captures pre-mutation state), so the `SpaceAfter` inverse is
+`task.Formatting?.SpaceAfter ?? 0`, not a post-apply read. The executor
+collapses `Formatting` back to `null` via `TaskFormatting.IsDefault` (checks
+*every* field), not `SpaceAfter == 0` specifically — when the next cosmetic
+field (color, etc.) is added, extend `IsDefault`, not the call site, or the
+bag will stop collapsing correctly once two fields disagree on default-ness.
+
 ---
 
 *When you add a significant engineering decision, append an E-record here in

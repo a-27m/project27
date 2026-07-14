@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Project27.Core;
 using Project27.Core.Commands;
+using Project27.Core.Persistence;
 using Xunit;
 
 namespace Project27.Core.Tests;
@@ -139,6 +140,49 @@ public sealed class CommandTests
             project, new SetTaskCommand { Uid = 99, Name = "X" })); // unknown uid
         Assert.Throws<CommandException>(() => CommandExecutor.Apply(
             project, new AddTaskCommand { Name = "C", Duration = "banana" })); // bad duration
+    }
+
+    [Fact]
+    public void Blank_task_names_are_rejected()
+    {
+        var project = NewProject();
+        Assert.Throws<ArgumentException>(() => project.AddTask("", Core.Time.Duration.Parse("1d")));
+        Assert.Throws<ArgumentException>(() => project.AddTask("   ", Core.Time.Duration.Parse("1d")));
+
+        CommandExecutor.Apply(project, new AddTaskCommand { Name = "Real" });
+        Assert.Throws<CommandException>(() => CommandExecutor.Apply(
+            project, new AddTaskCommand { Name = "" }));
+        Assert.Throws<CommandException>(() => CommandExecutor.Apply(
+            project, new SetTaskCommand { Uid = 1, Name = "" }));
+    }
+
+    [Fact]
+    public void Space_after_is_cosmetic_and_collapses_to_null_at_zero()
+    {
+        var project = NewProject();
+        var task = project.AddTask("A", Core.Time.Duration.Parse("1d"));
+
+        CommandExecutor.Apply(project, new SetTaskCommand { Uid = task.UniqueId, SpaceAfter = 3 });
+        Assert.Equal(3, task.Formatting?.SpaceAfter);
+
+        CommandExecutor.Apply(project, new SetTaskCommand { Uid = task.UniqueId, SpaceAfter = 0 });
+        Assert.Null(task.Formatting);
+    }
+
+    [Fact]
+    public void Space_after_round_trips_through_the_document()
+    {
+        var project = NewProject();
+        var task = project.AddTask("A", Core.Time.Duration.Parse("1d"));
+        var untouched = project.AddTask("B", Core.Time.Duration.Parse("1d"));
+        CommandExecutor.Apply(project, new SetTaskCommand { Uid = task.UniqueId, SpaceAfter = 2 });
+
+        var restored = ProjectDocumentMapper.FromDocument(ProjectDocumentMapper.ToDocument(project));
+        var restoredA = restored.Tasks.Single(t => t.Name == "A");
+        var restoredB = restored.Tasks.Single(t => t.Name == "B");
+        Assert.Equal(2, restoredA.Formatting?.SpaceAfter);
+        Assert.Null(restoredB.Formatting);
+        Assert.Equal(untouched.Formatting, restoredB.Formatting); // both null
     }
 
     [Fact]

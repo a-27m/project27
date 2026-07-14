@@ -280,3 +280,37 @@ engineering-decisions.md); everything else stays dependency-free.
   is `https://sts.windows.net/{tenantid}/`. This is a five-second, fully
   local, reversible check — run it before any live Azure-side change
   (`signInAudience`, admin consent) when access tokens come back opaque.
+
+## Blank tasks retracted; cosmetic spacing added (2026-07-14, see E35)
+
+The empty-name "blank spacer row" feature is gone — it let a zero-duration,
+empty-name task participate in linking/assignment/CPM like any real task,
+which is what let blank rows leak into the Network diagram (reported bug).
+Replaced with `ProjectTask.Formatting?.SpaceAfter`, a cosmetic int on the
+*existing* task (schema 6), never a row/entity of its own. Full rationale
+and rejected alternatives (first-class blank `TaskKind`, uid-anchored "page
+break" metadata, client-only storage) in `engineering-decisions.md` E35.
+
+- Blank/whitespace task names are now rejected at every mutation entry
+  point (`Project.AddTask`, `CommandExecutor.SetTask`, CLI `task set
+  --name`) — but *not* on the `ProjectTask.Name` setter or the
+  `RestoreTask` deserialization path, so schema ≤5 documents that already
+  contain legacy blank tasks still load; they just can't be created or
+  renamed-to-blank going forward.
+- CLI parity (D4): `p27 task set <ref> --space-after N` (0 clears it).
+- Web: `web/src/lib/displayRows.ts` (pure, unit-tested per E27) expands the
+  task list into task rows + inert synthetic gap rows for the fixed-row
+  virtualizer (`lib/virtualize.ts`); gap rows have no uid and are never
+  sent to the server. `TaskSheet` and `Gantt` both consume the same
+  `displayRows` list so the two panes stay row-aligned; `ProjectView.tsx`
+  keeps two separate uid→index maps — `indexByUid` (domain, indexes into
+  the plain `tasks` array, unchanged) and `displayByUid` (rendering,
+  indexes into `displayRows`, only ever passed to `Gantt`). Toolbar
+  "Space +"/"Space −" buttons operate on the current multi-selection.
+- Verified live: `dotnet build`/`test` (344 passing, 0 warnings), `npm run
+  build`/`test`/`lint` in `web/` (35 passing), and a real browser smoke
+  test (system Chrome via a throwaway Playwright install, not a permanent
+  dependency) — created a project, added two tasks, applied and cleared
+  `spaceAfter` and watched the sheet/Gantt gap stay aligned, confirmed the
+  Network view shows only real tasks, and confirmed clearing a task's name
+  in the sheet reverts instead of sending an empty name.

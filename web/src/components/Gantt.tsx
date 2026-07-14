@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import type { Command, ScheduleTask } from '../api/types'
+import type { DisplayRow } from '../lib/displayRows'
 import {
   beginBarDrag,
   beginLinkDrag,
@@ -14,7 +15,8 @@ import { dayAt, ticks, xOf, type TimeScale } from '../lib/timescale'
 import type { RowWindow } from '../lib/virtualize'
 
 interface Props {
-  tasks: ScheduleTask[]
+  displayRows: DisplayRow<ScheduleTask>[]
+  /** Uid -> position in displayRows (gap rows included), for vertical alignment with the sheet. */
   indexByUid: ReadonlyMap<number, number>
   scale: TimeScale
   rowHeight: number
@@ -29,7 +31,7 @@ const BAR_INSET = 6
 
 /** SVG Gantt body: bars, links, drag-to-reschedule, drag-to-link. */
 export function Gantt({
-  tasks,
+  displayRows,
   indexByUid,
   scale,
   rowHeight,
@@ -45,6 +47,10 @@ export function Gantt({
   const barHeight = rowHeight - 2 * BAR_INSET
   const barY = (index: number) => index * rowHeight + BAR_INSET
   const barMidY = (index: number) => index * rowHeight + rowHeight / 2
+  const taskAt = (index: number): ScheduleTask | null => {
+    const row = index >= 0 && index < displayRows.length ? displayRows[index] : undefined
+    return row?.kind === 'task' ? row.task : null
+  }
 
   function localPoint(event: React.PointerEvent): { x: number; y: number } {
     const rect = svgRef.current!.getBoundingClientRect()
@@ -52,8 +58,7 @@ export function Gantt({
   }
 
   function taskAtY(y: number): ScheduleTask | null {
-    const index = Math.floor(y / rowHeight)
-    return index >= 0 && index < tasks.length ? tasks[index] : null
+    return taskAt(Math.floor(y / rowHeight))
   }
 
   function beginBar(task: ScheduleTask, event: React.PointerEvent) {
@@ -99,8 +104,9 @@ export function Gantt({
     }
   }
 
-  const visible = tasks.slice(window_.first, window_.last)
-  const visibleUids = new Set(visible.map((task) => task.uid))
+  const visible = displayRows.slice(window_.first, window_.last)
+  const visibleTasks = visible.flatMap((row) => (row.kind === 'task' ? [row.task] : []))
+  const visibleUids = new Set(visibleTasks.map((task) => task.uid))
   const today = xOf(scale, new Date())
 
   return (
@@ -139,12 +145,12 @@ export function Gantt({
       )}
 
       {/* dependency lines between visible tasks */}
-      {visible.flatMap((task) =>
+      {visibleTasks.flatMap((task) =>
         task.predecessors
           .filter((link) => visibleUids.has(link.predecessorUid))
           .map((link) => {
-            const from = tasks[indexByUid.get(link.predecessorUid)!]
-            if (from.finish === null || task.start === null) return null
+            const from = taskAt(indexByUid.get(link.predecessorUid)!)
+            if (from === null || from.finish === null || task.start === null) return null
             const x1 = xOf(scale, fromWireDate(from.finish))
             const y1 = barMidY(indexByUid.get(from.uid)!)
             const x2 = xOf(scale, fromWireDate(task.start))
@@ -162,9 +168,9 @@ export function Gantt({
       )}
 
       {/* bars */}
-      {visible.map((task) => {
+      {visibleTasks.map((task) => {
         const index = indexByUid.get(task.uid)!
-        if (task.start === null || task.finish === null || task.name === '') return null
+        if (task.start === null || task.finish === null) return null
         const dragging = drag?.kind === 'bar' && drag.uid === task.uid
         const shift = dragging ? drag.currentX - drag.originX : 0
         const selected = selectedUids.has(task.uid)
@@ -250,7 +256,7 @@ export function Gantt({
         />
       )}
       {drag?.kind === 'link' && (
-        <RubberBand drag={drag} tasks={tasks} indexByUid={indexByUid} scale={scale} rowHeight={rowHeight} />
+        <RubberBand drag={drag} displayRows={displayRows} indexByUid={indexByUid} scale={scale} rowHeight={rowHeight} />
       )}
     </svg>
   )
@@ -258,20 +264,21 @@ export function Gantt({
 
 function RubberBand({
   drag,
-  tasks,
+  displayRows,
   indexByUid,
   scale,
   rowHeight,
 }: {
   drag: { fromUid: number; toUid: number | null; x: number; y: number }
-  tasks: ScheduleTask[]
+  displayRows: DisplayRow<ScheduleTask>[]
   indexByUid: ReadonlyMap<number, number>
   scale: TimeScale
   rowHeight: number
 }) {
   const fromIndex = indexByUid.get(drag.fromUid)
-  if (fromIndex === undefined) return null
-  const from = tasks[fromIndex]
+  const fromRow = fromIndex === undefined ? undefined : displayRows[fromIndex]
+  if (fromIndex === undefined || fromRow?.kind !== 'task') return null
+  const from = fromRow.task
   if (from.finish === null) return null
   const x1 = xOf(scale, fromWireDate(from.finish))
   const y1 = fromIndex * rowHeight + rowHeight / 2

@@ -176,6 +176,9 @@ public sealed class ProjectTask
     /// <summary>Task calendar; null uses the project calendar.</summary>
     public WorkCalendar? Calendar { get; set; }
 
+    /// <summary>Cosmetic display attributes; null when every field is at its default.</summary>
+    public TaskFormatting? Formatting { get; set; }
+
     /// <summary>Leveling priority, 0–1000 (default 500).</summary>
     public int Priority
     {

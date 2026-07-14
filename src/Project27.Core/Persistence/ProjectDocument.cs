@@ -9,7 +9,7 @@ namespace Project27.Core.Persistence;
 /// </summary>
 public sealed record ProjectDocument
 {
-    public int SchemaVersion { get; init; } = 5;
+    public int SchemaVersion { get; init; } = 6;
 
     public required Guid Id { get; init; }
 
@@ -220,7 +220,13 @@ public sealed record TaskDocument
 
     // Schema 5.
     public decimal LevelingDelayMinutes { get; init; }
+
+    // Schema 6.
+    public TaskFormattingDocument? Formatting { get; init; }
 }
+
+/// <summary>Cosmetic, non-scheduling display attributes; see <see cref="Core.TaskFormatting"/>.</summary>
+public sealed record TaskFormattingDocument(int SpaceAfter);
 
 public sealed record RateDocument(decimal Amount, RateUnit Per);
 

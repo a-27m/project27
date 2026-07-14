@@ -152,11 +152,6 @@ public static class CommandExecutor
             : command.Duration is { } text ? ParseDuration(text) : (Duration?)null;
         var parent = command.ParentUid is { } parentUid ? Task(project, parentUid) : null;
         var task = project.AddTask(command.Name, duration, parent, command.At);
-        if (command.Name.Length == 0 && !command.Milestone)
-        {
-            task.IsMilestone = false; // blank spacer rows are nothing, not milestones
-        }
-
         return task.UniqueId;
     }
 
@@ -165,6 +160,7 @@ public static class CommandExecutor
         var task = Task(project, command.Uid);
         if (command.Name is { } name)
         {
+            ArgumentException.ThrowIfNullOrWhiteSpace(name);
             task.Name = name;
         }
 
@@ -201,6 +197,13 @@ public static class CommandExecutor
         if (command.Priority is { } priority)
         {
             task.Priority = priority;
+        }
+
+        if (command.SpaceAfter is { } spaceAfter)
+        {
+            var formatting = task.Formatting ?? new TaskFormatting();
+            formatting.SpaceAfter = spaceAfter;
+            task.Formatting = formatting.IsDefault ? null : formatting;
         }
 
         if (command.ClearDeadline)

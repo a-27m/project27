@@ -18,6 +18,7 @@ import {
   saveColumnKeys,
   sheetWidth,
 } from '../components/sheetColumns'
+import { buildDisplayRows, displayIndexByUid } from '../lib/displayRows'
 import { durationDays, fromWireDate } from '../lib/format'
 import { pruneNested, rangeBetween, siblingMove } from '../lib/outline'
 import { makeScale, ticks, monthTicks } from '../lib/timescale'
@@ -167,7 +168,11 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
   const tasks = useMemo(() => schedule?.tasks ?? [], [schedule])
   const indexByUid = useMemo(() => new Map(tasks.map((task, index) => [task.uid, index])), [tasks])
   const rowByUid = useMemo(() => new Map(tasks.map((task) => [task.uid, task.row])), [tasks])
-  const window_ = windowRange(scrollTop, viewportHeight, ROW_HEIGHT, tasks.length)
+  // Sheet/Gantt panes render cosmetic spaceAfter as extra rows; displayByUid (not
+  // indexByUid) is the row-position map for anything that must align with them.
+  const displayRows = useMemo(() => buildDisplayRows(tasks), [tasks])
+  const displayByUid = useMemo(() => displayIndexByUid(displayRows), [displayRows])
+  const window_ = windowRange(scrollTop, viewportHeight, ROW_HEIGHT, displayRows.length)
   const columns = useMemo(() => columnsFor(columnKeys), [columnKeys])
   const columnContext = useMemo(
     () => ({ minutesPerDay: schedule?.project.minutesPerDay ?? 480, rowByUid }),
@@ -214,15 +219,24 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
     [selectedUids, tasks, indexByUid],
   )
 
-  function addTask(kind: 'task' | 'milestone' | 'blank') {
+  function addTask(kind: 'task' | 'milestone') {
     const command: Command = {
       op: 'addTask',
-      name: kind === 'blank' ? '' : kind === 'milestone' ? 'New milestone' : 'New task',
+      name: kind === 'milestone' ? 'New milestone' : 'New task',
       ...(kind === 'milestone' ? { milestone: true } : {}),
-      ...(kind === 'blank' ? { duration: '0d' } : {}),
       ...(selected?.summary ? { parentUid: selected.uid } : {}),
     }
     void sendCommands([command])
+  }
+
+  function setSpaceAfter(delta: number): void {
+    const commands: Command[] = [...selectedUids].flatMap((uid) => {
+      const task = tasks[indexByUid.get(uid) ?? -1]
+      if (task === undefined) return []
+      const next = Math.min(20, Math.max(0, task.spaceAfter + delta))
+      return next === task.spaceAfter ? [] : [{ op: 'setTask', uid, spaceAfter: next }]
+    })
+    if (commands.length > 0) void sendCommands(commands)
   }
 
   function forSelection(op: 'indentTask' | 'outdentTask'): void {
@@ -378,8 +392,21 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
             <span className="tool-group">
               <button onClick={() => addTask('task')}>+ Task</button>
               <button onClick={() => addTask('milestone')}>+ Milestone</button>
-              <button onClick={() => addTask('blank')} title="Insert a blank spacer row">
-                + Blank
+            </span>
+            <span className="tool-group">
+              <button
+                disabled={selectedUids.size === 0}
+                onClick={() => setSpaceAfter(1)}
+                title="Add space below the selected row(s)"
+              >
+                Space +
+              </button>
+              <button
+                disabled={selectedUids.size === 0}
+                onClick={() => setSpaceAfter(-1)}
+                title="Remove space below the selected row(s)"
+              >
+                Space −
               </button>
             </span>
             <span className="tool-group">
@@ -566,7 +593,7 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
             ))}
           </div>
           <TaskSheet
-            tasks={tasks}
+            displayRows={displayRows}
             columns={columns}
             context={columnContext}
             rowHeight={ROW_HEIGHT}
@@ -607,8 +634,8 @@ export function ProjectView({ client, projectId, userId, onBack }: Props) {
             </svg>
           </div>
           <Gantt
-            tasks={tasks}
-            indexByUid={indexByUid}
+            displayRows={displayRows}
+            indexByUid={displayByUid}
             scale={scale}
             rowHeight={ROW_HEIGHT}
             window_={window_}

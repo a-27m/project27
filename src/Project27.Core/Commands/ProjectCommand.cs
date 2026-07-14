@@ -80,6 +80,9 @@ public sealed record SetTaskCommand : ProjectCommand
 
     public int? Priority { get; init; }
 
+    /// <summary>Blank rows shown after this task for visual grouping; 0 clears it.</summary>
+    public int? SpaceAfter { get; init; }
+
     public DateTime? Deadline { get; init; }
 
     public bool ClearDeadline { get; init; }

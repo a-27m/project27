@@ -84,7 +84,7 @@ public static class ProjectDocumentMapper
     public static Project FromDocument(ProjectDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
-        if (document.SchemaVersion is not (>= 1 and <= 5))
+        if (document.SchemaVersion is not (>= 1 and <= 6))
         {
             throw new NotSupportedException($"Project document schema {document.SchemaVersion} is not supported by this build.");
         }
@@ -193,6 +193,11 @@ public static class ProjectDocumentMapper
             }
 
             task.LevelingDelayMinutes = taskDoc.LevelingDelayMinutes;
+            if (taskDoc.Formatting is { } formattingDoc)
+            {
+                task.Formatting = new TaskFormatting { SpaceAfter = formattingDoc.SpaceAfter };
+            }
+
             task.RestoreTracking(taskDoc.PercentComplete, taskDoc.ActualStart, taskDoc.ActualFinish);
             foreach (var valueDoc in taskDoc.CustomValues ?? [])
             {
@@ -365,6 +370,7 @@ public static class ProjectDocumentMapper
             ? null
             : [.. task.BaselineSlots.OrderBy(pair => pair.Key).Select(pair => new TaskBaselineDocument(
                 pair.Key, pair.Value.Start, pair.Value.Finish, pair.Value.DurationMinutes, pair.Value.WorkMinutes, pair.Value.Cost))],
+        Formatting = task.Formatting is { } formatting ? new TaskFormattingDocument(formatting.SpaceAfter) : null,
     };
 
 #pragma warning disable CA1859
