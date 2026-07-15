@@ -42,6 +42,7 @@ Specs: `docs/spec/01…04, 06, 07, 08, 09`. Deviations from MS Project: `docs/sp
 - Triangle (`EffortTriangle`): edits via `Assignment.SetWork/SetUnits/SetContour` and the `ProjectTask.Duration` setter; **restore paths bypass it** (mapper restores tasks before assignments exist).
 - Costs/assignment dates are outputs of `Recalculate`; `Task.Cost`/`WorkMinutes` roll up excluding inactive children.
 - xUnit v3: explicit `using Xunit;` (no global usings); `Assert.Throws<T>` is exact-type; fixtures need parameterless ctors; xUnit1051 wants `TestContext.Current.CancellationToken`.
+- `Project.SetBaseline` reads the *current* `Start`/`Finish`/`Cost`, so it must run on an already-recalculated aggregate — every endpoint that loads a document must call `Recalculate()` right after `FromDocument` (not just at the end of a command batch), or a lone `setBaseline` command captures nulls.
 
 ## Persistence
 

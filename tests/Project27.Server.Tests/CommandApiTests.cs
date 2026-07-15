@@ -163,6 +163,31 @@ public sealed class CommandApiTests
     }
 
     [Fact]
+    public async Task SetBaseline_captures_computed_dates_even_as_the_only_command_in_a_batch()
+    {
+        // Regression: the commands endpoint loads the document and applies commands before
+        // recalculating, so a lone setBaseline command used to read Start/Finish while they
+        // were still null (unlike every sibling endpoint, which recalculates right after load).
+        var (id, alice) = await CreateProject("Baseline-" + Guid.NewGuid().ToString("N"));
+        await alice.PostAsync($"/api/projects/{id:D}/checkout", null, Token);
+        var addBatch = new object[]
+        {
+            new Dictionary<string, object> { ["op"] = "addTask", ["name"] = "Build", ["duration"] = "3d" },
+        };
+        await alice.PostAsJsonAsync($"/api/projects/{id:D}/commands", addBatch, Token);
+
+        var baselineBatch = new object[] { new Dictionary<string, object> { ["op"] = "setBaseline" } };
+        var response = await alice.PostAsJsonAsync($"/api/projects/{id:D}/commands", baselineBatch, Token);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(Token);
+        var build = body.GetProperty("schedule").GetProperty("tasks")[0];
+        Assert.Equal(build.GetProperty("start").GetString(), build.GetProperty("baselineStart").GetString());
+        Assert.Equal(build.GetProperty("finish").GetString(), build.GetProperty("baselineFinish").GetString());
+        Assert.NotNull(build.GetProperty("baselineStart").GetString());
+        await alice.DeleteAsync($"/api/projects/{id:D}/lock", Token);
+    }
+
+    [Fact]
     public async Task History_labels_revert_and_file_download_work()
     {
         var (id, alice) = await CreateProject("Life-" + Guid.NewGuid().ToString("N"));

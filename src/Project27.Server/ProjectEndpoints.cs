@@ -363,6 +363,9 @@ public static class ProjectEndpoints
             var json = await store.GetDocument(id, cancellationToken)
                 ?? throw new InvalidOperationException($"Project {id:D} has no snapshot; the store is corrupt.");
             var project = ProjectDocumentMapper.FromDocument(ProjectDocumentSerializer.Deserialize(json));
+            // Commands like SetBaseline read live Start/Finish/Cost while applying, so the
+            // aggregate must already reflect the persisted schedule before the loop runs.
+            project.Recalculate();
             var createdUids = new List<int?>();
             var inverses = new List<ProjectCommand>();
             var invertible = true;

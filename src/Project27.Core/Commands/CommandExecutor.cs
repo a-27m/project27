@@ -56,6 +56,9 @@ public static class CommandExecutor
                     ParseDuration(split.Gap))),
                 UnsplitTaskCommand unsplit => Run(() => Task(project, unsplit.Uid).ClearSplits()),
                 SetProjectCommand set => SetProject(project, set),
+                // Reads live Start/Finish/Cost: callers must recalculate before applying this,
+                // and a batch that mutates the schedule earlier in the same call still captures
+                // pre-mutation dates since this executor doesn't recalculate between commands.
                 SetBaselineCommand baseline => Run(() => project.SetBaseline(baseline.Slot, ResolveScope(project, baseline.Uids))),
                 ClearBaselineCommand baseline => Run(() => project.ClearBaseline(baseline.Slot, ResolveScope(project, baseline.Uids))),
                 LevelCommand => Run(() => project.Level()),
