@@ -340,7 +340,7 @@ export function HistoryDialog({
                   {index === 0 ? ' (current)' : ''}
                 </td>
                 <td>{snapshot.label ?? ''}</td>
-                <td>{snapshot.savedBy}</td>
+                <td>{snapshot.savedByName}</td>
                 <td>{snapshot.savedAt.slice(0, 16).replace('T', ' ')}</td>
                 <td>
                   {editable && index > 0 && (

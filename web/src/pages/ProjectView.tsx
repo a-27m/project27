@@ -428,7 +428,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
         </nav>
         <span className="spacer" />
         {info !== null && !holdsLock && info.lock !== null && (
-          <span className="lock-banner">checked out by {info.lock.userId}</span>
+          <span className="lock-banner">checked out by {info.lock.displayName}</span>
         )}
         {editable ? (
           <span className="dropdown checkin-split">

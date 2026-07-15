@@ -27,13 +27,13 @@ public sealed record ProjectInfoDto(
     ProjectRole Role,
     LockDto? Lock);
 
-public sealed record LockDto(string UserId, DateTime AcquiredAt, DateTime RefreshedAt, bool Stale);
+public sealed record LockDto(string UserId, string DisplayName, DateTime AcquiredAt, DateTime RefreshedAt, bool Stale);
 
 public sealed record CheckoutResponse(int Version, LockDto Lock);
 
 public sealed record CheckinResponse(int Version);
 
-public sealed record MemberDto(string UserId, ProjectRole Role);
+public sealed record MemberDto(string UserId, string DisplayName, ProjectRole Role);
 
 public sealed record SetMemberRequest(ProjectRole Role);
 
@@ -42,3 +42,5 @@ public sealed record MeDto(string Id, string Name);
 public sealed record LabelRequest(int? Version, string? Label);
 
 public sealed record RevertRequest(int Version, string? Label);
+
+public sealed record SnapshotDto(int Version, string SavedBy, string SavedByName, DateTime SavedAt, string? Label);

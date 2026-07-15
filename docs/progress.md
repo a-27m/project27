@@ -282,6 +282,25 @@ engineering-decisions.md); everything else stays dependency-free.
   local, reversible check — run it before any live Azure-side change
   (`signInAudience`, admin consent) when access tokens come back opaque.
 
+## Checkout/lock/history UI now shows display names, not user ids (2026-07-15)
+
+"Checked out by", the version-history "By" column, and project members all
+used to render the raw `userId` (a JWT `sub`/dev-user id) — harmless under
+DevAuth where id and name nearly coincide, but opaque under real OIDC. The
+server had no way to resolve an arbitrary user's id to a name (`DisplayName`
+in `ProjectEndpoints.cs` only reads the *caller's own* claims), so a new
+`users(user_id, display_name)` table was added to `RelationalServerStore`,
+populated best-effort by an `/api` endpoint filter on every authenticated
+request (`IServerStore.RecordUser`, swallows `DbException` so a write
+hiccup never fails the actual request). `LockDto`, `MemberDto`, and the new
+`SnapshotDto` (history response) now carry both `userId` and a resolved
+`displayName`/`savedByName`, falling back to the id for users who have
+never authenticated (e.g. a member added but not yet signed in). Web reads
+the new fields in `ProjectList.tsx`, `ProjectView.tsx`'s lock banner, and
+`Managers.tsx`'s history table. Covered by two new
+`Project27.Server.Tests` cases using a mixed-case dev-user header (id and
+name only diverge that way under DevAuth) plus the never-signed-in fallback.
+
 ## Blank tasks retracted; cosmetic spacing added (2026-07-14, see E35)
 
 The empty-name "blank spacer row" feature is gone — it let a zero-duration,

@@ -4,6 +4,7 @@ export type Role = 'reader' | 'editor' | 'owner'
 
 export interface LockInfo {
   userId: string
+  displayName: string
   acquiredAt: string
   refreshedAt: string
   stale: boolean
@@ -265,6 +266,7 @@ export interface TaskDriver {
 export interface SnapshotInfo {
   version: number
   savedBy: string
+  savedByName: string
   savedAt: string
   label: string | null
 }

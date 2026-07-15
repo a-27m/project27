@@ -1,3 +1,4 @@
+using System.Data.Common;
 using System.Security.Claims;
 using Project27.Core;
 using Project27.Core.Commands;
@@ -16,6 +17,21 @@ public static class ProjectEndpoints
     {
         ArgumentNullException.ThrowIfNull(app);
         var api = app.MapGroup("/api").RequireAuthorization();
+
+        api.AddEndpointFilter(async (context, next) =>
+        {
+            var store = context.HttpContext.RequestServices.GetRequiredService<IServerStore>();
+            try
+            {
+                await store.RecordUser(UserId(context.HttpContext.User), DisplayName(context.HttpContext.User), context.HttpContext.RequestAborted).ConfigureAwait(false);
+            }
+            catch (DbException)
+            {
+                // Best-effort: a lookup later falls back to the raw user id.
+            }
+
+            return await next(context).ConfigureAwait(false);
+        });
 
         api.MapGet("/me", (ClaimsPrincipal user) =>
             Results.Ok(new MeDto(UserId(user), DisplayName(user))));
@@ -266,7 +282,16 @@ public static class ProjectEndpoints
         projects.MapGet("/{id:guid}/history", async (Guid id, ClaimsPrincipal user, IServerStore store, CancellationToken cancellationToken) =>
         {
             var (_, error) = await Authorize(store, id, user, ProjectRole.Reader, cancellationToken);
-            return error ?? Results.Ok(await store.GetHistory(id, cancellationToken));
+            if (error is not null)
+            {
+                return error;
+            }
+
+            var history = await store.GetHistory(id, cancellationToken);
+            var names = await store.GetDisplayNames(history.Select(h => h.SavedBy).ToList(), cancellationToken);
+            return Results.Ok(history
+                .Select(h => new SnapshotDto(h.Version, h.SavedBy, names.GetValueOrDefault(h.SavedBy, h.SavedBy), h.SavedAt, h.Label))
+                .ToList());
         });
 
         projects.MapPost("/{id:guid}/label", async (Guid id, LabelRequest request, ClaimsPrincipal user, IServerStore store, CancellationToken cancellationToken) =>
@@ -298,7 +323,7 @@ public static class ProjectEndpoints
             {
                 return Problem(409, held is null
                     ? "Check the project out before reverting."
-                    : $"The lock is held by '{held.UserId}'.");
+                    : $"The lock is held by '{await NameOf(store, held.UserId, cancellationToken)}'.");
             }
 
             var json = await store.GetDocumentAt(id, request.Version, cancellationToken);
@@ -357,7 +382,7 @@ public static class ProjectEndpoints
             {
                 return Problem(409, held is null
                     ? "Check the project out before sending commands."
-                    : $"The lock is held by '{held.UserId}'.");
+                    : $"The lock is held by '{await NameOf(store, held.UserId, cancellationToken)}'.");
             }
 
             var json = await store.GetDocument(id, cancellationToken)
@@ -428,13 +453,13 @@ public static class ProjectEndpoints
                 }
                 else if (held is not null)
                 {
-                    return Problem(409, $"Project is checked out by '{held.UserId}' since {held.AcquiredAt:u}.");
+                    return Problem(409, $"Project is checked out by '{await NameOf(store, held.UserId, cancellationToken)}' since {held.AcquiredAt:u}.");
                 }
             }
 
             broker.Publish(id, "checkout", new { user = userId });
             var current = await store.GetLock(id, cancellationToken);
-            return Results.Ok(new CheckoutResponse(access!.Project.Version, ToDto(current!, locking, now)));
+            return Results.Ok(new CheckoutResponse(access!.Project.Version, await ToDto(store, current!, locking, now, cancellationToken)));
         });
 
         projects.MapPut("/{id:guid}/document", async (Guid id, bool? keep, HttpRequest request, ClaimsPrincipal user, IServerStore store, ProjectEventBroker broker, CancellationToken cancellationToken) =>
@@ -451,7 +476,7 @@ public static class ProjectEndpoints
             {
                 return Problem(409, held is null
                     ? "Check the project out before checking in."
-                    : $"The lock is held by '{held.UserId}'.");
+                    : $"The lock is held by '{await NameOf(store, held.UserId, cancellationToken)}'.");
             }
 
             if (!TryParseIfMatch(request, out var expectedVersion))
@@ -522,7 +547,7 @@ public static class ProjectEndpoints
                 || IsStale(held, locking, DateTime.UtcNow);
             if (!mayRelease)
             {
-                return Problem(403, $"The lock is held by '{held.UserId}' and is not stale.");
+                return Problem(403, $"The lock is held by '{await NameOf(store, held.UserId, cancellationToken)}' and is not stale.");
             }
 
             await store.ReleaseLock(id, cancellationToken);
@@ -533,8 +558,14 @@ public static class ProjectEndpoints
         projects.MapGet("/{id:guid}/members", async (Guid id, ClaimsPrincipal user, IServerStore store, CancellationToken cancellationToken) =>
         {
             var (_, error) = await Authorize(store, id, user, ProjectRole.Reader, cancellationToken);
-            return error ?? Results.Ok(
-                (await store.GetMembers(id, cancellationToken)).Select(m => new MemberDto(m.UserId, m.Role)).ToList());
+            if (error is not null)
+            {
+                return error;
+            }
+
+            var members = await store.GetMembers(id, cancellationToken);
+            var names = await store.GetDisplayNames(members.Select(m => m.UserId).ToList(), cancellationToken);
+            return Results.Ok(members.Select(m => new MemberDto(m.UserId, names.GetValueOrDefault(m.UserId, m.UserId), m.Role)).ToList());
         });
 
         projects.MapPut("/{id:guid}/members/{userId}", async (Guid id, string userId, SetMemberRequest request, ClaimsPrincipal user, IServerStore store, CancellationToken cancellationToken) =>
@@ -551,7 +582,7 @@ public static class ProjectEndpoints
             }
 
             await store.SetMember(id, userId, request.Role, cancellationToken);
-            return Results.Ok(new MemberDto(userId, request.Role));
+            return Results.Ok(new MemberDto(userId, await NameOf(store, userId, cancellationToken), request.Role));
         });
 
         projects.MapDelete("/{id:guid}/members/{userId}", async (Guid id, string userId, ClaimsPrincipal user, IServerStore store, CancellationToken cancellationToken) =>
@@ -640,11 +671,17 @@ public static class ProjectEndpoints
             project.CreatedBy,
             project.CreatedAt,
             role,
-            held is null ? null : ToDto(held, locking, DateTime.UtcNow));
+            held is null ? null : await ToDto(store, held, locking, DateTime.UtcNow, cancellationToken));
     }
 
-    private static LockDto ToDto(ProjectLock held, LockingOptions locking, DateTime now)
-        => new(held.UserId, held.AcquiredAt, held.RefreshedAt, IsStale(held, locking, now));
+    private static async Task<LockDto> ToDto(IServerStore store, ProjectLock held, LockingOptions locking, DateTime now, CancellationToken cancellationToken)
+        => new(held.UserId, await NameOf(store, held.UserId, cancellationToken), held.AcquiredAt, held.RefreshedAt, IsStale(held, locking, now));
+
+    private static async Task<string> NameOf(IServerStore store, string userId, CancellationToken cancellationToken)
+    {
+        var names = await store.GetDisplayNames([userId], cancellationToken);
+        return names.GetValueOrDefault(userId, userId);
+    }
 
     private static bool IsStale(ProjectLock held, LockingOptions locking, DateTime now)
         => now - held.RefreshedAt > locking.StaleAfter;

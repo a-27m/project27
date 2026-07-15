@@ -39,6 +39,9 @@ public abstract class RelationalServerStore : IServerStore
                 user_id TEXT NOT NULL,
                 acquired_at TEXT NOT NULL,
                 refreshed_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS users(
+                user_id TEXT PRIMARY KEY,
+                display_name TEXT NOT NULL);
             """, cancellationToken).ConfigureAwait(false);
 
         // Additive migration; `ADD COLUMN IF NOT EXISTS` is Postgres-only, so swallow the duplicate error.
@@ -144,6 +147,46 @@ public abstract class RelationalServerStore : IServerStore
         AddParameter(command, "user", userId);
         var role = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as string;
         return role is null ? null : ParseRole(role);
+    }
+
+    public async Task RecordUser(string userId, string displayName, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnection(cancellationToken).ConfigureAwait(false);
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO users(user_id, display_name) VALUES (@user, @name)
+                ON CONFLICT(user_id) DO UPDATE SET display_name = excluded.display_name
+            """;
+        AddParameter(command, "user", userId);
+        AddParameter(command, "name", displayName);
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyDictionary<string, string>> GetDisplayNames(IReadOnlyCollection<string> userIds, CancellationToken cancellationToken)
+    {
+        var distinct = userIds.Distinct().ToList();
+        var names = new Dictionary<string, string>();
+        if (distinct.Count == 0)
+        {
+            return names;
+        }
+
+        await using var connection = await OpenConnection(cancellationToken).ConfigureAwait(false);
+        using var command = connection.CreateCommand();
+        var placeholders = string.Join(", ", distinct.Select((_, index) => $"@u{index}"));
+        command.CommandText = $"SELECT user_id, display_name FROM users WHERE user_id IN ({placeholders})";
+        for (var index = 0; index < distinct.Count; index++)
+        {
+            AddParameter(command, $"u{index}", distinct[index]);
+        }
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            names[reader.GetString(0)] = reader.GetString(1);
+        }
+
+        return names;
     }
 
     public async Task<IReadOnlyList<ProjectMember>> GetMembers(Guid id, CancellationToken cancellationToken)

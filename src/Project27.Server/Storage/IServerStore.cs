@@ -23,6 +23,12 @@ public interface IServerStore
 
     public Task<ProjectRole?> GetRole(Guid id, string userId, CancellationToken cancellationToken);
 
+    /// <summary>Remembers the caller's display name, refreshed on every authenticated request.</summary>
+    public Task RecordUser(string userId, string displayName, CancellationToken cancellationToken);
+
+    /// <summary>Display names for the given user ids; ids never seen before are omitted.</summary>
+    public Task<IReadOnlyDictionary<string, string>> GetDisplayNames(IReadOnlyCollection<string> userIds, CancellationToken cancellationToken);
+
     public Task<IReadOnlyList<ProjectMember>> GetMembers(Guid id, CancellationToken cancellationToken);
 
     public Task SetMember(Guid id, string userId, ProjectRole role, CancellationToken cancellationToken);

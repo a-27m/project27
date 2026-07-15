@@ -128,7 +128,7 @@ export function ProjectList({ client, onOpen }: Props) {
                 </td>
                 <td>{project.role}</td>
                 <td>{project.version}</td>
-                <td>{project.lock ? project.lock.userId + (project.lock.stale ? ' (stale)' : '') : ''}</td>
+                <td>{project.lock ? project.lock.displayName + (project.lock.stale ? ' (stale)' : '') : ''}</td>
                 <td>{dateTime(project.createdAt)}</td>
                 <td>
                   {project.role === 'owner' && (

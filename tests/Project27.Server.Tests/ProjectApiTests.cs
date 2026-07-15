@@ -232,4 +232,38 @@ public sealed class ProjectApiTests
         Assert.Equal(HttpStatusCode.NoContent, (await alice.DeleteAsync($"/api/projects/{id:D}", Token)).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await alice.GetAsync($"/api/projects/{id:D}", Token)).StatusCode);
     }
+
+    [Fact]
+    public async Task Lock_and_history_expose_a_display_name_distinct_from_the_user_id()
+    {
+        // DevAuth lowercases the header for the id but keeps the Name claim as typed,
+        // so a mixed-case header is the only way to tell "resolved name" from "raw id".
+        var alice = _server.Client("Alice");
+        var created = await alice.PostAsJsonAsync("/api/projects", new { name = "Names-" + Guid.NewGuid().ToString("N") }, Token);
+        var id = (await created.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("id").GetGuid();
+
+        var checkoutBody = await (await alice.PostAsync($"/api/projects/{id:D}/checkout", null, Token)).Content.ReadFromJsonAsync<JsonElement>(Token);
+        var lockInfo = checkoutBody.GetProperty("lock");
+        Assert.Equal("alice", lockInfo.GetProperty("userId").GetString());
+        Assert.Equal("Alice", lockInfo.GetProperty("displayName").GetString());
+
+        var document = await alice.GetStringAsync($"/api/projects/{id:D}/document", Token);
+        await Checkin(alice, id, checkoutBody.GetProperty("version").GetInt32().ToString(System.Globalization.CultureInfo.InvariantCulture), document);
+
+        var history = await alice.GetFromJsonAsync<JsonElement>($"/api/projects/{id:D}/history", Token);
+        var latest = history.EnumerateArray().First();
+        Assert.Equal("alice", latest.GetProperty("savedBy").GetString());
+        Assert.Equal("Alice", latest.GetProperty("savedByName").GetString());
+    }
+
+    [Fact]
+    public async Task A_member_who_never_signed_in_falls_back_to_their_user_id()
+    {
+        var (id, alice) = await CreateProject("Unseen-" + Guid.NewGuid().ToString("N"));
+        await alice.PutAsJsonAsync($"/api/projects/{id:D}/members/carol", new { role = "reader" }, Token);
+
+        var members = await alice.GetFromJsonAsync<JsonElement>($"/api/projects/{id:D}/members", Token);
+        var carol = members.EnumerateArray().Single(m => m.GetProperty("userId").GetString() == "carol");
+        Assert.Equal("carol", carol.GetProperty("displayName").GetString());
+    }
 }
