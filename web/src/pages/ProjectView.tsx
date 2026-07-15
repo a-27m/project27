@@ -718,6 +718,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
             window_={window_}
             editable={editable}
             selectedUids={selectedUids}
+            statusDate={schedule?.project.statusDate}
             onSelect={(uid) => selectTask(uid)}
             onCommands={(commands) => void sendCommands(commands)}
           />

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import type { ApiClient } from '../api/client'
 import type { Command, ScheduleProject, ScheduleTask, TaskDriver } from '../api/types'
 import { dateTime, durationDays, fromWireDate, toWireDate } from '../lib/format'
@@ -34,9 +34,14 @@ const CONTOURS = ['flat', 'backLoaded', 'frontLoaded', 'doublePeak', 'earlyPeak'
 
 /** Full-field task editor (docs/spec/12-polish.md parity matrix, 12p-2). */
 export function TaskInspector({ task, project, tasks, editable, client, projectId, onCommands, onClose, onCollapse }: Props) {
-  const [section, setSection] = useState<Section>('general')
+  const [openSection, setOpenSection] = useState<Section | null>('general')
+  const toggle = (section: Section) => setOpenSection((current) => (current === section ? null : section))
   const set = (patch: Record<string, unknown>) => onCommands([{ op: 'setTask', uid: task.uid, ...patch }])
   const rowOf = (uid: number) => tasks.find((t) => t.uid === uid)?.row ?? uid
+  const customValuesSet = project.customFields.filter((field) => {
+    const raw = task.customValues?.[field.id]
+    return raw !== null && raw !== undefined
+  }).length
 
   return (
     <aside
@@ -58,213 +63,235 @@ export function TaskInspector({ task, project, tasks, editable, client, projectI
           <Icon name="Close" size={14} />
         </button>
       </header>
-      <nav className="inspector-tabs" role="tablist">
-        {(
-          [
-            ['general', 'General'],
-            ['advanced', 'Advanced'],
-            ['tracking', 'Tracking'],
-            ['links', 'Links'],
-            ['resources', 'Resources'],
-            ['custom', 'Custom'],
-            ['drivers', 'Drivers'],
-          ] as const
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            role="tab"
-            aria-selected={section === key}
-            className={section === key ? 'active' : ''}
-            onClick={() => setSection(key)}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
       <div className="inspector-body">
-        {section === 'general' && (
-          <>
-            <TextField label="Name" value={task.name} editable={editable} onCommit={(v) => set({ name: v })} />
-            <TextField
-              label="Duration"
-              value={durationDays(task.durationMinutes, project.minutesPerDay, task.estimated)}
-              editable={editable && !task.summary}
-              onCommit={(v) => set({ duration: v })}
-            />
-            <StaticField label="Start" value={dateTime(task.start)} />
-            <StaticField label="Finish" value={dateTime(task.finish)} />
-            <SelectField
-              label="Mode"
-              value={task.mode}
-              options={['auto', 'manual']}
-              editable={editable}
-              onCommit={(v) => set({ mode: v })}
-            />
-            <CheckField
-              label="Milestone"
-              checked={task.milestone}
-              editable={editable && !task.summary}
-              onCommit={(v) => set({ milestone: v })}
-            />
-            <CheckField label="Active" checked={task.active} editable={editable} onCommit={(v) => set({ active: v })} />
-            <TextField
-              label="Priority"
-              value={String(task.priority)}
-              editable={editable && !task.summary}
-              onCommit={(v) => set({ priority: Number(v) })}
-            />
-            <StaticField label="WBS" value={task.wbs} />
-            <StaticField
-              label="Slack"
-              value={task.totalSlackMinutes === null ? '' : durationDays(task.totalSlackMinutes, project.minutesPerDay)}
-            />
-          </>
-        )}
+        <AccordionSection
+          title="General"
+          hint={task.milestone ? 'Milestone' : durationDays(task.durationMinutes, project.minutesPerDay, task.estimated)}
+          open={openSection === 'general'}
+          onToggle={() => toggle('general')}
+        >
+          <TextField label="Name" value={task.name} editable={editable} onCommit={(v) => set({ name: v })} />
+          <TextField
+            label="Duration"
+            value={durationDays(task.durationMinutes, project.minutesPerDay, task.estimated)}
+            editable={editable && !task.summary}
+            onCommit={(v) => set({ duration: v })}
+          />
+          <StaticField label="Start" value={dateTime(task.start)} />
+          <StaticField label="Finish" value={dateTime(task.finish)} />
+          <SelectField
+            label="Mode"
+            value={task.mode}
+            options={['auto', 'manual']}
+            editable={editable}
+            onCommit={(v) => set({ mode: v })}
+          />
+          <CheckField
+            label="Milestone"
+            checked={task.milestone}
+            editable={editable && !task.summary}
+            onCommit={(v) => set({ milestone: v })}
+          />
+          <CheckField label="Active" checked={task.active} editable={editable} onCommit={(v) => set({ active: v })} />
+          <TextField
+            label="Priority"
+            value={String(task.priority)}
+            editable={editable && !task.summary}
+            onCommit={(v) => set({ priority: Number(v) })}
+          />
+          <StaticField label="WBS" value={task.wbs} />
+          <StaticField
+            label="Slack"
+            value={task.totalSlackMinutes === null ? '' : durationDays(task.totalSlackMinutes, project.minutesPerDay)}
+          />
+        </AccordionSection>
 
-        {section === 'advanced' && (
-          <>
-            <SelectField
-              label="Type"
-              value={task.type}
-              options={['fixedUnits', 'fixedDuration', 'fixedWork']}
-              editable={editable && !task.summary}
-              onCommit={(v) => set({ type: v })}
-            />
-            <CheckField
-              label="Effort-driven"
-              checked={task.effortDriven}
-              editable={editable && task.type !== 'fixedWork' && !task.summary}
-              onCommit={(v) => set({ effortDriven: v })}
-            />
-            <SelectField
-              label="Constraint"
-              value={task.constraint}
-              options={CONSTRAINTS}
-              editable={editable && !task.summary}
-              onCommit={(v) =>
-                v === 'asSoonAsPossible' || v === 'asLateAsPossible'
-                  ? set({ constraint: v })
-                  : set({ constraint: v, constraintDate: task.constraintDate ?? toWireDate(fromWireDate(task.start ?? project.start)) })
-              }
-            />
-            <DateField
-              label="Constraint date"
-              value={task.constraintDate}
-              editable={editable && !task.summary && task.constraint !== 'asSoonAsPossible' && task.constraint !== 'asLateAsPossible'}
-              onCommit={(v) => set(v === null ? {} : { constraintDate: v })}
-            />
-            <DateField
-              label="Deadline"
-              value={task.deadline}
-              editable={editable}
-              onCommit={(v) => set(v === null ? { clearDeadline: true } : { deadline: v })}
-            />
-            <SelectField
-              label="Calendar"
-              value={task.calendar ?? ''}
-              options={['', ...project.calendars]}
-              labels={['(project)', ...project.calendars]}
-              editable={editable}
-              onCommit={(v) => set(v === '' ? { clearCalendar: true } : { calendar: v })}
-            />
-            <CheckField
-              label="Ignore resource calendars"
-              checked={task.ignoresResourceCalendars}
-              editable={editable}
-              onCommit={(v) => set({ ignoreResourceCalendars: v })}
-            />
-            <TextField
-              label="Fixed cost"
-              value={String(task.fixedCost)}
-              editable={editable}
-              onCommit={(v) => set({ fixedCost: Number(v) })}
-            />
-            <SelectField
-              label="Cost accrual"
-              value={task.fixedCostAccrual}
-              options={['start', 'prorated', 'end']}
-              editable={editable}
-              onCommit={(v) => set({ fixedCostAccrual: v })}
-            />
-            <DateField
-              label="Manual start"
-              value={task.manualStart}
-              editable={editable && task.mode === 'manual'}
-              onCommit={(v) => set(v === null ? { clearManualStart: true } : { manualStart: v })}
-            />
-            <DateField
-              label="Manual finish"
-              value={task.manualFinish}
-              editable={editable && task.mode === 'manual'}
-              onCommit={(v) => set(v === null ? { clearManualFinish: true } : { manualFinish: v })}
-            />
-          </>
-        )}
+        <AccordionSection title="Advanced" open={openSection === 'advanced'} onToggle={() => toggle('advanced')}>
+          <SelectField
+            label="Type"
+            value={task.type}
+            options={['fixedUnits', 'fixedDuration', 'fixedWork']}
+            editable={editable && !task.summary}
+            onCommit={(v) => set({ type: v })}
+          />
+          <CheckField
+            label="Effort-driven"
+            checked={task.effortDriven}
+            editable={editable && task.type !== 'fixedWork' && !task.summary}
+            onCommit={(v) => set({ effortDriven: v })}
+          />
+          <SelectField
+            label="Constraint"
+            value={task.constraint}
+            options={CONSTRAINTS}
+            editable={editable && !task.summary}
+            onCommit={(v) =>
+              v === 'asSoonAsPossible' || v === 'asLateAsPossible'
+                ? set({ constraint: v })
+                : set({ constraint: v, constraintDate: task.constraintDate ?? toWireDate(fromWireDate(task.start ?? project.start)) })
+            }
+          />
+          <DateField
+            label="Constraint date"
+            value={task.constraintDate}
+            editable={editable && !task.summary && task.constraint !== 'asSoonAsPossible' && task.constraint !== 'asLateAsPossible'}
+            onCommit={(v) => set(v === null ? {} : { constraintDate: v })}
+          />
+          <DateField
+            label="Deadline"
+            value={task.deadline}
+            editable={editable}
+            onCommit={(v) => set(v === null ? { clearDeadline: true } : { deadline: v })}
+          />
+          <SelectField
+            label="Calendar"
+            value={task.calendar ?? ''}
+            options={['', ...project.calendars]}
+            labels={['(project)', ...project.calendars]}
+            editable={editable}
+            onCommit={(v) => set(v === '' ? { clearCalendar: true } : { calendar: v })}
+          />
+          <CheckField
+            label="Ignore resource calendars"
+            checked={task.ignoresResourceCalendars}
+            editable={editable}
+            onCommit={(v) => set({ ignoreResourceCalendars: v })}
+          />
+          <TextField
+            label="Fixed cost"
+            value={String(task.fixedCost)}
+            editable={editable}
+            onCommit={(v) => set({ fixedCost: Number(v) })}
+          />
+          <SelectField
+            label="Cost accrual"
+            value={task.fixedCostAccrual}
+            options={['start', 'prorated', 'end']}
+            editable={editable}
+            onCommit={(v) => set({ fixedCostAccrual: v })}
+          />
+          <DateField
+            label="Manual start"
+            value={task.manualStart}
+            editable={editable && task.mode === 'manual'}
+            onCommit={(v) => set(v === null ? { clearManualStart: true } : { manualStart: v })}
+          />
+          <DateField
+            label="Manual finish"
+            value={task.manualFinish}
+            editable={editable && task.mode === 'manual'}
+            onCommit={(v) => set(v === null ? { clearManualFinish: true } : { manualFinish: v })}
+          />
+        </AccordionSection>
 
-        {section === 'tracking' && (
-          <>
-            <TextField
-              label="% complete"
-              value={String(task.percentComplete)}
-              editable={editable && !task.summary}
-              onCommit={(v) => set({ percentComplete: Number(v) })}
-            />
-            <DateField
-              label="Actual start"
-              value={task.actualStart}
-              editable={editable && !task.summary}
-              onCommit={(v) => set(v === null ? { clearActualStart: true } : { actualStart: v })}
-            />
-            <DateField
-              label="Actual finish"
-              value={task.actualFinish}
-              editable={editable && !task.summary}
-              onCommit={(v) => set(v === null ? { clearActualFinish: true } : { actualFinish: v })}
-            />
-            <StaticField label="Baseline start" value={dateTime(task.baselineStart)} />
-            <StaticField label="Baseline finish" value={dateTime(task.baselineFinish)} />
-            <StaticField label="Baseline cost" value={task.baselineCost === null ? '' : String(task.baselineCost)} />
-            <StaticField
-              label="Leveling delay"
-              value={task.levelingDelayMinutes > 0 ? durationDays(task.levelingDelayMinutes, project.minutesPerDay) : ''}
-            />
-            <StaticField label="Cost" value={String(task.cost)} />
-            <StaticField label="Work" value={durationDays(task.workMinutes, 60).replace('d', 'h')} />
-          </>
-        )}
+        <AccordionSection
+          title="Tracking"
+          hint={`${task.percentComplete}%`}
+          open={openSection === 'tracking'}
+          onToggle={() => toggle('tracking')}
+        >
+          <TextField
+            label="% complete"
+            value={String(task.percentComplete)}
+            editable={editable && !task.summary}
+            onCommit={(v) => set({ percentComplete: Number(v) })}
+          />
+          <DateField
+            label="Actual start"
+            value={task.actualStart}
+            editable={editable && !task.summary}
+            onCommit={(v) => set(v === null ? { clearActualStart: true } : { actualStart: v })}
+          />
+          <DateField
+            label="Actual finish"
+            value={task.actualFinish}
+            editable={editable && !task.summary}
+            onCommit={(v) => set(v === null ? { clearActualFinish: true } : { actualFinish: v })}
+          />
+          <StaticField label="Baseline start" value={dateTime(task.baselineStart)} />
+          <StaticField label="Baseline finish" value={dateTime(task.baselineFinish)} />
+          <StaticField label="Baseline cost" value={task.baselineCost === null ? '' : String(task.baselineCost)} />
+          <StaticField
+            label="Leveling delay"
+            value={task.levelingDelayMinutes > 0 ? durationDays(task.levelingDelayMinutes, project.minutesPerDay) : ''}
+          />
+          <StaticField label="Cost" value={String(task.cost)} />
+          <StaticField label="Work" value={durationDays(task.workMinutes, 60).replace('d', 'h')} />
+        </AccordionSection>
 
-        {section === 'links' && (
+        <AccordionSection
+          title="Links"
+          hint={task.predecessors.length > 0 ? String(task.predecessors.length) : undefined}
+          open={openSection === 'links'}
+          onToggle={() => toggle('links')}
+        >
           <LinksSection task={task} tasks={tasks} editable={editable} onCommands={onCommands} rowOf={rowOf} />
-        )}
+        </AccordionSection>
 
-        {section === 'resources' && (
+        <AccordionSection
+          title="Resources"
+          hint={task.assignments.length > 0 ? String(task.assignments.length) : undefined}
+          open={openSection === 'resources'}
+          onToggle={() => toggle('resources')}
+        >
           <ResourcesSection task={task} project={project} editable={editable} onCommands={onCommands} />
-        )}
+        </AccordionSection>
 
-        {section === 'drivers' && <DriversSection client={client} projectId={projectId} uid={task.uid} />}
+        <AccordionSection
+          title="Custom"
+          hint={project.customFields.length > 0 ? `${customValuesSet}/${project.customFields.length}` : undefined}
+          open={openSection === 'custom'}
+          onToggle={() => toggle('custom')}
+        >
+          {project.customFields.length === 0 && <p className="muted">No custom fields defined.</p>}
+          {project.customFields.map((field) => {
+            const raw = task.customValues?.[field.id]
+            const text = raw === null || raw === undefined ? '' : String(raw)
+            return (
+              <TextField
+                key={field.id}
+                label={(field.alias ?? field.id) + (field.hasFormula ? ' (formula)' : '')}
+                value={text}
+                editable={editable && !field.hasFormula && !task.summary}
+                onCommit={(v) =>
+                  set({ customValues: { [field.alias ?? field.id]: v === '' ? null : v } })
+                }
+              />
+            )
+          })}
+        </AccordionSection>
 
-        {section === 'custom' && (
-          <>
-            {project.customFields.length === 0 && <p className="muted">No custom fields defined.</p>}
-            {project.customFields.map((field) => {
-              const raw = task.customValues?.[field.id]
-              const text = raw === null || raw === undefined ? '' : String(raw)
-              return (
-                <TextField
-                  key={field.id}
-                  label={(field.alias ?? field.id) + (field.hasFormula ? ' (formula)' : '')}
-                  value={text}
-                  editable={editable && !field.hasFormula && !task.summary}
-                  onCommit={(v) =>
-                    set({ customValues: { [field.alias ?? field.id]: v === '' ? null : v } })
-                  }
-                />
-              )
-            })}
-          </>
-        )}
+        <AccordionSection title="Drivers" open={openSection === 'drivers'} onToggle={() => toggle('drivers')}>
+          <DriversSection client={client} projectId={projectId} uid={task.uid} />
+        </AccordionSection>
       </div>
     </aside>
+  )
+}
+
+function AccordionSection({
+  title,
+  hint,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string
+  hint?: string
+  open: boolean
+  onToggle: () => void
+  children: ReactNode
+}) {
+  return (
+    <div className="accordion-section">
+      <button className="accordion-head" onClick={onToggle} aria-expanded={open}>
+        <Icon name={open ? 'ChevronUp' : 'ChevronDown'} size={12} />
+        <span className="accordion-title">{title}</span>
+        <span className="spacer" />
+        {hint !== undefined && <span className="accordion-hint">{hint}</span>}
+      </button>
+      {open && <div className="accordion-body">{children}</div>}
+    </div>
   )
 }
 

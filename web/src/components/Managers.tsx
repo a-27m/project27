@@ -76,7 +76,7 @@ export function CustomFieldsManager({
             placeholder='Formula, e.g. IIf([totalSlack] < 1d, 100, 0)'
             className="grow"
           />
-          <button type="submit">Define</button>
+          <button type="submit" className="primary">Define</button>
         </form>
       )}
     </Modal>
@@ -139,7 +139,7 @@ export function CalendarManager({
                 </option>
               ))}
             </select>
-            <button type="submit">Add</button>
+            <button type="submit" className="primary">Add</button>
           </form>
           <form
             className="inline-form"
@@ -180,7 +180,7 @@ export function CalendarManager({
               aria-label="Working hours"
               className="grow"
             />
-            <button type="submit">Set day</button>
+            <button type="submit" className="primary">Set day</button>
           </form>
         </>
       )}

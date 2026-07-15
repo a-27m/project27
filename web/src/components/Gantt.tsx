@@ -11,6 +11,7 @@ import {
   type DragState,
 } from '../lib/drag'
 import { fromWireDate, toWireDate } from '../lib/format'
+import { computeSegmentFills } from '../lib/segmentFill'
 import { dayAt, ticks, xOf, type TimeScale } from '../lib/timescale'
 import type { RowWindow } from '../lib/virtualize'
 
@@ -23,6 +24,8 @@ interface Props {
   window_: RowWindow
   editable: boolean
   selectedUids: ReadonlySet<number>
+  /** Wire-format status date, if set (project.statusDate); drawn as a second reference line beside "today". */
+  statusDate?: string | null
   onSelect: (uid: number | null) => void
   onCommands: (commands: Command[]) => void
 }
@@ -38,6 +41,7 @@ export function Gantt({
   window_,
   editable,
   selectedUids,
+  statusDate,
   onSelect,
   onCommands,
 }: Props) {
@@ -108,6 +112,7 @@ export function Gantt({
   const visibleTasks = visible.flatMap((row) => (row.kind === 'task' ? [row.task] : []))
   const visibleUids = new Set(visibleTasks.map((task) => task.uid))
   const today = xOf(scale, new Date())
+  const statusX = statusDate != null ? xOf(scale, fromWireDate(statusDate)) : null
 
   return (
     <svg
@@ -142,6 +147,9 @@ export function Gantt({
       )}
       {today >= 0 && today <= scale.width && (
         <line x1={today} x2={today} y1={0} y2={window_.totalHeight} className="gantt-today" />
+      )}
+      {statusX !== null && statusX >= 0 && statusX <= scale.width && (
+        <line x1={statusX} x2={statusX} y1={0} y2={window_.totalHeight} className="gantt-status-date" />
       )}
 
       {/* dependency lines between visible tasks */}
@@ -207,29 +215,74 @@ export function Gantt({
           )
         }
 
+        const segments = task.segments.map((segment) => ({
+          segment,
+          segX: xOf(scale, fromWireDate(segment.start)) + shift,
+          segWidth: Math.max(2, xOf(scale, fromWireDate(segment.finish)) - xOf(scale, fromWireDate(segment.start))),
+        }))
+        const segmentFills = computeSegmentFills(
+          segments.map((s) => s.segWidth),
+          task.percentComplete,
+        )
+
         return (
           <g key={task.uid}>
-            {task.segments.map((segment, segmentIndex) => (
+            {task.baselineStart !== null && task.baselineFinish !== null && (
               <rect
-                key={segmentIndex}
-                x={xOf(scale, fromWireDate(segment.start)) + shift}
-                y={barY(index)}
-                width={Math.max(2, xOf(scale, fromWireDate(segment.finish)) - xOf(scale, fromWireDate(segment.start)))}
-                height={barHeight}
-                rx={2}
-                className={
-                  'gantt-bar' +
-                  (task.critical ? ' critical' : '') +
-                  (selected ? ' selected' : '') +
-                  (task.active ? '' : ' inactive') +
-                  (task.mode === 'manual' ? ' manual' : '') +
-                  (editable && task.mode === 'auto' ? ' draggable' : '')
-                }
-                onPointerDown={(event) => beginBar(task, event)}
+                x={xOf(scale, fromWireDate(task.baselineStart))}
+                y={barY(index) + barHeight + 1}
+                width={Math.max(
+                  2,
+                  xOf(scale, fromWireDate(task.baselineFinish)) - xOf(scale, fromWireDate(task.baselineStart)),
+                )}
+                height={3}
+                rx={1}
+                className="gantt-baseline"
+                pointerEvents="none"
               >
-                <title>{`${task.name}\n${segment.start} → ${segment.finish}`}</title>
+                <title>{`Baseline: ${task.baselineStart} → ${task.baselineFinish}`}</title>
               </rect>
-            ))}
+            )}
+            {segments.map(({ segment, segX, segWidth }, segmentIndex) => {
+              const fillWidth = segmentFills[segmentIndex]
+              const clipId = `bar-clip-${task.uid}-${segmentIndex}`
+              return (
+                <g key={segmentIndex}>
+                  <clipPath id={clipId}>
+                    <rect x={segX} y={barY(index)} width={segWidth} height={barHeight} rx={2} />
+                  </clipPath>
+                  <rect
+                    x={segX}
+                    y={barY(index)}
+                    width={segWidth}
+                    height={barHeight}
+                    rx={2}
+                    className={
+                      'gantt-bar' +
+                      (task.critical ? ' critical' : '') +
+                      (selected ? ' selected' : '') +
+                      (task.active ? '' : ' inactive') +
+                      (task.mode === 'manual' ? ' manual' : '') +
+                      (editable && task.mode === 'auto' ? ' draggable' : '')
+                    }
+                    onPointerDown={(event) => beginBar(task, event)}
+                  >
+                    <title>{`${task.name}\n${segment.start} → ${segment.finish}`}</title>
+                  </rect>
+                  {fillWidth > 0 && (
+                    <rect
+                      x={segX}
+                      y={barY(index)}
+                      width={fillWidth}
+                      height={barHeight}
+                      className="gantt-bar-fill"
+                      clipPath={`url(#${clipId})`}
+                      pointerEvents="none"
+                    />
+                  )}
+                </g>
+              )
+            })}
             {editable && (
               <circle
                 cx={x + width + 5}

@@ -88,7 +88,7 @@ export function ProjectList({ client, onOpen }: Props) {
             placeholder="New project name"
             aria-label="New project name"
           />
-          <button type="submit">Create</button>
+          <button type="submit" className="primary">Create</button>
         </form>
         <label className="button-like">
           {importing ? 'Importing…' : 'Import MSPDI…'}

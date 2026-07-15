@@ -46,7 +46,7 @@ export function ResourcesView({ project, editable, onCommands }: Props) {
             aria-label="Standard rate"
             disabled={type === 'cost'}
           />
-          <button type="submit">Add resource</button>
+          <button type="submit" className="primary">Add resource</button>
         </form>
       )}
 

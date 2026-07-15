@@ -117,6 +117,11 @@ select {
   color: var(--text);
 }
 
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: var(--interactive);
+}
+
 .error {
   color: var(--danger);
 }
@@ -163,6 +168,7 @@ select {
 
 .inline-form {
   display: flex;
+  align-items: center;
   gap: 8px;
 }
 
@@ -603,6 +609,11 @@ select {
   stroke-dasharray: 4 3;
 }
 
+.gantt-status-date {
+  stroke: var(--support-warning);
+  stroke-dasharray: 2 2;
+}
+
 .gantt-bar {
   fill: var(--bar);
   stroke: color-mix(in srgb, var(--bar) 60%, black);
@@ -625,6 +636,15 @@ select {
 
 .gantt-bar.draggable {
   cursor: grab;
+}
+
+.gantt-bar-fill {
+  fill: rgba(0, 0, 0, 0.28);
+}
+
+.gantt-baseline {
+  fill: var(--text-helper);
+  opacity: 0.6;
 }
 
 .gantt-summary {
@@ -773,9 +793,19 @@ g:hover > .gantt-linkhandle,
 
 .usage-controls {
   display: flex;
+  align-items: center;
   gap: 16px;
-  padding: 8px 12px;
+  padding: 6px 12px;
   border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.usage-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: var(--type-body-compact-01);
+  letter-spacing: 0.16px;
 }
 
 .usage-scroll {
@@ -900,28 +930,43 @@ g:hover > .gantt-linkhandle,
   letter-spacing: 0.12em;
 }
 
-.inspector-tabs {
-  display: flex;
-  flex-wrap: wrap;
+.inspector-body {
+  overflow-y: auto;
+}
+
+.accordion-section {
   border-bottom: 1px solid var(--border);
 }
 
-.inspector-tabs button {
+.accordion-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
   border: none;
   border-radius: 0;
   background: none;
-  padding: 6px 10px;
-  font-size: 13px;
-}
-
-.inspector-tabs button.active {
-  box-shadow: inset 0 -2px var(--accent);
-  color: var(--accent);
-}
-
-.inspector-body {
-  overflow-y: auto;
   padding: 10px 12px;
+  color: var(--text);
+  font: var(--type-heading-compact-01);
+  letter-spacing: 0.16px;
+}
+
+.accordion-head:hover {
+  background: var(--hover);
+}
+
+.accordion-title {
+  color: var(--text);
+}
+
+.accordion-hint {
+  font: var(--type-code-01);
+  color: var(--text-helper);
+}
+
+.accordion-body {
+  padding: 0 12px 12px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -935,20 +980,32 @@ g:hover > .gantt-linkhandle,
 
 .inspector-label {
   flex: 0 0 118px;
-  color: var(--muted);
-  font-size: 12px;
+  color: var(--text-helper);
+  font: var(--type-label-01);
+  letter-spacing: 0.32px;
 }
 
+/* Carbon TextInput recipe: no box, just a bottom rule — denser than a boxed field. */
 .inspector-row input:not([type='checkbox']),
 .inspector-row select {
   flex: 1;
   min-width: 0;
   font-size: 13px;
+  border: none;
+  border-bottom: 1px solid var(--border-strong-01);
+  border-radius: 0;
+  background: var(--field-01);
+}
+
+.inspector-row input:not([type='checkbox']):focus,
+.inspector-row select:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
 }
 
 .inspector-row input[readonly] {
   border-color: transparent;
-  background: var(--surface);
+  background: transparent;
 }
 
 .inspector-value {

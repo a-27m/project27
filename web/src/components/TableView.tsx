@@ -71,7 +71,7 @@ export function TableView({ client, projectId, version }: Props) {
           placeholder="group by"
           aria-label="Group by"
         />
-        <button type="submit">Apply</button>
+        <button type="submit" className="primary">Apply</button>
       </form>
       {error !== null && <p className="error pad">{error}</p>}
       {result === null ? (
