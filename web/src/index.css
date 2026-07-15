@@ -299,6 +299,16 @@ input[type='radio'] {
   border: none;
 }
 
+.status-chip.behind {
+  background: color-mix(in srgb, var(--support-warning) 22%, transparent);
+  color: var(--text);
+}
+
+.status-gap {
+  font-weight: 400;
+  opacity: 0.85;
+}
+
 .version-chip:hover {
   color: var(--text);
   background: color-mix(in srgb, var(--interactive) 22%, transparent);
@@ -395,6 +405,11 @@ input[type='radio'] {
   color: var(--danger);
 }
 
+.dropdown-item-check {
+  display: inline-block;
+  width: 1.4em;
+}
+
 .gantt-floating-controls {
   position: absolute;
   right: 10px;
@@ -452,6 +467,23 @@ input[type='radio'] {
   justify-content: center;
   font-size: 11px;
   font-weight: 600;
+}
+
+/* --------------------------------------------------------------- split btn */
+
+.split-btn {
+  display: inline-flex;
+  position: relative;
+}
+
+.split-btn-main {
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+
+.split-btn-caret {
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  border-left: 1px solid var(--border);
+  padding: 4px 4px;
 }
 
 /* ------------------------------------------------------------- check-in */
@@ -1012,6 +1044,50 @@ g:hover > .gantt-linkhandle,
   font-size: 13px;
 }
 
+/* ------------------------------------------------------- % complete slider */
+
+.pct-slider {
+  position: relative;
+  width: 130px;
+  height: 20px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  background: var(--field-01);
+  border: 1px solid var(--border);
+  touch-action: none;
+}
+
+.pct-slider-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  background: color-mix(in srgb, var(--interactive) 35%, transparent);
+  pointer-events: none;
+}
+
+.pct-slider-knob {
+  position: absolute;
+  top: -2px;
+  width: 2px;
+  height: 24px;
+  background: var(--interactive);
+  transform: translateX(-1px);
+  pointer-events: none;
+}
+
+.pct-slider-stop {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 20%;
+  margin-left: -10%;
+  background: none;
+  border: none;
+  padding: 0;
+  color: transparent;
+  cursor: pointer;
+}
+
 .inspector-group {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -1019,6 +1095,47 @@ g:hover > .gantt-linkhandle,
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.inspector-stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  font: var(--type-code-01);
+}
+
+.inspector-stats-table th,
+.inspector-stats-table td {
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+}
+
+.inspector-stats-table th {
+  background: var(--surface);
+  color: var(--text-helper);
+  font: var(--type-label-01);
+  letter-spacing: 0.32px;
+}
+
+.inspector-stats-table td.num,
+.inspector-stats-table th.num {
+  text-align: right;
+}
+
+.inspector-stats-table tr.danger td {
+  color: var(--danger);
+}
+
+.inspector-stats-footer {
+  display: flex;
+  gap: 16px;
+  padding: 2px;
+  font-size: 11px;
+  color: var(--text-helper);
+}
+
+.inspector-manage-btn {
+  align-self: flex-start;
+  margin-top: 2px;
 }
 
 /* ------------------------------------------------------------------ modal */

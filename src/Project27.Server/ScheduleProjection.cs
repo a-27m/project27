@@ -18,7 +18,8 @@ public sealed record ScheduleProjectDto(
     DateTime? StatusDate,
     IReadOnlyList<string> Calendars,
     IReadOnlyList<ResourceSummaryDto> Resources,
-    IReadOnlyList<CustomFieldSummaryDto> CustomFields);
+    IReadOnlyList<CustomFieldSummaryDto> CustomFields,
+    ProjectStatsData Stats);
 
 public sealed record ResourceSummaryDto(int Uid, string Name, ResourceType Type, decimal MaxUnits, string Rate);
 
@@ -177,7 +178,8 @@ public static class ScheduleProjection
                 [
                     .. project.CustomFields.OrderBy(f => f.Id, StringComparer.Ordinal).Select(f => new CustomFieldSummaryDto(
                         f.Id, f.Alias, f.Kind.ToString(), f.Formula is not null)),
-                ]),
+                ],
+                ProjectStats.For(project)),
             [
                 .. project.Tasks.Select(task => new ScheduleTaskDto(
                     task.UniqueId,

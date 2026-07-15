@@ -26,6 +26,8 @@ interface Props {
   selectedUids: ReadonlySet<number>
   /** Wire-format status date, if set (project.statusDate); drawn as a second reference line beside "today". */
   statusDate?: string | null
+  /** Client-only UI toggle (Baseline▾ → "Show baseline (ghost bars)"), default on. */
+  showBaselineGhosts?: boolean
   onSelect: (uid: number | null) => void
   onCommands: (commands: Command[]) => void
 }
@@ -42,6 +44,7 @@ export function Gantt({
   editable,
   selectedUids,
   statusDate,
+  showBaselineGhosts = true,
   onSelect,
   onCommands,
 }: Props) {
@@ -227,7 +230,7 @@ export function Gantt({
 
         return (
           <g key={task.uid}>
-            {task.baselineStart !== null && task.baselineFinish !== null && (
+            {showBaselineGhosts && task.baselineStart !== null && task.baselineFinish !== null && (
               <rect
                 x={xOf(scale, fromWireDate(task.baselineStart))}
                 y={barY(index) + barHeight + 1}

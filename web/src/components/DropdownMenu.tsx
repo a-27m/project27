@@ -6,6 +6,8 @@ export interface MenuItem {
   label: string
   onClick: () => void
   danger?: boolean
+  /** Renders a checkmark prefix for toggle-style items (e.g. "Show baseline"). */
+  checked?: boolean
 }
 
 export interface MenuGroup {
@@ -41,13 +43,15 @@ export function DropdownMenu({ trigger, groups, ariaLabel, align = 'left' }: Pro
                   <li key={ii} role="none">
                     <button
                       type="button"
-                      role="menuitem"
+                      role={item.checked !== undefined ? 'menuitemcheckbox' : 'menuitem'}
+                      aria-checked={item.checked}
                       className={`dropdown-item${item.danger === true ? ' danger' : ''}`}
                       onClick={() => {
                         setOpen(false)
                         item.onClick()
                       }}
                     >
+                      {item.checked !== undefined && <span className="dropdown-item-check">{item.checked ? '☑' : '☐'}</span>}
                       {item.label}
                     </button>
                   </li>

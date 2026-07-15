@@ -127,6 +127,31 @@ export interface ScheduleProject {
   calendars: string[]
   resources: ResourceSummary[]
   customFields: CustomFieldSummary[]
+  stats: ProjectStats
+}
+
+export interface DateStat {
+  current: string | null
+  baseline: string | null
+  actual: string | null
+  varianceMinutes: number | null
+}
+
+export interface AmountStat {
+  current: number
+  baseline: number | null
+  actual: number | null
+  remaining: number | null
+}
+
+export interface ProjectStats {
+  start: DateStat
+  finish: DateStat
+  duration: AmountStat
+  work: AmountStat
+  cost: AmountStat
+  percentCompleteByDuration: number
+  percentCompleteByWork: number
 }
 
 export interface CustomFieldSummary {

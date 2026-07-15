@@ -1,8 +1,10 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState } from 'react'
 import type { ApiClient } from '../api/client'
 import type { Command, ScheduleProject, ScheduleTask, TaskDriver } from '../api/types'
 import { dateTime, durationDays, fromWireDate, toWireDate } from '../lib/format'
+import { AccordionSection, CheckField, DateField, SelectField, StaticField, TextField } from './InspectorFields'
 import { Icon } from './icons/Icon'
+import { SegmentedPercent } from './SegmentedPercent'
 
 interface Props {
   task: ScheduleTask
@@ -190,12 +192,13 @@ export function TaskInspector({ task, project, tasks, editable, client, projectI
           open={openSection === 'tracking'}
           onToggle={() => toggle('tracking')}
         >
-          <TextField
-            label="% complete"
-            value={String(task.percentComplete)}
-            editable={editable && !task.summary}
-            onCommit={(v) => set({ percentComplete: Number(v) })}
-          />
+          {!task.summary && (
+            <div className="inspector-row">
+              <span className="inspector-label">% done</span>
+              <SegmentedPercent value={task.percentComplete} editable={editable} onCommit={(v) => set({ percentComplete: v })} />
+              <PercentInput value={task.percentComplete} editable={editable} onCommit={(v) => set({ percentComplete: v })} />
+            </div>
+          )}
           <DateField
             label="Actual start"
             value={task.actualStart}
@@ -266,32 +269,6 @@ export function TaskInspector({ task, project, tasks, editable, client, projectI
         </AccordionSection>
       </div>
     </aside>
-  )
-}
-
-function AccordionSection({
-  title,
-  hint,
-  open,
-  onToggle,
-  children,
-}: {
-  title: string
-  hint?: string
-  open: boolean
-  onToggle: () => void
-  children: ReactNode
-}) {
-  return (
-    <div className="accordion-section">
-      <button className="accordion-head" onClick={onToggle} aria-expanded={open}>
-        <Icon name={open ? 'ChevronUp' : 'ChevronDown'} size={12} />
-        <span className="accordion-title">{title}</span>
-        <span className="spacer" />
-        {hint !== undefined && <span className="accordion-hint">{hint}</span>}
-      </button>
-      {open && <div className="accordion-body">{children}</div>}
-    </div>
   )
 }
 
@@ -503,116 +480,30 @@ function ResourcesSection({
 
 // ------------------------------------------------------------ field widgets
 
-function TextField({
-  label,
-  value,
-  editable,
-  onCommit,
-}: {
-  label: string
-  value: string
-  editable: boolean
-  onCommit: (value: string) => void
-}) {
+/** Exact-value input beside the % slider — writes on blur/Enter, same as the slider's onCommit. */
+function PercentInput({ value, editable, onCommit }: { value: number; editable: boolean; onCommit: (value: number) => void }) {
   const [draft, setDraft] = useState<string | null>(null)
   const commit = () => {
-    if (draft !== null && draft !== value) onCommit(draft)
+    if (draft !== null) {
+      const parsed = Math.min(100, Math.max(0, Number(draft)))
+      if (!Number.isNaN(parsed) && parsed !== value) onCommit(parsed)
+    }
     setDraft(null)
   }
   return (
-    <label className="inspector-row">
-      <span className="inspector-label">{label}</span>
-      <input
-        value={draft ?? value}
-        readOnly={!editable}
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={commit}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') commit()
-          else if (event.key === 'Escape') setDraft(null)
-        }}
-      />
-    </label>
+    <input
+      value={draft ?? String(value)}
+      readOnly={!editable}
+      aria-label="Type an exact %"
+      title="Type an exact %"
+      style={{ width: 44, textAlign: 'right', flex: 'none' }}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') commit()
+        else if (event.key === 'Escape') setDraft(null)
+      }}
+    />
   )
 }
 
-function StaticField({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="inspector-row">
-      <span className="inspector-label">{label}</span>
-      <span className="inspector-value">{value}</span>
-    </div>
-  )
-}
-
-function SelectField({
-  label,
-  value,
-  options,
-  labels,
-  editable,
-  onCommit,
-}: {
-  label: string
-  value: string
-  options: readonly string[]
-  labels?: readonly string[]
-  editable: boolean
-  onCommit: (value: string) => void
-}) {
-  return (
-    <label className="inspector-row">
-      <span className="inspector-label">{label}</span>
-      <select value={value} disabled={!editable} onChange={(event) => onCommit(event.target.value)}>
-        {options.map((option, index) => (
-          <option key={option} value={option}>
-            {labels?.[index] ?? option}
-          </option>
-        ))}
-      </select>
-    </label>
-  )
-}
-
-function CheckField({
-  label,
-  checked,
-  editable,
-  onCommit,
-}: {
-  label: string
-  checked: boolean
-  editable: boolean
-  onCommit: (value: boolean) => void
-}) {
-  return (
-    <label className="inspector-row">
-      <span className="inspector-label">{label}</span>
-      <input type="checkbox" checked={checked} disabled={!editable} onChange={(event) => onCommit(event.target.checked)} />
-    </label>
-  )
-}
-
-function DateField({
-  label,
-  value,
-  editable,
-  onCommit,
-}: {
-  label: string
-  value: string | null
-  editable: boolean
-  onCommit: (value: string | null) => void
-}) {
-  return (
-    <label className="inspector-row">
-      <span className="inspector-label">{label}</span>
-      <input
-        type="datetime-local"
-        value={value === null ? '' : value.slice(0, 16)}
-        readOnly={!editable}
-        onChange={(event) => onCommit(event.target.value === '' ? null : event.target.value + ':00')}
-      />
-    </label>
-  )
-}

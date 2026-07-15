@@ -3,10 +3,12 @@ import type { ApiClient } from '../api/client'
 import type { Command, ProjectInfo, Schedule } from '../api/types'
 import { Gantt } from '../components/Gantt'
 import { NetworkView } from '../components/NetworkView'
+import { ProjectInspector } from '../components/ProjectInspector'
 import { CalendarManager, CustomFieldsManager, HistoryDialog, RecurringTaskDialog } from '../components/Managers'
 import { ProjectSettings } from '../components/ProjectSettings'
 import { TableView } from '../components/TableView'
 import { ResourcesView } from '../components/ResourcesView'
+import { SegmentedPercent } from '../components/SegmentedPercent'
 import { TaskInspector } from '../components/TaskInspector'
 import { TaskSheet } from '../components/TaskSheet'
 import { TimelineView } from '../components/TimelineView'
@@ -21,7 +23,7 @@ import {
   sheetWidth,
 } from '../components/sheetColumns'
 import { buildDisplayRows, displayIndexByUid } from '../lib/displayRows'
-import { dateOnly, durationDays, fromWireDate } from '../lib/format'
+import { durationDays, fromWireDate } from '../lib/format'
 import { pruneNested, rangeBetween, siblingMove } from '../lib/outline'
 import { makeScale, ticks, monthTicks } from '../lib/timescale'
 import { useOutsideClose } from '../lib/useOutsideClose'
@@ -57,11 +59,14 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
   const [viewMode, setViewMode] = useState<ViewMode>('gantt')
   const [dialog, setDialog] = useState<Dialog>(null)
   const [zoomIndex, setZoomIndex] = useState(3) // 24 px/day
+  const [showBaselineGhosts, setShowBaselineGhosts] = useState(true)
   const [columnKeys, setColumnKeys] = useState<string[]>(loadColumnKeys)
   const [undoStack, setUndoStack] = useState<Command[][]>([])
   const [redoStack, setRedoStack] = useState<Command[][]>([])
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false)
+  const [inspectorScope, setInspectorScope] = useState<'task' | 'project'>('task')
   const [checkinOpen, setCheckinOpen] = useState(false)
+  const [imageTag, setImageTag] = useState<string | null>(null)
   const scrollerRef = useRef<HTMLDivElement>(null)
   const ganttScrollRef = useRef<HTMLDivElement>(null)
 
@@ -97,6 +102,15 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
     observer.observe(element)
     return () => observer.disconnect()
   }, [])
+
+  useEffect(() => {
+    client
+      .version()
+      .then((info) => setImageTag(info.imageTag))
+      .catch(() => {
+        /* cosmetic only; the ☰ menu's help link just falls back to "latest" */
+      })
+  }, [client])
 
   const holdsLock = info?.lock?.userId === userId
   const editable = holdsLock && (info?.role === 'editor' || info?.role === 'owner')
@@ -217,6 +231,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
         return new Set([uid])
       })
       if (!modifiers?.range) setAnchorUid(uid)
+      setInspectorScope('task')
       setInspectorCollapsed(false)
     },
     [anchorUid, tasks],
@@ -367,6 +382,10 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
       ],
     },
     {
+      heading: 'VIEW',
+      items: [{ label: 'Columns…', onClick: () => setDialog('columns') }],
+    },
+    {
       heading: 'REPORTS',
       items: [
         { label: 'Project overview', onClick: () => openReport('overview') },
@@ -397,11 +416,34 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
               <Icon name="Menu" size={16} />
             </button>
           )}
-          groups={[{ heading: 'WORKSPACE', items: [{ label: 'All projects', onClick: onBack }] }]}
+          groups={[
+            { heading: 'WORKSPACE', items: [{ label: 'All projects', onClick: onBack }] },
+            {
+              items: [
+                { label: dark ? 'Switch to light theme' : 'Switch to dark theme', onClick: onToggleTheme },
+                {
+                  label: 'Help & docs',
+                  onClick: () =>
+                    window.open(
+                      `https://github.com/a-27m/project27/blob/${imageTag ?? 'main'}/docs/guide.md`,
+                      '_blank',
+                      'noopener',
+                    ),
+                },
+              ],
+            },
+          ]}
         />
         <button
           className="project-btn"
-          onClick={() => setDialog('settings')}
+          onClick={() => {
+            if (inspectorScope === 'project' && !inspectorCollapsed) {
+              setInspectorCollapsed(true)
+            } else {
+              setInspectorScope('project')
+              setInspectorCollapsed(false)
+            }
+          }}
           title="Project info & settings"
         >
           {schedule?.project.name ?? '…'}
@@ -411,11 +453,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
             v{schedule.version}
           </button>
         )}
-        {schedule !== null && (
-          <span className="status-chip" title="Status date — the as-of date for tracking & earned value">
-            STATUS {schedule.project.statusDate !== null ? dateOnly(schedule.project.statusDate) : '—'}
-          </span>
-        )}
+        {schedule !== null && <StatusDateBadge statusDate={schedule.project.statusDate} />}
         <span className="muted">
           {schedule !== null && `${durationDays(schedule.project.totalWorkMinutes, schedule.project.minutesPerDay)} work`}
         </span>
@@ -483,10 +521,34 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
               </button>
             </span>
             <span className="action-group">
-              <button onClick={() => addTask('task')} title="Add task (N)">
-                <Icon name="Add" size={12} /> Task
-              </button>
-              <button onClick={() => addTask('milestone')}>+ Milestone</button>
+              <DropdownMenu
+                ariaLabel="Insert"
+                trigger={({ open, toggle }) => (
+                  <span className="split-btn">
+                    <button className="icon-btn split-btn-main" onClick={() => addTask('task')} title="Add task (N)">
+                      <Icon name="Add" size={12} /> Task
+                    </button>
+                    <button
+                      className="icon-btn split-btn-caret"
+                      onClick={toggle}
+                      title="More insert options"
+                      aria-haspopup="menu"
+                      aria-expanded={open}
+                    >
+                      <Icon name="CaretDown" size={12} />
+                    </button>
+                  </span>
+                )}
+                groups={[
+                  {
+                    heading: 'INSERT',
+                    items: [
+                      { label: '+ Milestone', onClick: () => addTask('milestone') },
+                      { label: '+ Recurring task…', onClick: () => setDialog('recurring') },
+                    ],
+                  },
+                ]}
+              />
             </span>
             {selectionRoots.length > 0 && (
               <span className="action-group" role="group" aria-label="Structure">
@@ -513,13 +575,9 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
                 </button>
               </span>
             )}
-            {selectedLeaves.length > 0 && (
+            {selected !== null && !selected.summary && !selected.milestone && (
               <span className="action-group" role="group" aria-label="Progress & assignment">
-                {[0, 25, 50, 75, 100].map((percent) => (
-                  <button key={percent} className="icon-btn" onClick={() => setPercent(percent)}>
-                    {percent}%
-                  </button>
-                ))}
+                <SegmentedPercent value={selected.percentComplete} editable={editable} onCommit={setPercent} />
                 {(schedule?.project.resources.length ?? 0) > 0 && (
                   <select
                     className="menu"
@@ -550,20 +608,33 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
           </span>
         )}
         <span className="action-group">
+          <DropdownMenu
+            ariaLabel="Baseline"
+            trigger={({ open, toggle }) => <DropdownTrigger label="Baseline" open={open} onClick={toggle} />}
+            groups={[
+              ...(editable
+                ? [
+                    {
+                      items: [
+                        { label: 'Set baseline', onClick: () => void sendCommands([{ op: 'setBaseline' }]) },
+                        { label: 'Clear baseline', onClick: () => void sendCommands([{ op: 'clearBaseline' }]) },
+                      ],
+                    },
+                  ]
+                : []),
+              {
+                items: [
+                  {
+                    label: 'Show baseline (ghost bars)',
+                    checked: showBaselineGhosts,
+                    onClick: () => setShowBaselineGhosts((v) => !v),
+                  },
+                ],
+              },
+            ]}
+          />
           {editable && (
             <>
-              <DropdownMenu
-                ariaLabel="Baseline"
-                trigger={({ open, toggle }) => <DropdownTrigger label="Baseline" open={open} onClick={toggle} />}
-                groups={[
-                  {
-                    items: [
-                      { label: 'Set baseline', onClick: () => void sendCommands([{ op: 'setBaseline' }]) },
-                      { label: 'Clear baseline', onClick: () => void sendCommands([{ op: 'clearBaseline' }]) },
-                    ],
-                  },
-                ]}
-              />
               <DropdownMenu
                 ariaLabel="Level"
                 trigger={({ open, toggle }) => <DropdownTrigger label="Level" open={open} onClick={toggle} />}
@@ -576,8 +647,12 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
                   },
                 ]}
               />
-              <button className="icon-btn" onClick={() => void sendCommands([{ op: 'reschedule' }])} title="Push uncompleted work past the status date">
-                Reschedule
+              <button
+                className="icon-btn"
+                onClick={() => void sendCommands([{ op: 'reschedule' }])}
+                title="Push uncompleted work past the status date"
+              >
+                Reschedule Incomplete Work
               </button>
             </>
           )}
@@ -593,24 +668,6 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
             groups={overflowGroups}
           />
         </span>
-        {viewMode === 'gantt' && (
-          <span className="action-group" role="group" aria-label="Zoom" style={{ borderRight: 'none' }}>
-            <button className="icon-btn" onClick={() => setZoomIndex((z) => Math.max(0, z - 1))} disabled={zoomIndex === 0} title="Zoom out" aria-label="Zoom out">
-              <Icon name="Subtract" size={14} />
-            </button>
-            <span className="muted mono">{pxPerDay}px/d</span>
-            <button
-              className="icon-btn"
-              onClick={() => setZoomIndex((z) => Math.min(ZOOM_LEVELS.length - 1, z + 1))}
-              disabled={zoomIndex === ZOOM_LEVELS.length - 1}
-              title="Zoom in"
-              aria-label="Zoom in"
-            >
-              <Icon name="Add" size={14} />
-            </button>
-            <button className="icon-btn" onClick={() => setDialog('columns')}>Columns</button>
-          </span>
-        )}
       </div>
 
       {viewMode === 'network' && (
@@ -719,9 +776,27 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
             editable={editable}
             selectedUids={selectedUids}
             statusDate={schedule?.project.statusDate}
+            showBaselineGhosts={showBaselineGhosts}
             onSelect={(uid) => selectTask(uid)}
             onCommands={(commands) => void sendCommands(commands)}
           />
+          {viewMode === 'gantt' && (
+            <div className="gantt-floating-controls">
+              <button className="icon-btn" onClick={() => setZoomIndex((z) => Math.max(0, z - 1))} disabled={zoomIndex === 0} title="Zoom out" aria-label="Zoom out">
+                <Icon name="Subtract" size={14} />
+              </button>
+              <span className="zoom-label">{pxPerDay}px/d</span>
+              <button
+                className="icon-btn"
+                onClick={() => setZoomIndex((z) => Math.min(ZOOM_LEVELS.length - 1, z + 1))}
+                disabled={zoomIndex === ZOOM_LEVELS.length - 1}
+                title="Zoom in"
+                aria-label="Zoom in"
+              >
+                <Icon name="Add" size={14} />
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -775,7 +850,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
           onClose={() => setDialog(null)}
         />
       )}
-      {selected !== null && schedule !== null && !inspectorCollapsed && (
+      {inspectorScope === 'task' && selected !== null && schedule !== null && !inspectorCollapsed && (
         <TaskInspector
           task={selected}
           project={schedule.project}
@@ -788,7 +863,18 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
           onCollapse={() => setInspectorCollapsed(true)}
         />
       )}
-      {selected !== null && inspectorCollapsed && (
+      {inspectorScope === 'project' && schedule !== null && !inspectorCollapsed && (
+        <ProjectInspector
+          project={schedule.project}
+          editable={editable}
+          onCommands={(commands) => void sendCommands(commands)}
+          onClose={() => setInspectorCollapsed(true)}
+          onCollapse={() => setInspectorCollapsed(true)}
+          onOpenCalendars={() => setDialog('calendars')}
+          onOpenCustomFields={() => setDialog('fields')}
+        />
+      )}
+      {inspectorCollapsed && (inspectorScope === 'project' || selected !== null) && (
         <button
           className="inspector-tab"
           onClick={() => setInspectorCollapsed(false)}
@@ -879,6 +965,36 @@ function ColumnsDialog({
         </div>
       </div>
     </div>
+  )
+}
+
+/** Amber/highlighted when statusDate differs from today; a plain muted chip when equal or unset. */
+function StatusDateBadge({ statusDate }: { statusDate: string | null }) {
+  if (statusDate === null) {
+    return (
+      <span className="status-chip" title="Status date — the as-of date for tracking & earned value">
+        STATUS —
+      </span>
+    )
+  }
+  const status = fromWireDate(statusDate)
+  const statusDay = new Date(status.getFullYear(), status.getMonth(), status.getDate())
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const gapDays = Math.round((today.getTime() - statusDay.getTime()) / 86_400_000)
+  const label = status.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  if (gapDays === 0) {
+    return (
+      <span className="status-chip" title="Status date — the as-of date for tracking & earned value">
+        STATUS {label}
+      </span>
+    )
+  }
+  const gapText = gapDays > 0 ? `${gapDays}d behind today` : `${-gapDays}d ahead of today`
+  return (
+    <span className="status-chip behind" title="Status date — the as-of date for tracking & earned value">
+      ⚑ Status {label} <span className="status-gap">· {gapText}</span>
+    </span>
   )
 }
 
