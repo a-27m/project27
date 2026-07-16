@@ -586,12 +586,21 @@ put the CLI in server mode with nothing on the command line to show it. Use
 `OpenProjectForCompletion` (timeboxed, no lock) — never `OpenProject`, whose remote
 save path checks the project out. Pressing TAB must not take a lock.
 
-**Trap:** a test that drives the script must put its **own** `p27` shim on PATH
-(`exec dotnet …/p27.dll`). Relying on the CLI's apphost being copied next to the test
-binary passes on macOS and fails on Linux — that copy is a ProjectReference detail, not
-something completion promises. The script hides p27's stderr, so when this bit, all five
-tests reported only `Actual: ""` with no cause; the harness now probes `command -v p27`
-and surfaces stderr in the failure message.
+**Trap:** a test that drives the script must run p27 from the **CLI's own output
+directory**, not from the test binary's. `Project27.Cli.Tests` references the server, so
+its output is built against the ASP.NET shared framework and MSBuild prunes assemblies
+that framework provides — `Microsoft.Extensions.Configuration` among them. The test host
+loads those from the framework, but the `p27.dll` copied alongside declares only
+`Microsoft.NETCore.App` and aborts with `FileNotFoundException` (exit 134). Whether a
+given assembly is pruned depends on the installed runtime, so this passes locally and
+fails on CI. The .csproj captures the CLI's output path as assembly metadata for the shim.
+
+**Trap:** the script sends p27's stderr to `/dev/null` — right at a prompt, fatal in a
+test. When the above bit, all five tests reported `Actual: ""` and nothing else, and a
+plausible-but-wrong cause (a missing apphost) reproduced the same symptom locally. The
+harness now probes `command -v p27`, captures p27's stderr, and prints both on failure;
+that turned a guess into the exact exception in one CI run. Diagnose from the failure,
+not from the first theory that reproduces the symptom.
 
 **Trap:** in the bash script, read `__complete`'s lines in the completion function
 itself. A `while read … < <(helper)` runs the helper in a subshell, so a directive it

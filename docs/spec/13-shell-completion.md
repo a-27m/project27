@@ -110,8 +110,9 @@ The bash script stays **bash 3.2**-clean (macOS `/bin/bash`) — no negative arr
 subscripts, no `mapfile`. It uses bash-completion's `_init_completion`/`_filedir`
 when present and degrades to `compgen` when not. `CompletionScriptTests` drives
 the generated script through `/bin/bash` to keep both true; it puts its own `p27`
-shim on PATH rather than depending on the apphost sitting next to the test binary,
-which is present on macOS but not on the Linux CI runner.
+shim on PATH, running the CLI from the CLI's own build output — the copy beside
+the test binary is pruned against the ASP.NET shared framework and cannot resolve
+its dependencies standalone (see E36).
 
 ## 7. Coverage
 

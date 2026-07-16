@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 using Project27.Cli.Completion;
 using Xunit;
 
@@ -36,15 +37,18 @@ public sealed class CompletionScriptTests : IDisposable
     private static bool BashAvailable => !OperatingSystem.IsWindows() && File.Exists("/bin/bash");
 
     /// <summary>
-    /// Puts a `p27` on PATH, which is the only thing the script assumes. It shells out to
-    /// `dotnet p27.dll` rather than relying on the apphost being copied next to the test
-    /// binary — that is a ProjectReference detail, not something completion promises, and
-    /// depending on it made these tests pass on macOS and fail on Linux.
+    /// Puts a `p27` on PATH, which is the only thing the script assumes.
+    ///
+    /// It runs the CLI out of the CLI's own output directory. The copy of p27.dll next to
+    /// this test binary looks usable but is not: this project references the server, so
+    /// MSBuild prunes assemblies the ASP.NET shared framework provides, which p27 — a plain
+    /// console app — then cannot resolve. See the comment in the .csproj.
     /// </summary>
     private string CreateShim()
     {
         var shim = Path.Combine(_shimDirectory.Path, "p27");
-        var library = Path.Combine(AppContext.BaseDirectory, "p27.dll");
+        var library = Path.Combine(CliOutputDirectory(), "p27.dll");
+        Assert.True(File.Exists(library), $"the CLI build output is missing: {library}");
         File.WriteAllText(
             shim,
             $"""
@@ -61,6 +65,16 @@ public sealed class CompletionScriptTests : IDisposable
         }
 
         return _shimDirectory.Path;
+    }
+
+    /// <summary>The CLI's build output, captured by the .csproj at build time.</summary>
+    private static string CliOutputDirectory()
+    {
+        var directory = typeof(CompletionScriptTests).Assembly
+            .GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(a => a.Key == "CliOutputDirectory")?.Value
+            ?? throw new InvalidOperationException("the CliOutputDirectory assembly metadata is missing");
+        return Path.GetFullPath(directory);
     }
 
     /// <summary>The muxer running this test, so the shim cannot pick a different .NET.</summary>
