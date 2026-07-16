@@ -1,6 +1,6 @@
 using System.Net;
 using System.Text.Json;
-using IdentityModel.Client;
+using Duende.IdentityModel.Client;
 
 namespace Project27.Cli.Auth;
 
