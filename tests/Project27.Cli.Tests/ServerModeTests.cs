@@ -146,6 +146,25 @@ public sealed class ServerModeTests : IDisposable
     }
 
     /// <summary>
+    /// `Resolve` rejects a name shared by two projects, so completing the name would only
+    /// produce a value the command refuses. Ambiguous names come back as ids instead.
+    /// </summary>
+    [Fact]
+    public void An_ambiguous_project_name_completes_to_ids_not_the_name()
+    {
+        Cli.Ok(AsAlice("project", "create", "Twin"));
+        Cli.Ok(AsAlice("project", "create", "Twin"));
+
+        var candidates = Complete(
+            "p27", "--server", "http://localhost", "--dev-user", "alice", "--project", "").Candidates;
+
+        Assert.DoesNotContain(candidates, c => c.Value == "Twin");
+        var ids = candidates.Where(c => c.Description?.StartsWith("Twin", StringComparison.Ordinal) == true).ToList();
+        Assert.Equal(2, ids.Count);
+        Assert.All(ids, c => Assert.True(Guid.TryParse(c.Value, out _), $"'{c.Value}' should be an id"));
+    }
+
+    /// <summary>
     /// P27_SERVER puts the CLI in server mode with nothing on the command line to show
     /// it, so completion has to resolve the source exactly the way the verbs do.
     /// </summary>

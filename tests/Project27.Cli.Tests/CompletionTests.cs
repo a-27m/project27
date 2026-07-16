@@ -190,6 +190,22 @@ public sealed class CompletionTests
     }
 
     [Fact]
+    public void A_variadic_argument_keeps_completing_after_the_first_value()
+    {
+        using var directory = new TempDir();
+        var file = directory.File("plan.p27");
+        Cli.Ok("init", "Demo", "--file", file);
+        Cli.Ok("task", "add", "Design", "-d", "3d", "--file", file);
+        Cli.Ok("task", "add", "Build", "-d", "3d", "--file", file);
+
+        // `task indent <tasks…>` takes one-or-more refs; the second still completes.
+        Assert.Equal(["1", "2"], Values("p27", "--file", file, "task", "indent", "1", ""));
+
+        // `task remove <task>` takes exactly one, so there is nothing to offer after it.
+        Assert.Empty(Values("p27", "--file", file, "task", "remove", "1", ""));
+    }
+
+    [Fact]
     public void Local_mode_offers_no_server_projects()
     {
         Assert.Empty(Values("p27", "--project", ""));

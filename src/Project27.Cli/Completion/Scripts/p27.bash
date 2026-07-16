@@ -32,10 +32,11 @@ _p27_completion() {
     lines+=("$line")
   done < <(p27 __complete -- "${request[@]}" 2>/dev/null)
 
+  # Negative subscripts need bash 4.3; macOS still ships bash 3.2 as /bin/bash.
   directive=":none"
   if (( ${#lines[@]} )); then
-    directive="${lines[-1]}"
-    unset 'lines[-1]'
+    directive="${lines[${#lines[@]}-1]}"
+    unset "lines[${#lines[@]}-1]"
   fi
 
   COMPREPLY=()
@@ -73,21 +74,37 @@ _p27_files() {
 complete -F _p27_completion p27
 
 # --- fzf ---------------------------------------------------------------------
-# With fzf loaded, `p27 --project **<TAB>` opens fzf showing descriptions. __fzf_defc
-# wraps the completion registered above and delegates back to it when the `**` trigger is
-# absent, so plain TAB keeps working exactly as before.
+# With fzf loaded, `p27 --project **<TAB>` opens fzf showing descriptions.
+#
+# fzf normally delegates a triggerless TAB back to the completion it replaced, but only
+# for completions that were already registered when fzf itself loaded. This file is
+# lazy-loaded by bash-completion on the first `p27<TAB>`, i.e. long after — so fzf has no
+# original to fall back to and plain TAB would come back empty. Hence the trigger is
+# checked here and the normal path called directly, rather than trusting that delegation.
 if declare -F __fzf_defc >/dev/null 2>&1; then
   _fzf_complete_p27() {
     local -a words
     local cword
+
+    local trigger="${FZF_COMPLETION_TRIGGER-**}"
+    if [[ "${COMP_WORDS[COMP_CWORD]}" != *"$trigger" ]]; then
+      _p27_completion
+      return
+    fi
+
     if declare -F _init_completion >/dev/null 2>&1; then
       _init_completion -n ":=" 2>/dev/null || true
     else
       words=("${COMP_WORDS[@]}")
       cword=$COMP_CWORD
     fi
+    # Drop the trigger itself; fzf passes what was typed before it as $prefix.
+    words[cword]="${words[cword]%"$trigger"}"
     local -a request=("${words[@]:0:cword}" "${words[cword]}")
-    _fzf_complete --reverse --with-nth=1 --delimiter='\t' -- "$@" < <(
+    # Show the whole `value<TAB>description` line: the description is the half a
+    # human recognises (task 7 means nothing, "Integration testing" does).
+    # --nth=1,2 searches both columns; _post strips to the value on insert.
+    _fzf_complete --reverse --delimiter='\t' --nth=1,2 -- "$@" < <(
       p27 __complete -- "${request[@]}" 2>/dev/null | command grep -v '^:'
     )
   }

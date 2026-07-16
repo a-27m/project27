@@ -43,7 +43,13 @@ internal static class CompletionValues
     /// <summary>`calendar add --preset`; see CalendarCommands.Add.</summary>
     public static readonly string[] CalendarPresets = ["standard", "24h", "night-shift"];
 
-    /// <summary>Server projects, by name. Silent in local mode — there is nothing to list.</summary>
+    /// <summary>
+    /// Server projects, by name. Silent in local mode — there is nothing to list.
+    ///
+    /// A name shared by several projects is ambiguous and <see cref="RemoteClient.Resolve"/>
+    /// rejects it, so completing the name would only hand the user a value the command
+    /// then refuses. Those come back as ids instead — the form that does resolve.
+    /// </summary>
     public static IEnumerable<Candidate> Projects(CompletionRequest request)
     {
         if (!request.IsRemote)
@@ -52,7 +58,16 @@ internal static class CompletionValues
         }
 
         using var client = request.Cli.CreateRemoteClient(CompletionRequest.RemoteTimeout);
-        return [.. client.ListProjects().Select(p => new Candidate(p.Name, Describe(p)))];
+        return
+        [
+            .. client.ListProjects()
+                .GroupBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+                .SelectMany(group => group.Count() == 1
+                    ? [new Candidate(group.Key, Describe(group.First()))]
+                    : group.Select(p => new Candidate(
+                        p.Id.ToString("D", CultureInfo.InvariantCulture),
+                        $"{p.Name} ({Describe(p)})"))),
+        ];
 
         static string Describe(RemoteProjectInfo project)
             => project.Lock is { Stale: false } held

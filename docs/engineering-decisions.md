@@ -591,6 +591,23 @@ itself. A `while read … < <(helper)` runs the helper in a subshell, so a direc
 sets is lost and path completion silently does nothing — this shipped broken until a
 real shell was driven.
 
+**Trap:** the bash script must stay **bash 3.2**-clean — macOS still ships 3.2 as
+`/bin/bash`, and it rejects negative array subscripts outright (`${a[-1]}` →
+"bad array subscript", so the `:none` directive ends up in `COMPREPLY`). Verifying
+against Homebrew's bash 5 hides this; `CompletionScriptTests` runs `/bin/bash` for
+exactly that reason.
+
+**Trap:** fzf only delegates a triggerless TAB back to the completion it replaced if
+that completion existed when **fzf** loaded. bash-completion lazy-loads our script on
+the first `p27<TAB>`, long after — so `__fzf_defc` records no original and plain TAB
+returns nothing. The script therefore checks `FZF_COMPLETION_TRIGGER` itself and calls
+`_p27_completion` directly rather than trusting fzf's delegation.
+
+**Trap:** in the zsh fzf helper, `${(z)lbuf}` splits into words but **keeps the quotes**,
+so `-p "Alpha Project"` reaches `__complete` quoted and matches nothing. `${(Q)${(z)lbuf}}`
+strips them — the normal `$words` path is already dequoted and needs no such care. The
+quoting bug this whole design avoids can still sneak back in through fzf.
+
 ---
 
 *When you add a significant engineering decision, append an E-record here in

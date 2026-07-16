@@ -96,9 +96,22 @@ takes an editing lock (D6), because pressing TAB must not check a project out.
 | bash | `__fzf_defc p27 _fzf_complete_p27` wraps our `complete -F`, and fzf delegates back to it when `**` is absent, so plain TAB is unchanged. |
 
 `_fzf_complete_p27_post` strips the description column so only the value is
-inserted. Plain bash cannot show descriptions and drops them.
+inserted, and the popup shows the whole `value<TAB>description` line (`--nth=1,2`
+searches both): fuzzy-matching `p27 task show **` on "integration" and getting
+row `7` is the entire point. Plain bash cannot show descriptions and drops them.
 
-## 6. Coverage
+The bash script checks the trigger itself instead of relying on fzf to delegate a
+triggerless TAB back — fzf only does that for completions registered before it
+loaded, and ours is lazy-loaded afterwards. See E36 for that and the other traps.
+
+## 6. Shell compatibility
+
+The bash script stays **bash 3.2**-clean (macOS `/bin/bash`) — no negative array
+subscripts, no `mapfile`. It uses bash-completion's `_init_completion`/`_filedir`
+when present and degrades to `compgen` when not. `CompletionScriptTests` drives
+the generated script through `/bin/bash` to keep both true.
+
+## 7. Coverage
 
 Dynamic: server project names, task rows (id inserted, name as description),
 resource names, calendar names, custom fields defined in the project, logged-in

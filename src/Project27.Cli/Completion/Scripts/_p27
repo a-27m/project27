@@ -56,10 +56,15 @@ _p27() {
 _fzf_complete_p27() {
   local -a request
   local lbuf="$1"
-  # ${(z)...} splits the way the shell would; prefix is set by fzf to the typed word.
-  request=(${(z)lbuf})
+  # (z) splits the way the shell would but keeps the quotes, so -p "Alpha Project" would
+  # reach __complete with its quotes attached and match no project; (Q) strips them, which
+  # is what the normal completion path gets from $words for free.
+  request=(${(Q)${(z)lbuf}})
   request+=("${prefix}")
-  _fzf_complete --ansi --reverse --with-nth=1 --delimiter='\t' -- "$@" < <(
+  # Show the whole `value<TAB>description` line: the description is the half a
+  # human recognises (task 7 means nothing, "Integration testing" does).
+  # --nth=1,2 searches both columns; _post strips to the value on insert.
+  _fzf_complete --reverse --delimiter='\t' --nth=1,2 -- "$@" < <(
     p27 __complete -- "${request[@]}" 2>/dev/null | command grep -v '^:'
   )
 }
