@@ -1,4 +1,5 @@
 using System.CommandLine;
+using Project27.Cli.Completion;
 using Project27.Core.Reports;
 
 namespace Project27.Cli;
@@ -43,7 +44,7 @@ internal static class ReportCommands
         {
             HelpName = "file.html",
             Description = "Output path; default <project>-<report>.html in the current directory.",
-        };
+        }.SuggestsPaths();
         var command = new Command(name, title + ".") { outOpt };
         command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
         {

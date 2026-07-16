@@ -35,4 +35,10 @@
     </None>
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- `p27 completion <shell>` prints these, so they ship inside the binary. -->
+    <EmbeddedResource Include="Completion\Scripts\_p27" LogicalName="Project27.Cli.Completion.Scripts._p27" />
+    <EmbeddedResource Include="Completion\Scripts\p27.bash" LogicalName="Project27.Cli.Completion.Scripts.p27.bash" />
+  </ItemGroup>
+
 </Project>

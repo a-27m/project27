@@ -59,7 +59,7 @@ internal sealed class CliContext(ParseResult result)
 
     public bool IsRemote => !string.IsNullOrWhiteSpace(ServerUrl);
 
-    public RemoteClient CreateRemoteClient()
+    public RemoteClient CreateRemoteClient(TimeSpan? timeout = null)
     {
         if (!IsRemote)
         {
@@ -71,22 +71,22 @@ internal sealed class CliContext(ParseResult result)
 
         if (!string.IsNullOrEmpty(explicit_token))
         {
-            return new RemoteClient(ServerUrl!, explicit_token, null);
+            return new RemoteClient(ServerUrl!, explicit_token, null, timeout);
         }
 
         if (!string.IsNullOrEmpty(explicit_dev_user))
         {
-            return new RemoteClient(ServerUrl!, null, explicit_dev_user);
+            return new RemoteClient(ServerUrl!, null, explicit_dev_user, timeout);
         }
 
         var stored = CredentialStore.Get(ServerUrl!);
         if (stored != null)
         {
             var token = ResolveOrRefreshToken(stored);
-            return new RemoteClient(ServerUrl!, token, null);
+            return new RemoteClient(ServerUrl!, token, null, timeout);
         }
 
-        return new RemoteClient(ServerUrl!, null, null);
+        return new RemoteClient(ServerUrl!, null, null, timeout);
     }
 
     private static string ResolveOrRefreshToken(StoredCredential stored)
@@ -126,9 +126,32 @@ internal sealed class CliContext(ParseResult result)
         }
     }
 
+    /// <summary>The requested project, or null if neither `--project` nor P27_PROJECT is set.</summary>
+    public string? ProjectRef
+        => result.GetValue(CliRoot.ProjectOption) ?? Environment.GetEnvironmentVariable("P27_PROJECT");
+
     public string RequireProjectRef()
-        => result.GetValue(CliRoot.ProjectOption) ?? Environment.GetEnvironmentVariable("P27_PROJECT")
-            ?? throw new CliException("server mode needs --project <name|id>");
+        => ProjectRef ?? throw new CliException("server mode needs --project <name|id>");
+
+    /// <summary>
+    /// Read-only load for shell completion: resolves the same source <see cref="OpenProject"/>
+    /// would, but timeboxed and without acquiring a lock or a check-in session — completing
+    /// a task reference must never take an editing lock out from under anyone.
+    /// </summary>
+    internal Project OpenProjectForCompletion(TimeSpan timeout)
+    {
+        if (IsRemote)
+        {
+            using var client = CreateRemoteClient(timeout);
+            var info = client.Resolve(RequireProjectRef());
+            var (json, _) = client.GetDocument(info.Id);
+            var project = ProjectDocumentMapper.FromDocument(ProjectDocumentSerializer.Deserialize(json));
+            project.Recalculate();
+            return project;
+        }
+
+        return SqliteProjectStore.Open(ResolveFile()).Load();
+    }
 
     public (IProjectSession Store, Project Project) OpenProject()
     {

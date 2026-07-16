@@ -1,4 +1,5 @@
 using System.CommandLine;
+using Project27.Cli.Completion;
 using Project27.Core;
 using Project27.Core.Time;
 
@@ -29,7 +30,8 @@ internal static class CalendarCommands
     }
 
     private static Argument<string> CalendarArg()
-        => new("calendar") { Description = "Calendar name (case-insensitive)." };
+        => new Argument<string>("calendar") { Description = "Calendar name (case-insensitive)." }
+            .Suggests(CompletionValues.Calendars);
 
     private static Command List()
     {
@@ -109,8 +111,10 @@ internal static class CalendarCommands
     private static Command Add()
     {
         var nameArg = new Argument<string>("name");
-        var baseOpt = new Option<string?>("--base") { HelpName = "calendar", Description = "Derive from an existing calendar." };
-        var presetOpt = new Option<string?>("--preset") { HelpName = "standard|24h|night-shift" };
+        var baseOpt = new Option<string?>("--base") { HelpName = "calendar", Description = "Derive from an existing calendar." }
+            .Suggests(CompletionValues.Calendars);
+        var presetOpt = new Option<string?>("--preset") { HelpName = "standard|24h|night-shift" }
+            .Suggests(CompletionValues.CalendarPresets);
         var command = new Command("add", "Add a calendar (default: standard weekday pattern).") { nameArg, baseOpt, presetOpt };
         command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
         {
@@ -159,7 +163,8 @@ internal static class CalendarCommands
     private static Command SetDay()
     {
         var calendarArg = CalendarArg();
-        var dayArg = new Argument<string>("day") { Description = "Day of week: mon..sun." };
+        var dayArg = new Argument<string>("day") { Description = "Day of week: mon..sun." }
+            .Suggests(CompletionValues.DaysOfWeek);
         var hoursArg = new Argument<string>("hours") { Description = "off, inherit, or 08:00-12:00,13:00-17:00." };
         var command = new Command("set-day", "Set a weekday's working hours in the default week.") { calendarArg, dayArg, hoursArg };
         command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
@@ -178,7 +183,8 @@ internal static class CalendarCommands
     private static Command SetBase()
     {
         var calendarArg = CalendarArg();
-        var baseArg = new Argument<string>("base") { Description = "Base calendar name, or 'none'." };
+        var baseArg = new Argument<string>("base") { Description = "Base calendar name, or 'none'." }
+            .Suggests(r => CompletionValues.Calendars(r).Prepend(new Candidate("none", "Make the calendar standalone.")));
         var command = new Command("set-base", "Re-base a calendar onto another (or make it standalone).") { calendarArg, baseArg };
         command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
         {

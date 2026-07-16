@@ -1,4 +1,5 @@
 using System.CommandLine;
+using Project27.Cli.Completion;
 using System.Globalization;
 using Project27.Core;
 
@@ -17,13 +18,16 @@ internal static class LinkCommands
     }
 
     private static (Argument<string> Pred, Argument<string> Succ) RefArguments() => (
-        new Argument<string>("predecessor") { Description = "Task reference: row id or uid:<n>." },
-        new Argument<string>("successor") { Description = "Task reference: row id or uid:<n>." });
+        new Argument<string>("predecessor") { Description = "Task reference: row id or uid:<n>." }
+            .Suggests(CompletionValues.Tasks),
+        new Argument<string>("successor") { Description = "Task reference: row id or uid:<n>." }
+            .Suggests(CompletionValues.Tasks));
 
     private static Command Add()
     {
         var (predArg, succArg) = RefArguments();
-        var typeOpt = new Option<string?>("--type") { HelpName = "fs|ss|ff|sf", Description = "Dependency type; default fs." };
+        var typeOpt = new Option<string?>("--type") { HelpName = "fs|ss|ff|sf", Description = "Dependency type; default fs." }
+            .Suggests(CompletionValues.DependencyTypes);
         var lagOpt = new Option<string?>("--lag") { HelpName = "lag", Description = "Lag: 2d, 4eh, 50%; leading - for lead." };
         var command = new Command("add", "Link two tasks.") { predArg, succArg, typeOpt, lagOpt };
         command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
@@ -51,7 +55,7 @@ internal static class LinkCommands
     private static Command Set()
     {
         var (predArg, succArg) = RefArguments();
-        var typeOpt = new Option<string?>("--type") { HelpName = "fs|ss|ff|sf" };
+        var typeOpt = new Option<string?>("--type") { HelpName = "fs|ss|ff|sf" }.Suggests(CompletionValues.DependencyTypes);
         var lagOpt = new Option<string?>("--lag") { HelpName = "lag" };
         var command = new Command("set", "Change an existing link's type or lag.") { predArg, succArg, typeOpt, lagOpt };
         command.SetAction(parseResult => CliRoot.Run(parseResult, context =>

@@ -21,8 +21,9 @@ expensive to re-derive; conventions live in `decisions.md` (D1–D9 + D6a).
 | 10 | Advanced scheduling | done (8a35e81) — **subprojects = extension point only** (user decision 2026-07-11; revisit at the very end, after 12/5; seams in spec 10) | — |
 | 11 | Reports | done (3b38136) | — |
 | 12 | Polish & web parity | **done** (02ff3c5, fd5a123, 50ea3b5, aed9069, 3e5ba5d, 4e4ab3a) | — |
+| 13 | Shell completion (bash/zsh/fzf) | **done** — spec 13, E36 | — |
 
-Specs: `docs/spec/01…04, 06, 07, 08, 09`. Deviations from MS Project: `docs/spec/deviations.md` (#1–#25).
+Specs: `docs/spec/01…04, 06, 07, 08, 09, 13`. Deviations from MS Project: `docs/spec/deviations.md` (#1–#25).
 
 ## Build & test
 
@@ -61,6 +62,21 @@ Specs: `docs/spec/01…04, 06, 07, 08, 09`. Deviations from MS Project: `docs/sp
 - Local: `--file` (`P27_FILE`)/single `.p27` in cwd. Remote: `--server` (`P27_SERVER`), `--project <name|id>` (`P27_PROJECT`), `--token` (`P27_TOKEN`), `--dev-user`.
 - Remote mutating verbs: fetch → mutate in-process → checkout+PUT; a lock whose `AcquiredAt != RefreshedAt` pre-existed (explicit `p27 checkout`) and is kept.
 - Test seams: in-process invoke via `InvocationConfiguration{Output,Error}` (`CliHarness`); `RemoteClient.HandlerFactory` routes to a `WebApplicationFactory` TestServer (extern alias `server` — both hosts define `Program`).
+- **Cli.Tests runs sequentially** (`AssemblyInfo.cs`, `DisableTestParallelization`): the CLI reads process-global state no seam can scope to one test (`P27_*` env vars, `RemoteClient.HandlerFactory`). 2s → 4s; worth it.
+
+## Shell completion (phase 13, see spec 13 + E36)
+
+- `p27 completion bash|zsh` prints an embedded script; hidden `p27 __complete -- <argv>`
+  resolves candidates. `scripts/install-completion.sh` installs; it never touches rc files.
+- **System.CommandLine's own completion is unusable** and was measured, not assumed:
+  `Parse(string)` throws on quoted values, array parse never fires option sources (E36).
+  `Completion/CompletionEngine.cs` walks the real tree instead — introspection only, so
+  the command surface is still declared once.
+- Adding a completion: `.Suggests(CompletionValues.X)` or `.SuggestsPaths()` on the
+  option/argument where it is declared. Nothing else to register.
+- Non-negotiables: `__complete` always exits 0, never writes stderr, and timeboxes the
+  server (1.5 s). Completion uses `OpenProjectForCompletion` — never `OpenProject`,
+  which would check the project out on TAB.
 
 ## Web / command layer (phase 7) essentials
 

@@ -1,4 +1,5 @@
 using System.CommandLine;
+using Project27.Cli.Completion;
 using Project27.Core.Views;
 using Project27.Interop;
 using Project27.Storage;
@@ -24,12 +25,14 @@ internal static class InteropCommands
 
     private static Command Csv()
     {
-        var outOpt = new Option<string?>("--out", "-o") { HelpName = "file.csv", Description = "Output path; default <project>.csv." };
-        var tableOpt = new Option<string?>("--table") { HelpName = "entry|…" };
-        var fieldsOpt = new Option<string?>("--fields") { HelpName = "keys" };
+        var outOpt = new Option<string?>("--out", "-o") { HelpName = "file.csv", Description = "Output path; default <project>.csv." }
+            .SuggestsPaths();
+        var tableOpt = new Option<string?>("--table") { HelpName = "entry|…" }.Suggests(CompletionValues.Tables);
+        var fieldsOpt = new Option<string?>("--fields") { HelpName = "keys" }
+            .Suggests(CompletionValues.CommaList(CompletionValues.Fields));
         var filterOpt = new Option<string?>("--filter") { HelpName = "expr" };
         var sortOpt = new Option<string?>("--sort") { HelpName = "keys" };
-        var groupByOpt = new Option<string?>("--group-by") { HelpName = "field" };
+        var groupByOpt = new Option<string?>("--group-by") { HelpName = "field" }.Suggests(CompletionValues.Fields);
         var command = new Command("csv", "Any task view as RFC-4180 CSV.") { outOpt, tableOpt, fieldsOpt, filterOpt, sortOpt, groupByOpt };
         command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
         {
@@ -60,7 +63,8 @@ internal static class InteropCommands
 
     private static Command MspdiOut()
     {
-        var outOpt = new Option<string?>("--out", "-o") { HelpName = "file.xml", Description = "Output path; default <project>.xml." };
+        var outOpt = new Option<string?>("--out", "-o") { HelpName = "file.xml", Description = "Output path; default <project>.xml." }
+            .SuggestsPaths();
         var command = new Command("mspdi", "Microsoft Project Data Interchange XML.") { outOpt };
         command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
         {
@@ -75,8 +79,9 @@ internal static class InteropCommands
 
     private static Command MspdiIn()
     {
-        var fileArg = new Argument<string>("xml") { Description = "MSPDI XML file to import." };
-        var outOpt = new Option<string?>("--file") { HelpName = "new.p27", Description = "Target project file; default <name>.p27." };
+        var fileArg = new Argument<string>("xml") { Description = "MSPDI XML file to import." }.SuggestsPaths();
+        var outOpt = new Option<string?>("--file") { HelpName = "new.p27", Description = "Target project file; default <name>.p27." }
+            .SuggestsPaths(CompletionDirective.ProjectFiles);
         var command = new Command("mspdi", "Create a new .p27 from Microsoft Project XML.") { fileArg, outOpt };
         command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
         {

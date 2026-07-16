@@ -1,4 +1,5 @@
 using System.CommandLine;
+using Project27.Cli.Completion;
 using Project27.Core;
 
 namespace Project27.Cli;
@@ -20,18 +21,21 @@ internal static class ResourceCommands
     }
 
     private static Argument<string> ResourceArg()
-        => new("resource") { Description = "Resource name (case-insensitive) or uid:<n>." };
+        => new Argument<string>("resource") { Description = "Resource name (case-insensitive) or uid:<n>." }
+            .Suggests(CompletionValues.Resources);
 
     private static Command Add()
     {
         var nameArg = new Argument<string>("name");
-        var typeOpt = new Option<string?>("--type") { HelpName = "work|material|cost", Description = "Default work." };
+        var typeOpt = new Option<string?>("--type") { HelpName = "work|material|cost", Description = "Default work." }
+            .Suggests(CompletionValues.ResourceTypes);
         var maxUnitsOpt = new Option<string?>("--max-units") { HelpName = "units", Description = "Peak availability, e.g. 200%." };
         var rateOpt = new Option<string?>("--rate") { HelpName = "rate", Description = "Standard rate, e.g. 50/h (per unit for material)." };
         var overtimeOpt = new Option<string?>("--overtime-rate") { HelpName = "rate" };
         var costPerUseOpt = new Option<string?>("--cost-per-use") { HelpName = "amount" };
         var labelOpt = new Option<string?>("--material-label") { HelpName = "label", Description = "Unit of measure for material resources." };
-        var calendarOpt = new Option<string?>("--calendar") { HelpName = "name", Description = "Availability calendar (work resources)." };
+        var calendarOpt = new Option<string?>("--calendar") { HelpName = "name", Description = "Availability calendar (work resources)." }
+            .Suggests(CompletionValues.Calendars);
         var initialsOpt = new Option<string?>("--initials");
         var groupOpt = new Option<string?>("--group");
         var command = new Command("add", "Add a resource.")
@@ -174,10 +178,11 @@ internal static class ResourceCommands
         var overtimeOpt = new Option<string?>("--overtime-rate") { HelpName = "rate" };
         var costPerUseOpt = new Option<string?>("--cost-per-use") { HelpName = "amount" };
         var labelOpt = new Option<string?>("--material-label") { HelpName = "label" };
-        var calendarOpt = new Option<string?>("--calendar") { HelpName = "name|none" };
+        var calendarOpt = new Option<string?>("--calendar") { HelpName = "name|none" }
+            .Suggests(r => CompletionValues.Calendars(r).Prepend(new Candidate("none", "Clear the calendar.")));
         var initialsOpt = new Option<string?>("--initials");
         var groupOpt = new Option<string?>("--group");
-        var accrualOpt = new Option<string?>("--accrual") { HelpName = "start|prorated|end" };
+        var accrualOpt = new Option<string?>("--accrual") { HelpName = "start|prorated|end" }.Suggests(CompletionValues.Accruals);
         var command = new Command("set", "Change resource fields.")
         {
             resourceArg, nameOpt, maxUnitsOpt, rateOpt, overtimeOpt, costPerUseOpt, labelOpt, calendarOpt, initialsOpt, groupOpt, accrualOpt,
@@ -221,7 +226,8 @@ internal static class ResourceCommands
     {
         var resourceArg = ResourceArg();
         var fromOpt = new Option<string>("--from") { HelpName = "date", Required = true, Description = "Effective date of the entry." };
-        var tableOpt = new Option<string?>("--table") { HelpName = "A..E", Description = "Rate table; default A." };
+        var tableOpt = new Option<string?>("--table") { HelpName = "A..E", Description = "Rate table; default A." }
+            .Suggests(CompletionValues.RateTables);
         var rateOpt = new Option<string?>("--rate") { HelpName = "rate" };
         var overtimeOpt = new Option<string?>("--overtime-rate") { HelpName = "rate" };
         var costPerUseOpt = new Option<string?>("--cost-per-use") { HelpName = "amount" };
@@ -252,7 +258,7 @@ internal static class ResourceCommands
     {
         var resourceArg = ResourceArg();
         var fromOpt = new Option<string>("--from") { HelpName = "date", Required = true };
-        var tableOpt = new Option<string?>("--table") { HelpName = "A..E" };
+        var tableOpt = new Option<string?>("--table") { HelpName = "A..E" }.Suggests(CompletionValues.RateTables);
         var command = new Command("remove-rate", "Remove the rate entry effective at an exact date.") { resourceArg, fromOpt, tableOpt };
         command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
         {
@@ -370,7 +376,8 @@ internal static class ResourceCommands
 
     private static Command Import()
     {
-        var fromOpt = new Option<string>("--from") { HelpName = "file.p27", Required = true, Description = "Project file to copy resource definitions from." };
+        var fromOpt = new Option<string>("--from") { HelpName = "file.p27", Required = true, Description = "Project file to copy resource definitions from." }
+            .SuggestsPaths(CompletionDirective.ProjectFiles);
         var command = new Command("import", "Copy resource definitions (with rate tables) from another project.") { fromOpt };
         command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
         {

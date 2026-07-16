@@ -1,4 +1,5 @@
 using System.CommandLine;
+using Project27.Cli.Completion;
 using Project27.Core.Fields;
 using Project27.Core.Views;
 
@@ -22,11 +23,13 @@ internal static class ViewCommands
         {
             HelpName = string.Join("|", TaskView.Tables.Keys),
             Description = "Named field selection; default entry.",
-        };
-        var fieldsOpt = new Option<string?>("--fields") { HelpName = "keys", Description = "Comma-separated field keys (see `field list`)." };
+        }.Suggests(CompletionValues.Tables);
+        var fieldsOpt = new Option<string?>("--fields") { HelpName = "keys", Description = "Comma-separated field keys (see `field list`)." }
+            .Suggests(CompletionValues.CommaList(CompletionValues.Fields));
         var filterOpt = new Option<string?>("--filter") { HelpName = "expr", Description = "e.g. \"critical = true and cost > 1000\"." };
         var sortOpt = new Option<string?>("--sort") { HelpName = "keys", Description = "e.g. \"finish desc,name\". Flattens the outline." };
-        var groupByOpt = new Option<string?>("--group-by") { HelpName = "field", Description = "Group rows by a field. Flattens the outline." };
+        var groupByOpt = new Option<string?>("--group-by") { HelpName = "field", Description = "Group rows by a field. Flattens the outline." }
+            .Suggests(CompletionValues.Fields);
         var command = new Command("view", "Tabular task views: tables, filters, sorts, groups.")
         {
             tableOpt, fieldsOpt, filterOpt, sortOpt, groupByOpt,
