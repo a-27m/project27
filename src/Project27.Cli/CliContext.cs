@@ -29,7 +29,7 @@ internal sealed class CliContext(ParseResult result)
 
     public bool Json => result.GetValue(CliRoot.JsonOption);
 
-    public string? ExplicitFile => result.GetValue(CliRoot.FileOption);
+    public string? ExplicitFile => result.GetValue(CliRoot.FileOption) ?? Environment.GetEnvironmentVariable("P27_FILE");
 
     public string ResolveFile() => ResolveFile(ExplicitFile, Environment.CurrentDirectory);
 
@@ -127,7 +127,7 @@ internal sealed class CliContext(ParseResult result)
     }
 
     public string RequireProjectRef()
-        => result.GetValue(CliRoot.ProjectOption)
+        => result.GetValue(CliRoot.ProjectOption) ?? Environment.GetEnvironmentVariable("P27_PROJECT")
             ?? throw new CliException("server mode needs --project <name|id>");
 
     public (IProjectSession Store, Project Project) OpenProject()

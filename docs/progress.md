@@ -58,7 +58,7 @@ Specs: `docs/spec/01…04, 06, 07, 08, 09`. Deviations from MS Project: `docs/sp
 
 ## CLI
 
-- Local: `--file`/single `.p27` in cwd. Remote: `--server` (P27_SERVER), `--project <name|id>`, `--token` (P27_TOKEN), `--dev-user`.
+- Local: `--file` (`P27_FILE`)/single `.p27` in cwd. Remote: `--server` (`P27_SERVER`), `--project <name|id>` (`P27_PROJECT`), `--token` (`P27_TOKEN`), `--dev-user`.
 - Remote mutating verbs: fetch → mutate in-process → checkout+PUT; a lock whose `AcquiredAt != RefreshedAt` pre-existed (explicit `p27 checkout`) and is kept.
 - Test seams: in-process invoke via `InvocationConfiguration{Output,Error}` (`CliHarness`); `RemoteClient.HandlerFactory` routes to a `WebApplicationFactory` TestServer (extern alias `server` — both hosts define `Program`).
 
