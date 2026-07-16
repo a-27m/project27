@@ -109,7 +109,9 @@ loaded, and ours is lazy-loaded afterwards. See E36 for that and the other traps
 The bash script stays **bash 3.2**-clean (macOS `/bin/bash`) — no negative array
 subscripts, no `mapfile`. It uses bash-completion's `_init_completion`/`_filedir`
 when present and degrades to `compgen` when not. `CompletionScriptTests` drives
-the generated script through `/bin/bash` to keep both true.
+the generated script through `/bin/bash` to keep both true; it puts its own `p27`
+shim on PATH rather than depending on the apphost sitting next to the test binary,
+which is present on macOS but not on the Linux CI runner.
 
 ## 7. Coverage
 

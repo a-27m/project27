@@ -586,6 +586,13 @@ put the CLI in server mode with nothing on the command line to show it. Use
 `OpenProjectForCompletion` (timeboxed, no lock) — never `OpenProject`, whose remote
 save path checks the project out. Pressing TAB must not take a lock.
 
+**Trap:** a test that drives the script must put its **own** `p27` shim on PATH
+(`exec dotnet …/p27.dll`). Relying on the CLI's apphost being copied next to the test
+binary passes on macOS and fails on Linux — that copy is a ProjectReference detail, not
+something completion promises. The script hides p27's stderr, so when this bit, all five
+tests reported only `Actual: ""` with no cause; the harness now probes `command -v p27`
+and surfaces stderr in the failure message.
+
 **Trap:** in the bash script, read `__complete`'s lines in the completion function
 itself. A `while read … < <(helper)` runs the helper in a subshell, so a directive it
 sets is lost and path completion silently does nothing — this shipped broken until a

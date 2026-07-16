@@ -15,8 +15,11 @@ namespace Project27.Cli.Tests;
 public sealed class CompletionScriptTests : IDisposable
 {
     private readonly TempDir _directory = new();
+
+    /// <summary>Holds the `p27` shim. Kept out of <see cref="_directory"/>, which is the shell's cwd and is asserted on.</summary>
+    private readonly TempDir _shimDirectory = new();
+
     private readonly string _script;
-    private readonly string _binDirectory = AppContext.BaseDirectory;
 
     public CompletionScriptTests()
     {
@@ -24,9 +27,53 @@ public sealed class CompletionScriptTests : IDisposable
         File.WriteAllText(_script, CompletionCommands.Script("bash"));
     }
 
-    public void Dispose() => _directory.Dispose();
+    public void Dispose()
+    {
+        _directory.Dispose();
+        _shimDirectory.Dispose();
+    }
 
     private static bool BashAvailable => !OperatingSystem.IsWindows() && File.Exists("/bin/bash");
+
+    /// <summary>
+    /// Puts a `p27` on PATH, which is the only thing the script assumes. It shells out to
+    /// `dotnet p27.dll` rather than relying on the apphost being copied next to the test
+    /// binary — that is a ProjectReference detail, not something completion promises, and
+    /// depending on it made these tests pass on macOS and fail on Linux.
+    /// </summary>
+    private string CreateShim()
+    {
+        var shim = Path.Combine(_shimDirectory.Path, "p27");
+        var library = Path.Combine(AppContext.BaseDirectory, "p27.dll");
+        File.WriteAllText(
+            shim,
+            $"""
+             #!/bin/sh
+             exec "{DotnetPath()}" "{library}" "$@"
+             """);
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(
+                shim,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+                | UnixFileMode.GroupRead | UnixFileMode.GroupExecute
+                | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+        }
+
+        return _shimDirectory.Path;
+    }
+
+    /// <summary>The muxer running this test, so the shim cannot pick a different .NET.</summary>
+    private static string DotnetPath()
+    {
+        if (Environment.GetEnvironmentVariable("DOTNET_ROOT") is { Length: > 0 } root
+            && File.Exists(Path.Combine(root, "dotnet")))
+        {
+            return Path.Combine(root, "dotnet");
+        }
+
+        return "dotnet";
+    }
 
     /// <summary>Runs <paramref name="body"/> in a bash that has the script sourced, and returns stdout.</summary>
     private string Bash(string body)
@@ -36,8 +83,15 @@ public sealed class CompletionScriptTests : IDisposable
         File.WriteAllText(
             driver,
             $$"""
-              export PATH="{{_binDirectory}}:$PATH"
+              export PATH="{{CreateShim()}}:$PATH"
               cd "{{_directory.Path}}"
+
+              # The script hides p27's stderr, so probe here: without this a broken p27 is
+              # indistinguishable from "no candidates" and the failure says only "".
+              command -v p27 >&2 || echo "DIAG: p27 is not on PATH" >&2
+              p27 --version >/dev/null 2>>"{{_directory.File("diag.txt")}}" \
+                || echo "DIAG: p27 exited $? (see diag.txt)" >&2
+
               source "{{_script}}"
 
               # Call the completion function exactly as bash does for `complete -F`.
@@ -60,7 +114,15 @@ public sealed class CompletionScriptTests : IDisposable
             RedirectStandardError = true,
         })!;
         var stdout = process.StandardOutput.ReadToEnd();
+        var stderr = process.StandardError.ReadToEnd();
         process.WaitForExit(30_000);
+
+        var diagnostics = File.Exists(_directory.File("diag.txt"))
+            ? File.ReadAllText(_directory.File("diag.txt"))
+            : "";
+        Assert.True(
+            stdout.Trim().Length > 0 || stderr.Length == 0,
+            $"the shell produced nothing.\nstderr:\n{stderr}\np27 stderr:\n{diagnostics}");
         return stdout.Trim();
     }
 
