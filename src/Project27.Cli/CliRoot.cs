@@ -55,6 +55,9 @@ internal static class CliRoot
         root.Add(ProjectOption);
         root.Add(TokenOption);
         root.Add(DevUserOption);
+        root.Add(AuthCommands.Login());
+        root.Add(AuthCommands.Logout());
+        root.Add(AuthCommands.WhoAmI());
         root.Add(ProjectCommands.Init());
         root.Add(ProjectCommands.Project());
         root.Add(ProjectCommands.Schedule());

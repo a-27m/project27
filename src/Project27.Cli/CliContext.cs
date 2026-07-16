@@ -1,6 +1,7 @@
 using System.CommandLine;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Project27.Cli.Auth;
 using Project27.Core;
 using Project27.Core.Persistence;
 using Project27.Storage;
@@ -65,10 +66,64 @@ internal sealed class CliContext(ParseResult result)
             throw new CliException("this command needs a server; pass --server <url> or set P27_SERVER");
         }
 
-        return new RemoteClient(
-            ServerUrl!,
-            result.GetValue(CliRoot.TokenOption) ?? Environment.GetEnvironmentVariable("P27_TOKEN"),
-            result.GetValue(CliRoot.DevUserOption));
+        var explicit_token = result.GetValue(CliRoot.TokenOption) ?? Environment.GetEnvironmentVariable("P27_TOKEN");
+        var explicit_dev_user = result.GetValue(CliRoot.DevUserOption);
+
+        if (!string.IsNullOrEmpty(explicit_token))
+        {
+            return new RemoteClient(ServerUrl!, explicit_token, null);
+        }
+
+        if (!string.IsNullOrEmpty(explicit_dev_user))
+        {
+            return new RemoteClient(ServerUrl!, null, explicit_dev_user);
+        }
+
+        var stored = CredentialStore.Get(ServerUrl!);
+        if (stored != null)
+        {
+            var token = ResolveOrRefreshToken(stored);
+            return new RemoteClient(ServerUrl!, token, null);
+        }
+
+        return new RemoteClient(ServerUrl!, null, null);
+    }
+
+    private static string ResolveOrRefreshToken(StoredCredential stored)
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (stored.ExpiresAt > now.AddSeconds(60))
+        {
+            return stored.AccessToken;
+        }
+
+        if (string.IsNullOrEmpty(stored.RefreshToken))
+        {
+            throw new CliException($"your login for {stored.ServerUrl} has expired; run: p27 login --server {stored.ServerUrl}");
+        }
+
+        try
+        {
+            var login = new OidcLogin(stored.Authority, stored.CliClientId, stored.Scopes, CliConfig.CliLoopbackPort);
+            var result = login.Refresh(stored);
+            var updated = stored with
+            {
+                AccessToken = result.AccessToken,
+                IdToken = result.IdToken,
+                RefreshToken = result.RefreshToken,
+                ExpiresAt = result.ExpiresAt,
+            };
+            CredentialStore.Put(updated);
+            return result.AccessToken;
+        }
+        catch (CliException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new CliException($"token refresh failed for {stored.ServerUrl}: {ex.Message}", ex);
+        }
     }
 
     public string RequireProjectRef()

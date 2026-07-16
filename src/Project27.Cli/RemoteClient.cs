@@ -23,6 +23,12 @@ internal sealed record RemoteCheckout(int Version, RemoteLock Lock);
 
 internal sealed record RemoteCheckin(int Version);
 
+internal sealed record RemoteAuthConfig(
+    bool DevAuth,
+    string? Authority,
+    string? ClientId,
+    string? Scopes);
+
 /// <summary>
 /// Blocking HTTP client for `--server` mode. Server problem responses surface as
 /// <see cref="CliException"/> with the problem detail as the message.
@@ -55,6 +61,9 @@ internal sealed class RemoteClient : IDisposable
     }
 
     public void Dispose() => _http.Dispose();
+
+    public RemoteAuthConfig GetAuthConfig()
+        => Read<RemoteAuthConfig>(Send(HttpMethod.Get, "api/auth/config"));
 
     public IReadOnlyList<RemoteProjectInfo> ListProjects()
         => Read<List<RemoteProjectInfo>>(Send(HttpMethod.Get, "api/projects"));
@@ -139,7 +148,7 @@ internal sealed class RemoteClient : IDisposable
             var detail = ProblemDetail(body) ?? response.ReasonPhrase ?? "request failed";
             throw response.StatusCode switch
             {
-                HttpStatusCode.Unauthorized => new CliException("authentication required; pass --token or --dev-user"),
+                HttpStatusCode.Unauthorized => new CliException("authentication required; run `p27 login --server <url>`, or pass --token or --dev-user"),
                 _ => new CliException(detail),
             };
         }

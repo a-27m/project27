@@ -13,6 +13,10 @@
 
   <ItemGroup>
     <PackageReference Include="System.CommandLine" />
+    <PackageReference Include="IdentityModel.OidcClient" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
   </ItemGroup>
 
   <ItemGroup>
@@ -23,6 +27,12 @@
     <ProjectReference Include="..\Project27.Core\Project27.Core.csproj" />
     <ProjectReference Include="..\Project27.Interop\Project27.Interop.csproj" />
     <ProjectReference Include="..\Project27.Storage\Project27.Storage.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>
