@@ -239,7 +239,6 @@ export function Gantt({
                   xOf(scale, fromWireDate(task.baselineFinish)) - xOf(scale, fromWireDate(task.baselineStart)),
                 )}
                 height={3}
-                rx={1}
                 className="gantt-baseline"
                 pointerEvents="none"
               >
@@ -252,14 +251,13 @@ export function Gantt({
               return (
                 <g key={segmentIndex}>
                   <clipPath id={clipId}>
-                    <rect x={segX} y={barY(index)} width={segWidth} height={barHeight} rx={2} />
+                    <rect x={segX} y={barY(index)} width={segWidth} height={barHeight} />
                   </clipPath>
                   <rect
                     x={segX}
                     y={barY(index)}
                     width={segWidth}
                     height={barHeight}
-                    rx={2}
                     className={
                       'gantt-bar' +
                       (task.critical ? ' critical' : '') +

@@ -18,8 +18,15 @@ type Section = 'overview' | 'schedule' | 'calendars' | 'custom'
 
 /** Project-scope docked inspector (opened via the top-bar project name button). */
 export function ProjectInspector({ project, editable, onCommands, onClose, onCollapse, onOpenCalendars, onOpenCustomFields }: Props) {
-  const [openSection, setOpenSection] = useState<Section | null>('overview')
-  const toggle = (section: Section) => setOpenSection((current) => (current === section ? null : section))
+  const [openSections, setOpenSections] = useState<ReadonlySet<Section>>(new Set(['overview']))
+  const isOpen = (section: Section) => openSections.has(section)
+  const toggle = (section: Section) =>
+    setOpenSections((current) => {
+      const next = new Set(current)
+      if (next.has(section)) next.delete(section)
+      else next.add(section)
+      return next
+    })
   const set = (patch: Record<string, unknown>) => onCommands([{ op: 'setProject', ...patch }])
   const { stats } = project
 
@@ -42,7 +49,7 @@ export function ProjectInspector({ project, editable, onCommands, onClose, onCol
         </button>
       </header>
       <div className="inspector-body">
-        <AccordionSection title="Overview" open={openSection === 'overview'} onToggle={() => toggle('overview')}>
+        <AccordionSection title="Overview" open={isOpen('overview')} onToggle={() => toggle('overview')}>
           <StatsTable
             heading={['', 'START', 'FINISH']}
             rows={[
@@ -97,7 +104,7 @@ export function ProjectInspector({ project, editable, onCommands, onClose, onCol
           </div>
         </AccordionSection>
 
-        <AccordionSection title="Schedule settings" open={openSection === 'schedule'} onToggle={() => toggle('schedule')}>
+        <AccordionSection title="Schedule settings" open={isOpen('schedule')} onToggle={() => toggle('schedule')}>
           <TextField label="Name" value={project.name} editable={editable} onCommit={(v) => set({ name: v })} />
           <DateField label="Project start" value={project.start} editable={editable} onCommit={(v) => v !== null && set({ start: v })} />
           <DateField
@@ -121,7 +128,7 @@ export function ProjectInspector({ project, editable, onCommands, onClose, onCol
           />
         </AccordionSection>
 
-        <AccordionSection title="Calendars" hint={`${project.calendars.length}`} open={openSection === 'calendars'} onToggle={() => toggle('calendars')}>
+        <AccordionSection title="Calendars" hint={`${project.calendars.length}`} open={isOpen('calendars')} onToggle={() => toggle('calendars')}>
           {project.calendars.map((calendar) => (
             <div className="inspector-row" key={calendar}>
               <span className="inspector-value">{calendar}</span>
@@ -135,7 +142,7 @@ export function ProjectInspector({ project, editable, onCommands, onClose, onCol
         <AccordionSection
           title="Custom fields"
           hint={project.customFields.length > 0 ? String(project.customFields.length) : undefined}
-          open={openSection === 'custom'}
+          open={isOpen('custom')}
           onToggle={() => toggle('custom')}
         >
           {project.customFields.length === 0 && <p className="muted">No custom fields defined.</p>}

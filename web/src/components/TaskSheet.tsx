@@ -8,6 +8,10 @@ import type { ColumnContext, SheetColumn } from './sheetColumns'
 interface Props {
   displayRows: DisplayRow<ScheduleTask>[]
   columns: readonly SheetColumn[]
+  /** Total width of all columns — rows are given this explicit width so their
+   *  border/background still cover the rightmost columns once horizontal scroll
+   *  kicks in (a row with no explicit width only spans the visible viewport). */
+  gridWidth: number
   context: ColumnContext
   rowHeight: number
   window_: RowWindow
@@ -27,6 +31,7 @@ interface CellEdit {
 export function TaskSheet({
   displayRows,
   columns,
+  gridWidth,
   context,
   rowHeight,
   window_,
@@ -64,8 +69,8 @@ export function TaskSheet({
   const visible = displayRows.slice(window_.first, window_.last)
 
   return (
-    <div className="sheet-body" style={{ height: window_.totalHeight }} role="grid" aria-label="Tasks">
-      <div style={{ transform: `translateY(${window_.offsetY}px)` }}>
+    <div className="sheet-body" style={{ height: window_.totalHeight, width: gridWidth }} role="grid" aria-label="Tasks">
+      <div style={{ transform: `translateY(${window_.offsetY}px)`, width: gridWidth }}>
         {visible.map((row) => {
           if (row.kind === 'gap') {
             return (
@@ -74,7 +79,7 @@ export function TaskSheet({
                 role="presentation"
                 aria-hidden="true"
                 className="sheet-row sheet-gap"
-                style={{ height: rowHeight }}
+                style={{ height: rowHeight, width: gridWidth }}
               />
             )
           }
@@ -91,7 +96,7 @@ export function TaskSheet({
                 (task.summary ? ' summary' : '') +
                 (task.active ? '' : ' inactive')
               }
-              style={{ height: rowHeight }}
+              style={{ height: rowHeight, width: gridWidth }}
               onClick={(event) =>
                 onSelect(task.uid, { toggle: event.metaKey || event.ctrlKey, range: event.shiftKey })
               }
@@ -105,7 +110,12 @@ export function TaskSheet({
                   <span
                     key={column.key}
                     role="gridcell"
-                    className={'cell' + (isName ? ' name' : '')}
+                    className={
+                      'cell' +
+                      (isName ? ' name' : '') +
+                      (column.mono === true ? ' mono' : '') +
+                      (column.numeric === true ? ' num' : '')
+                    }
                     style={{
                       width: column.width,
                       ...(isName ? { paddingLeft: 8 + task.outlineLevel * 16 } : {}),

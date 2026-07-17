@@ -36,8 +36,15 @@ const CONTOURS = ['flat', 'backLoaded', 'frontLoaded', 'doublePeak', 'earlyPeak'
 
 /** Full-field task editor (docs/spec/12-polish.md parity matrix, 12p-2). */
 export function TaskInspector({ task, project, tasks, editable, client, projectId, onCommands, onClose, onCollapse }: Props) {
-  const [openSection, setOpenSection] = useState<Section | null>('general')
-  const toggle = (section: Section) => setOpenSection((current) => (current === section ? null : section))
+  const [openSections, setOpenSections] = useState<ReadonlySet<Section>>(new Set(['general']))
+  const isOpen = (section: Section) => openSections.has(section)
+  const toggle = (section: Section) =>
+    setOpenSections((current) => {
+      const next = new Set(current)
+      if (next.has(section)) next.delete(section)
+      else next.add(section)
+      return next
+    })
   const set = (patch: Record<string, unknown>) => onCommands([{ op: 'setTask', uid: task.uid, ...patch }])
   const rowOf = (uid: number) => tasks.find((t) => t.uid === uid)?.row ?? uid
   const customValuesSet = project.customFields.filter((field) => {
@@ -69,7 +76,7 @@ export function TaskInspector({ task, project, tasks, editable, client, projectI
         <AccordionSection
           title="General"
           hint={task.milestone ? 'Milestone' : durationDays(task.durationMinutes, project.minutesPerDay, task.estimated)}
-          open={openSection === 'general'}
+          open={isOpen('general')}
           onToggle={() => toggle('general')}
         >
           <TextField label="Name" value={task.name} editable={editable} onCommit={(v) => set({ name: v })} />
@@ -108,7 +115,7 @@ export function TaskInspector({ task, project, tasks, editable, client, projectI
           />
         </AccordionSection>
 
-        <AccordionSection title="Advanced" open={openSection === 'advanced'} onToggle={() => toggle('advanced')}>
+        <AccordionSection title="Advanced" open={isOpen('advanced')} onToggle={() => toggle('advanced')}>
           <SelectField
             label="Type"
             value={task.type}
@@ -189,7 +196,7 @@ export function TaskInspector({ task, project, tasks, editable, client, projectI
         <AccordionSection
           title="Tracking"
           hint={`${task.percentComplete}%`}
-          open={openSection === 'tracking'}
+          open={isOpen('tracking')}
           onToggle={() => toggle('tracking')}
         >
           {!task.summary && (
@@ -225,7 +232,7 @@ export function TaskInspector({ task, project, tasks, editable, client, projectI
         <AccordionSection
           title="Links"
           hint={task.predecessors.length > 0 ? String(task.predecessors.length) : undefined}
-          open={openSection === 'links'}
+          open={isOpen('links')}
           onToggle={() => toggle('links')}
         >
           <LinksSection task={task} tasks={tasks} editable={editable} onCommands={onCommands} rowOf={rowOf} />
@@ -234,7 +241,7 @@ export function TaskInspector({ task, project, tasks, editable, client, projectI
         <AccordionSection
           title="Resources"
           hint={task.assignments.length > 0 ? String(task.assignments.length) : undefined}
-          open={openSection === 'resources'}
+          open={isOpen('resources')}
           onToggle={() => toggle('resources')}
         >
           <ResourcesSection task={task} project={project} editable={editable} onCommands={onCommands} />
@@ -243,7 +250,7 @@ export function TaskInspector({ task, project, tasks, editable, client, projectI
         <AccordionSection
           title="Custom"
           hint={project.customFields.length > 0 ? `${customValuesSet}/${project.customFields.length}` : undefined}
-          open={openSection === 'custom'}
+          open={isOpen('custom')}
           onToggle={() => toggle('custom')}
         >
           {project.customFields.length === 0 && <p className="muted">No custom fields defined.</p>}
@@ -264,7 +271,7 @@ export function TaskInspector({ task, project, tasks, editable, client, projectI
           })}
         </AccordionSection>
 
-        <AccordionSection title="Drivers" open={openSection === 'drivers'} onToggle={() => toggle('drivers')}>
+        <AccordionSection title="Drivers" open={isOpen('drivers')} onToggle={() => toggle('drivers')}>
           <DriversSection client={client} projectId={projectId} uid={task.uid} />
         </AccordionSection>
       </div>
