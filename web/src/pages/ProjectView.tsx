@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { ApiClient } from '../api/client'
 import type { Command, ProjectInfo, Schedule } from '../api/types'
 import { Gantt } from '../components/Gantt'
+import { MultiTaskInspector } from '../components/MultiTaskInspector'
 import { NetworkView } from '../components/NetworkView'
 import { ProjectInspector } from '../components/ProjectInspector'
 import { CalendarManager, CustomFieldsManager, HistoryDialog, RecurringTaskDialog } from '../components/Managers'
-import { ProjectSettings } from '../components/ProjectSettings'
 import { TableView } from '../components/TableView'
 import { ResourcesView } from '../components/ResourcesView'
 import { SegmentedPercent } from '../components/SegmentedPercent'
@@ -45,7 +46,7 @@ interface Props {
 }
 
 type ViewMode = 'gantt' | 'table' | 'network' | 'timeline' | 'usage' | 'resources'
-type Dialog = 'fields' | 'calendars' | 'recurring' | 'history' | 'columns' | 'settings' | null
+type Dialog = 'fields' | 'calendars' | 'recurring' | 'history' | 'columns' | null
 
 export function ProjectView({ client, projectId, userId, userDisplayName, dark, onToggleTheme, onSignOut, onBack }: Props) {
   const [schedule, setSchedule] = useState<Schedule | null>(null)
@@ -66,6 +67,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false)
   const [inspectorScope, setInspectorScope] = useState<'task' | 'project'>('task')
   const [checkinOpen, setCheckinOpen] = useState(false)
+  const checkinAnchorRef = useRef<HTMLSpanElement>(null)
   const [imageTag, setImageTag] = useState<string | null>(null)
   const scrollerRef = useRef<HTMLDivElement>(null)
   const ganttScrollRef = useRef<HTMLDivElement>(null)
@@ -243,6 +245,10 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
     () => [...selectedUids].filter((uid) => tasks[indexByUid.get(uid) ?? -1]?.summary === false),
     [selectedUids, tasks, indexByUid],
   )
+  const selectedTasks = useMemo(
+    () => [...selectedUids].map((uid) => tasks[indexByUid.get(uid) ?? -1]).filter((task) => task !== undefined),
+    [selectedUids, tasks, indexByUid],
+  )
 
   function addTask(kind: 'task' | 'milestone') {
     const command: Command = {
@@ -372,10 +378,17 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
   // they have no shared split layout to dock into): it's a normal grid column that
   // pushes the Gantt pane's width, sized to match the panel or its collapsed tab.
   const showTaskInspector = inspectorScope === 'task' && selected !== null && schedule !== null && !inspectorCollapsed
+  const showMultiInspector = inspectorScope === 'task' && selectedTasks.length > 1 && schedule !== null && !inspectorCollapsed
   const showProjectInspector = inspectorScope === 'project' && schedule !== null && !inspectorCollapsed
-  const showInspectorTab = inspectorCollapsed && (inspectorScope === 'project' || selected !== null)
+  const showInspectorTab = inspectorCollapsed && (inspectorScope === 'project' || selectedTasks.length > 0)
   const dockedInspectorWidth =
-    viewMode === 'gantt' ? (showTaskInspector || showProjectInspector ? ' 330px' : showInspectorTab ? ' 26px' : '') : ''
+    viewMode === 'gantt'
+      ? showTaskInspector || showMultiInspector || showProjectInspector
+        ? ' 330px'
+        : showInspectorTab
+          ? ' 26px'
+          : ''
+      : ''
 
   /** Rare/global actions that don't belong on the hot path: grouped under the ⋯ menu.
    *  Available to readers too (D6, readers never blocked) — Reports/Export/Manage all view state. */
@@ -385,9 +398,6 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
       items: [
         { label: 'Custom fields', onClick: () => setDialog('fields') },
         { label: 'Calendars', onClick: () => setDialog('calendars') },
-        { label: 'Add recurring task', onClick: () => setDialog('recurring') },
-        { label: 'Project settings', onClick: () => setDialog('settings') },
-        { label: 'Version history', onClick: () => setDialog('history') },
       ],
     },
     {
@@ -479,7 +489,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
           <span className="lock-banner">checked out by {info.lock.displayName}</span>
         )}
         {editable ? (
-          <span className="dropdown checkin-split">
+          <span className="dropdown checkin-split" ref={checkinAnchorRef}>
             <button className="primary checkin-main" onClick={() => void checkin()} title="Check in — releases your lock">
               Check in
             </button>
@@ -492,7 +502,14 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
             >
               <Icon name="CaretDown" size={12} />
             </button>
-            {checkinOpen && <CheckinPopover version={schedule?.version ?? 0} onCheckin={(comment) => void checkin(comment)} onClose={() => setCheckinOpen(false)} />}
+            {checkinOpen && (
+              <CheckinPopover
+                version={schedule?.version ?? 0}
+                anchorRef={checkinAnchorRef}
+                onCheckin={(comment) => void checkin(comment)}
+                onClose={() => setCheckinOpen(false)}
+              />
+            )}
           </span>
         ) : (
           (info?.role === 'editor' || info?.role === 'owner') && (
@@ -815,7 +832,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
             </div>
           )}
         </div>
-        {viewMode === 'gantt' && inspectorScope === 'task' && selected !== null && schedule !== null && !inspectorCollapsed && (
+        {viewMode === 'gantt' && showTaskInspector && selected !== null && schedule !== null && (
           <TaskInspector
             task={selected}
             project={schedule.project}
@@ -824,6 +841,20 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
             client={client}
             projectId={projectId}
             onCommands={(commands) => void sendCommands(commands)}
+            onClose={() => selectTask(null)}
+            onCollapse={() => setInspectorCollapsed(true)}
+          />
+        )}
+        {viewMode === 'gantt' && showMultiInspector && schedule !== null && (
+          <MultiTaskInspector
+            tasks={selectedTasks}
+            project={schedule.project}
+            editable={editable}
+            onSetPercent={setPercent}
+            onAssign={assignToSelection}
+            onIndent={() => forSelection('indentTask')}
+            onOutdent={() => forSelection('outdentTask')}
+            onDelete={deleteSelection}
             onClose={() => selectTask(null)}
             onCollapse={() => setInspectorCollapsed(true)}
           />
@@ -839,7 +870,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
             onOpenCustomFields={() => setDialog('fields')}
           />
         )}
-        {viewMode === 'gantt' && inspectorCollapsed && (inspectorScope === 'project' || selected !== null) && (
+        {viewMode === 'gantt' && inspectorCollapsed && (inspectorScope === 'project' || selectedTasks.length > 0) && (
           <button
             className="inspector-tab"
             onClick={() => setInspectorCollapsed(false)}
@@ -894,15 +925,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
           onClose={() => setDialog(null)}
         />
       )}
-      {dialog === 'settings' && schedule !== null && (
-        <ProjectSettings
-          project={schedule.project}
-          editable={editable}
-          onCommands={(commands) => void sendCommands(commands)}
-          onClose={() => setDialog(null)}
-        />
-      )}
-      {viewMode !== 'gantt' && inspectorScope === 'task' && selected !== null && schedule !== null && !inspectorCollapsed && (
+      {viewMode !== 'gantt' && showTaskInspector && selected !== null && schedule !== null && (
         <TaskInspector
           task={selected}
           project={schedule.project}
@@ -911,6 +934,20 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
           client={client}
           projectId={projectId}
           onCommands={(commands) => void sendCommands(commands)}
+          onClose={() => selectTask(null)}
+          onCollapse={() => setInspectorCollapsed(true)}
+        />
+      )}
+      {viewMode !== 'gantt' && showMultiInspector && schedule !== null && (
+        <MultiTaskInspector
+          tasks={selectedTasks}
+          project={schedule.project}
+          editable={editable}
+          onSetPercent={setPercent}
+          onAssign={assignToSelection}
+          onIndent={() => forSelection('indentTask')}
+          onOutdent={() => forSelection('outdentTask')}
+          onDelete={deleteSelection}
           onClose={() => selectTask(null)}
           onCollapse={() => setInspectorCollapsed(true)}
         />
@@ -926,7 +963,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
           onOpenCustomFields={() => setDialog('fields')}
         />
       )}
-      {viewMode !== 'gantt' && inspectorCollapsed && (inspectorScope === 'project' || selected !== null) && (
+      {viewMode !== 'gantt' && inspectorCollapsed && (inspectorScope === 'project' || selectedTasks.length > 0) && (
         <button
           className="inspector-tab"
           onClick={() => setInspectorCollapsed(false)}
@@ -941,13 +978,40 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
   )
 }
 
-/** Check-in-with-comment popover, opened from the check-in split button's caret. */
-function CheckinPopover({ version, onCheckin, onClose }: { version: number; onCheckin: (comment: string) => void; onClose: () => void }) {
+/** Check-in-with-comment popover, opened from the check-in split button's caret.
+ *  Portaled to document.body with a viewport-fixed position instead of being an
+ *  absolutely-positioned descendant of the toolbar: its content is tall enough to
+ *  overlap the Gantt pane below, and nesting it under the toolbar put it in the same
+ *  stacking context as the pane's sticky date header — a header/popover ordering
+ *  fight that a body-level portal sidesteps entirely, regardless of z-index tuning. */
+function CheckinPopover({
+  version,
+  anchorRef,
+  onCheckin,
+  onClose,
+}: {
+  version: number
+  anchorRef: React.RefObject<HTMLElement | null>
+  onCheckin: (comment: string) => void
+  onClose: () => void
+}) {
   const [comment, setComment] = useState('')
   const ref = useRef<HTMLDivElement>(null)
   useOutsideClose(ref, true, onClose)
-  return (
-    <div className="dropdown-panel align-right checkin-popover" ref={ref} role="dialog" aria-label="Check in with a comment">
+  const [position, setPosition] = useState<{ top: number; right: number } | null>(null)
+  useEffect(() => {
+    const rect = anchorRef.current?.getBoundingClientRect()
+    if (rect !== undefined) setPosition({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
+  }, [anchorRef])
+  if (position === null) return null
+  return createPortal(
+    <div
+      className="dropdown-panel align-right checkin-popover checkin-popover-portal"
+      ref={ref}
+      role="dialog"
+      aria-label="Check in with a comment"
+      style={{ top: position.top, right: position.right }}
+    >
       <span className="dropdown-heading">CHECK-IN COMMENT · v{version + 1}</span>
       <textarea
         autoFocus
@@ -961,7 +1025,8 @@ function CheckinPopover({ version, onCheckin, onClose }: { version: number; onCh
           Check in
         </button>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -974,6 +1039,10 @@ function ColumnsDialog({
   onChange: (keys: string[]) => void
   onClose: () => void
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    dialogRef.current?.focus()
+  }, [])
   return (
     <div
       className="modal-backdrop"
@@ -989,7 +1058,7 @@ function ColumnsDialog({
         aria-modal="true"
         aria-label="Sheet columns"
         tabIndex={-1}
-        ref={(element) => element?.focus()}
+        ref={dialogRef}
         onClick={(event) => event.stopPropagation()}
       >
         <h3>Sheet columns</h3>

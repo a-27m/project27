@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ApiClient } from '../api/client'
 import type { Command, ScheduleProject, SnapshotInfo } from '../api/types'
 
@@ -371,6 +371,10 @@ export function HistoryDialog({
 }
 
 function Modal({ label, onClose, children }: { label: string; onClose: () => void; children: React.ReactNode }) {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    dialogRef.current?.focus()
+  }, [])
   return (
     <div
       className="modal-backdrop"
@@ -386,7 +390,7 @@ function Modal({ label, onClose, children }: { label: string; onClose: () => voi
         aria-modal="true"
         aria-label={label}
         tabIndex={-1}
-        ref={(element) => element?.focus()}
+        ref={dialogRef}
         onClick={(event) => event.stopPropagation()}
       >
         <h3>{label}</h3>

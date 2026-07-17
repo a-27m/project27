@@ -560,6 +560,12 @@ input[type='radio'] {
   gap: 8px;
 }
 
+/* Portaled to document.body (see CheckinPopover) — position is set inline from the
+   anchor's viewport rect, so this only needs to switch the positioning scheme. */
+.checkin-popover-portal {
+  position: fixed;
+}
+
 .checkin-popover textarea {
   width: 100%;
   box-sizing: border-box;
