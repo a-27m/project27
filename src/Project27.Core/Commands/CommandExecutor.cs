@@ -61,7 +61,12 @@ public static class CommandExecutor
                 // pre-mutation dates since this executor doesn't recalculate between commands.
                 SetBaselineCommand baseline => Run(() => project.SetBaseline(baseline.Slot, ResolveScope(project, baseline.Uids))),
                 ClearBaselineCommand baseline => Run(() => project.ClearBaseline(baseline.Slot, ResolveScope(project, baseline.Uids))),
-                LevelCommand => Run(() => project.Level()),
+                LevelCommand level => Run(() => project.Level(new Scheduling.LevelingOptions
+                {
+                    Order = level.Order ?? Scheduling.LevelingOrder.PriorityStandard,
+                    Granularity = level.Granularity ?? Scheduling.LevelingGranularity.Day,
+                    SplitInProgress = level.SplitInProgress ?? false,
+                })),
                 ClearLevelingCommand => Run(project.ClearLeveling),
                 AddResourceCommand add => AddResource(project, add),
                 SetResourceCommand set => SetResource(project, set),
@@ -481,6 +486,11 @@ public static class CommandExecutor
             ResourceByName(project, command.Resource),
             command.Units,
             command.Work is { } work ? ParseDuration(work) : null);
+        if (command.UnitsPer is { } per)
+        {
+            assignment.MaterialRateUnit = per;
+        }
+
         if (command.Cost is { } cost)
         {
             assignment.CostInput = cost;
@@ -520,6 +530,33 @@ public static class CommandExecutor
         if (command.Cost is { } cost)
         {
             assignment.CostInput = cost;
+        }
+
+        if (command.UnitsPer is { } per)
+        {
+            assignment.MaterialRateUnit = per;
+        }
+        else if (command.ClearUnitsPer)
+        {
+            assignment.MaterialRateUnit = null;
+        }
+
+        if (command.ActualWork is { } actualWork)
+        {
+            assignment.ActualWorkMinutes = ParseDuration(actualWork).ToMinutes(project.TimeSettings);
+        }
+        else if (command.ClearActualWork)
+        {
+            assignment.ActualWorkMinutes = null;
+        }
+
+        if (command.ActualCost is { } actualCost)
+        {
+            assignment.ActualCost = actualCost;
+        }
+        else if (command.ClearActualCost)
+        {
+            assignment.ActualCost = null;
         }
 
         return null;

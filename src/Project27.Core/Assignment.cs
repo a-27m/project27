@@ -49,6 +49,84 @@ public sealed class Assignment
     /// <summary>Which of the resource's five cost rate tables prices this assignment.</summary>
     public CostRateTableId RateTable { get; set; }
 
+    private RateUnit? _materialRateUnit;
+
+    /// <summary>
+    /// Time base for variable material consumption ("10/day"): <see cref="Units"/> is
+    /// consumed per this unit of working time over the assignment span. Null = fixed
+    /// quantity (deviations.md #13).
+    /// </summary>
+    public RateUnit? MaterialRateUnit
+    {
+        get => _materialRateUnit;
+        set
+        {
+            if (value is not null && Resource.Type != ResourceType.Material)
+            {
+                throw new InvalidOperationException($"'{Resource.Name}' is a {Resource.Type} resource; per-time consumption applies to material resources only.");
+            }
+
+            _materialRateUnit = value;
+        }
+    }
+
+    /// <summary>Total material quantity: fixed <see cref="Units"/>, or Units × task working duration for variable consumption.</summary>
+    public decimal MaterialQuantity
+        => _materialRateUnit is { } per
+            ? Units * Task.DurationMinutes / Rate.MinutesPer(per, Task.Project.TimeSettings)
+            : Units;
+
+    private decimal? _actualWorkMinutes;
+    private decimal? _actualCost;
+
+    /// <summary>Explicit actual work in working minutes; null = derived from the task's percent complete (deviations.md #20).</summary>
+    public decimal? ActualWorkMinutes
+    {
+        get => _actualWorkMinutes;
+        set
+        {
+            if (value is { } minutes)
+            {
+                EnsureWorkResource();
+                ArgumentOutOfRangeException.ThrowIfNegative(minutes, nameof(value));
+            }
+
+            _actualWorkMinutes = value;
+        }
+    }
+
+    /// <summary>Explicit actual cost; null = derived from the task's percent complete (deviations.md #20).</summary>
+    public decimal? ActualCost
+    {
+        get => _actualCost;
+        set
+        {
+            if (value is { } cost)
+            {
+                ArgumentOutOfRangeException.ThrowIfNegative(cost, nameof(value));
+            }
+
+            _actualCost = value;
+        }
+    }
+
+    /// <summary>Actual work: the explicit value, else work × task percent complete.</summary>
+    public decimal EffectiveActualWorkMinutes => _actualWorkMinutes ?? WorkMinutes * Task.PercentComplete / 100m;
+
+    /// <summary>Actual cost: the explicit value, else scheduled cost × task percent complete.</summary>
+    public decimal EffectiveActualCost => _actualCost ?? Cost * Task.PercentComplete / 100m;
+
+    /// <summary>Remaining work: total minus actual, never negative.</summary>
+    public decimal RemainingWorkMinutes => Math.Max(0m, WorkMinutes - EffectiveActualWorkMinutes);
+
+    internal void RestoreActuals(decimal? workMinutes, decimal? cost)
+    {
+        _actualWorkMinutes = workMinutes;
+        _actualCost = cost;
+    }
+
+    internal void RestoreMaterialRateUnit(RateUnit? unit) => _materialRateUnit = unit;
+
     private decimal _costInput;
 
     /// <summary>The expense amount for cost-resource assignments.</summary>

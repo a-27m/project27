@@ -60,6 +60,9 @@ public static class ProjectDocumentMapper
                         DelayMinutes = a.DelayMinutes,
                         RateTable = a.RateTable,
                         CostInput = a.Resource.Type == ResourceType.Cost ? a.CostInput : 0m,
+                        MaterialRateUnit = a.MaterialRateUnit,
+                        ActualWorkMinutes = a.ActualWorkMinutes,
+                        ActualCost = a.ActualCost,
                         Baselines = a.BaselineSlots.Count == 0
                             ? null
                             : [.. a.BaselineSlots.OrderBy(pair => pair.Key).Select(pair => new AssignmentBaselineDocument(pair.Key, pair.Value.WorkMinutes, pair.Value.Cost))],
@@ -84,7 +87,7 @@ public static class ProjectDocumentMapper
     public static Project FromDocument(ProjectDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
-        if (document.SchemaVersion is not (>= 1 and <= 6))
+        if (document.SchemaVersion is not (>= 1 and <= 7))
         {
             throw new NotSupportedException($"Project document schema {document.SchemaVersion} is not supported by this build.");
         }
@@ -256,6 +259,8 @@ public static class ProjectDocumentMapper
             assignment.DelayMinutes = assignmentDoc.DelayMinutes;
             assignment.RateTable = assignmentDoc.RateTable;
             assignment.RestoreCostInput(assignmentDoc.CostInput);
+            assignment.RestoreMaterialRateUnit(assignmentDoc.MaterialRateUnit);
+            assignment.RestoreActuals(assignmentDoc.ActualWorkMinutes, assignmentDoc.ActualCost);
             foreach (var baselineDoc in assignmentDoc.Baselines ?? [])
             {
                 assignment.SetBaselineSlot(baselineDoc.Slot, new AssignmentBaseline(baselineDoc.WorkMinutes, baselineDoc.Cost));

@@ -33,9 +33,14 @@ internal static class AssignCommands
         var delayOpt = new Option<string?>("--delay") { HelpName = "duration" };
         var tableOpt = new Option<string?>("--table") { HelpName = "A..E", Description = "Cost rate table; default A." };
         var costOpt = new Option<string?>("--cost") { HelpName = "amount", Description = "Expense amount (cost resources)." };
+        var perOpt = new Option<string?>("--per")
+        {
+            HelpName = "unit",
+            Description = "Material consumption per time unit (h, d, w, mo, y): --units 10 --per d = 10/day.",
+        };
         var command = new Command("add", "Assign a resource to a task.")
         {
-            taskArg, resourceArg, unitsOpt, workOpt, contourOpt, delayOpt, tableOpt, costOpt,
+            taskArg, resourceArg, unitsOpt, workOpt, contourOpt, delayOpt, tableOpt, costOpt, perOpt,
         };
         command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
         {
@@ -47,6 +52,11 @@ internal static class AssignCommands
                 resource,
                 parseResult.GetValue(unitsOpt) is { } units ? Parsers.UnitsInput(units) : null,
                 parseResult.GetValue(workOpt) is { } work ? Parsers.DurationInput(work) : null);
+            if (parseResult.GetValue(perOpt) is { } per)
+            {
+                assignment.MaterialRateUnit = Parsers.RateUnitInput(per);
+            }
+
             ApplyExtras(assignment, parseResult, contourOpt, delayOpt, tableOpt, costOpt, project.TimeSettings);
             project.Recalculate();
             store.Save(project);
@@ -116,9 +126,24 @@ internal static class AssignCommands
         var delayOpt = new Option<string?>("--delay") { HelpName = "duration" };
         var tableOpt = new Option<string?>("--table") { HelpName = "A..E" };
         var costOpt = new Option<string?>("--cost") { HelpName = "amount" };
+        var perOpt = new Option<string?>("--per")
+        {
+            HelpName = "unit|none",
+            Description = "Material consumption per time unit (h, d, w, mo, y); 'none' = fixed quantity.",
+        };
+        var actualWorkOpt = new Option<string?>("--actual-work")
+        {
+            HelpName = "duration|none",
+            Description = "Explicit actual work; 'none' = derive from % complete.",
+        };
+        var actualCostOpt = new Option<string?>("--actual-cost")
+        {
+            HelpName = "amount|none",
+            Description = "Explicit actual cost; 'none' = derive from % complete.",
+        };
         var command = new Command("set", "Change an assignment; the task type decides what recalculates.")
         {
-            taskArg, resourceArg, unitsOpt, workOpt, contourOpt, delayOpt, tableOpt, costOpt,
+            taskArg, resourceArg, unitsOpt, workOpt, contourOpt, delayOpt, tableOpt, costOpt, perOpt, actualWorkOpt, actualCostOpt,
         };
         command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
         {
@@ -132,6 +157,23 @@ internal static class AssignCommands
             if (parseResult.GetValue(workOpt) is { } work)
             {
                 assignment.SetWork(Parsers.DurationInput(work));
+            }
+
+            if (parseResult.GetValue(perOpt) is { } per)
+            {
+                assignment.MaterialRateUnit = IsNone(per) ? null : Parsers.RateUnitInput(per);
+            }
+
+            if (parseResult.GetValue(actualWorkOpt) is { } actualWork)
+            {
+                assignment.ActualWorkMinutes = IsNone(actualWork)
+                    ? null
+                    : Parsers.DurationInput(actualWork).ToMinutes(project.TimeSettings);
+            }
+
+            if (parseResult.GetValue(actualCostOpt) is { } actualCost)
+            {
+                assignment.ActualCost = IsNone(actualCost) ? null : Parsers.MoneyInput(actualCost);
             }
 
             ApplyExtras(assignment, parseResult, contourOpt, delayOpt, tableOpt, costOpt, project.TimeSettings);
@@ -164,6 +206,8 @@ internal static class AssignCommands
         }));
         return command;
     }
+
+    private static bool IsNone(string text) => string.Equals(text.Trim(), "none", StringComparison.OrdinalIgnoreCase);
 
     private static Assignment Find(Project project, string taskRef, string resourceRef)
     {

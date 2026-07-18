@@ -25,9 +25,9 @@ public enum TaskType
 }
 
 /// <summary>
-/// Distribution of assignment work over time. Until usage views exist only the
-/// average utilization matters: it stretches the assignment duration
-/// (see <see cref="WorkContourExtensions.AverageUtilization"/>).
+/// Distribution of assignment work over time, defined by per-decile utilisation
+/// tables (<see cref="WorkContourExtensions.Deciles"/>). The average stretches the
+/// assignment duration; the deciles shape usage, cost proration, and leveling.
 /// </summary>
 public enum WorkContour
 {
@@ -51,21 +51,34 @@ public enum CostAccrual
 
 public static class WorkContourExtensions
 {
+    // Clean-room per-decile utilisation patterns (percent of assigned units per tenth
+    // of the assignment's working span). Single source of truth: scheduling, usage
+    // views, cost proration, and leveling all derive from these tables, so the
+    // scheduled span and the observable distribution cannot disagree (deviations.md #14).
+    private static readonly int[][] DecileTables =
+    [
+        /* Flat        */ [100, 100, 100, 100, 100, 100, 100, 100, 100, 100],
+        /* BackLoaded  */ [10, 15, 25, 50, 50, 75, 75, 100, 100, 100],
+        /* FrontLoaded */ [100, 100, 100, 75, 75, 50, 50, 25, 15, 10],
+        /* DoublePeak  */ [25, 50, 100, 50, 25, 25, 50, 100, 50, 25],
+        /* EarlyPeak   */ [25, 50, 100, 100, 50, 50, 25, 25, 15, 10],
+        /* LatePeak    */ [10, 15, 25, 25, 50, 50, 100, 100, 50, 25],
+        /* Bell        */ [10, 20, 40, 80, 100, 100, 80, 40, 20, 10],
+        /* Turtle      */ [25, 50, 75, 100, 100, 100, 100, 75, 50, 25],
+    ];
+
+    /// <summary>Per-decile utilisation (percent of assigned units) over the assignment's working span.</summary>
+    public static IReadOnlyList<int> Deciles(this WorkContour contour)
+        => (uint)contour < (uint)DecileTables.Length
+            ? DecileTables[(int)contour]
+            : throw new ArgumentOutOfRangeException(nameof(contour), contour, null);
+
     /// <summary>
     /// Average utilization of assigned units over the assignment span; assignment
-    /// duration = work / (units × average). Clean-room decile averages
-    /// (deviations.md #14).
+    /// duration = work / (units × average). The decile distribution is defined over
+    /// working-time tenths of that span, so this closed form is exactly the finish a
+    /// bucket-by-bucket decile walk reaches (deviations.md #14).
     /// </summary>
-    public static decimal AverageUtilization(this WorkContour contour) => contour switch
-    {
-        WorkContour.Flat => 1.00m,
-        WorkContour.BackLoaded => 0.60m,
-        WorkContour.FrontLoaded => 0.60m,
-        WorkContour.DoublePeak => 0.50m,
-        WorkContour.EarlyPeak => 0.45m,
-        WorkContour.LatePeak => 0.45m,
-        WorkContour.Bell => 0.50m,
-        WorkContour.Turtle => 0.70m,
-        _ => throw new ArgumentOutOfRangeException(nameof(contour), contour, null),
-    };
+    public static decimal AverageUtilization(this WorkContour contour)
+        => Deciles(contour).Sum() / 1000m;
 }

@@ -46,7 +46,7 @@ interface Props {
 }
 
 type ViewMode = 'gantt' | 'table' | 'network' | 'timeline' | 'usage' | 'resources'
-type Dialog = 'fields' | 'calendars' | 'recurring' | 'history' | 'columns' | null
+type Dialog = 'fields' | 'calendars' | 'recurring' | 'history' | 'columns' | 'level' | null
 
 export function ProjectView({ client, projectId, userId, userDisplayName, dark, onToggleTheme, onSignOut, onBack }: Props) {
   const [schedule, setSchedule] = useState<Schedule | null>(null)
@@ -668,6 +668,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
                   {
                     items: [
                       { label: 'Level resources', onClick: () => void sendCommands([{ op: 'level' }]) },
+                      { label: 'Level with options…', onClick: () => setDialog('level') },
                       { label: 'Clear leveling', onClick: () => void sendCommands([{ op: 'clearLeveling' }]) },
                     ],
                   },
@@ -925,6 +926,9 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
           onClose={() => setDialog(null)}
         />
       )}
+      {dialog === 'level' && (
+        <LevelDialog onCommand={(command) => void sendCommands([command])} onClose={() => setDialog(null)} />
+      )}
       {viewMode !== 'gantt' && showTaskInspector && selected !== null && schedule !== null && (
         <TaskInspector
           task={selected}
@@ -1083,6 +1087,82 @@ function ColumnsDialog({
         </div>
         <div className="modal-actions">
           <button onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const LEVELING_ORDERS = ['priorityStandard', 'standard', 'idOnly'] as const
+const LEVELING_ORDER_LABELS = ['Priority, standard', 'Standard', 'ID only']
+const LEVELING_GRANULARITIES = ['day', 'minute'] as const
+const LEVELING_GRANULARITY_LABELS = ['Day', 'Minute']
+
+function LevelDialog({ onCommand, onClose }: { onCommand: (command: Command) => void; onClose: () => void }) {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const [order, setOrder] = useState<(typeof LEVELING_ORDERS)[number]>('priorityStandard')
+  const [granularity, setGranularity] = useState<(typeof LEVELING_GRANULARITIES)[number]>('day')
+  const [splitInProgress, setSplitInProgress] = useState(false)
+  useEffect(() => {
+    dialogRef.current?.focus()
+  }, [])
+  return (
+    <div
+      className="modal-backdrop"
+      role="presentation"
+      onClick={onClose}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') onClose()
+      }}
+    >
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Level resources…"
+        tabIndex={-1}
+        ref={dialogRef}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <h3>Level resources…</h3>
+        <label className="inspector-row">
+          <span className="inspector-label">Order</span>
+          <select value={order} onChange={(event) => setOrder(event.target.value as (typeof LEVELING_ORDERS)[number])}>
+            {LEVELING_ORDERS.map((value, index) => (
+              <option key={value} value={value}>
+                {LEVELING_ORDER_LABELS[index]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="inspector-row">
+          <span className="inspector-label">Granularity</span>
+          <select
+            value={granularity}
+            onChange={(event) => setGranularity(event.target.value as (typeof LEVELING_GRANULARITIES)[number])}
+          >
+            {LEVELING_GRANULARITIES.map((value, index) => (
+              <option key={value} value={value}>
+                {LEVELING_GRANULARITY_LABELS[index]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="inspector-row">
+          <span className="inspector-label">Split in-progress tasks</span>
+          <input type="checkbox" checked={splitInProgress} onChange={(event) => setSplitInProgress(event.target.checked)} />
+        </label>
+        <div className="modal-actions">
+          <button onClick={onClose}>Cancel</button>
+          <button
+            className="primary"
+            onClick={() => {
+              onCommand({ op: 'level', order, granularity, splitInProgress })
+              onClose()
+            }}
+          >
+            Level
+          </button>
         </div>
       </div>
     </div>

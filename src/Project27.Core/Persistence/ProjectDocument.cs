@@ -9,7 +9,7 @@ namespace Project27.Core.Persistence;
 /// </summary>
 public sealed record ProjectDocument
 {
-    public int SchemaVersion { get; init; } = 6;
+    public int SchemaVersion { get; init; } = 7;
 
     public required Guid Id { get; init; }
 
@@ -295,6 +295,16 @@ public sealed record AssignmentDocument
     public decimal CostInput { get; init; }
 
     public IReadOnlyList<AssignmentBaselineDocument>? Baselines { get; init; }
+
+    // Schema 7 (defaults preserve older semantics).
+    /// <summary>Set = variable material consumption: Units are consumed per this time unit.</summary>
+    public RateUnit? MaterialRateUnit { get; init; }
+
+    /// <summary>Explicit actual work in minutes; null = derived from percent complete.</summary>
+    public decimal? ActualWorkMinutes { get; init; }
+
+    /// <summary>Explicit actual cost; null = derived from percent complete.</summary>
+    public decimal? ActualCost { get; init; }
 }
 
 public sealed record DependencyDocument

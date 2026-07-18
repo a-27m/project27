@@ -85,7 +85,11 @@ internal sealed record AssignmentJson(
     CostRateTableId RateTable,
     DateTime? Start,
     DateTime? Finish,
-    decimal Cost);
+    decimal Cost,
+    RateUnit? UnitsPer,
+    decimal? Quantity,
+    string? ActualWork,
+    decimal? ActualCost);
 
 internal sealed record RateEntryJson(DateTime? From, string StandardRate, string OvertimeRate, decimal CostPerUse);
 
@@ -238,7 +242,11 @@ internal static class JsonShapes
         RateTable: assignment.RateTable,
         Start: assignment.Start,
         Finish: assignment.Finish,
-        Cost: assignment.Cost);
+        Cost: assignment.Cost,
+        UnitsPer: assignment.MaterialRateUnit,
+        Quantity: assignment.MaterialRateUnit is null ? null : assignment.MaterialQuantity,
+        ActualWork: assignment.ActualWorkMinutes is { } actualWork ? Render.WorkHours(actualWork) : null,
+        ActualCost: assignment.ActualCost);
 
     public static ResourceJson ForResource(Resource resource) => new(
         Uid: resource.UniqueId,

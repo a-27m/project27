@@ -282,6 +282,45 @@ engineering-decisions.md); everything else stays dependency-free.
   local, reversible check — run it before any live Azure-side change
   (`signInAudience`, admin consent) when access tokens come back opaque.
 
+## Tracking-parity epic (2026-07-18) — deviations #13/#14/#16/#17/#19/#20/#23/#28/#29
+
+Spec: `docs/spec/13-tracking-parity.md`; rationale: E36. Scope locked with the
+owner: #20 = *scalar actuals now, time-phased buckets later* (seam documented
+in spec 13); leveling gets split-based + configurable order + minute
+granularity; #14 = unify scheduling with the decile tables.
+
+- Contour deciles single-sourced in `WorkContour.Deciles()`
+  (`AverageUtilization` derived); the scheduler's closed form provably equals
+  the decile walk — no date changes.
+- `Assignment.Cost` = per-day usage slices priced by the band in force that
+  day (`Timephased.WorkCost/MaterialCost`); buckets sum exactly to cost.
+  Variable material consumption: `MaterialRateUnit` (+`MaterialQuantity`),
+  CLI `--per`, command `unitsPer`.
+- `ScheduleMask` confines split-task assignment work/dates to scheduled
+  segments (resource calendars now shape split/manual assignments; #16).
+- Scalar actuals: `Assignment.ActualWorkMinutes/ActualCost` (null = derived
+  from % complete → old numbers unchanged); task rollups + fields
+  `actualWork/remainingWork/actualCost`; ACWP = `task.ActualCost`; BCWS placed
+  by resource accrual (#19). CLI `assign set --actual-work/--actual-cost`
+  ('none' clears).
+- `SplitSurgery.PushWork` (completed work never moves) shared by
+  `RescheduleUncompletedWork` (#23, split tasks now handled) and
+  `Level(LevelingOptions)` with `Order` (id/standard/priority),
+  `Granularity` (day/minute = exact excess), `SplitInProgress` (#29);
+  leveling skips unresolvable conflicts instead of stopping;
+  `LevelingResult.SplitTasks` added. CLI `level run --order --granularity
+  --split-in-progress`.
+- Persistence **schema v7** (assignment `materialRateUnit`/`actualWorkMinutes`/
+  `actualCost`); commands `setAssignment` + `level` extended, inverses done;
+  projection carries the three new assignment fields.
+- `CliHarness` now scrubs ambient `P27_*` env vars — without it a developer's
+  `P27_SERVER` flips all file-mode CLI tests into server mode.
+- Web: inspector gains per-select (material), actual work/cost inputs;
+  "Level with options…" dialog (order/granularity/split-in-progress);
+  `formatUnits` in `lib/format.ts`.
+- Counts at epic close: Core 237, Storage 3, Interop 9, Cli 90, Server 28
+  (.NET 367) + web 43 (Vitest).
+
 ## Checkout/lock/history UI now shows display names, not user ids (2026-07-15)
 
 "Checked out by", the version-history "By" column, and project members all

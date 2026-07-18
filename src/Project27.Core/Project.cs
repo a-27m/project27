@@ -451,10 +451,15 @@ public sealed class Project
     /// <summary>Runs the full forward/backward scheduling passes. Deterministic.</summary>
     public void Recalculate() => ProjectScheduler.Recalculate(this);
 
-    /// <summary>Levels overallocated work resources by delaying tasks (docs/spec/10-advanced-scheduling.md). Recalculates.</summary>
-    public LevelingResult Level() => ResourceLeveler.Level(this);
+    /// <summary>
+    /// Levels overallocated work resources by delaying tasks — or splitting the
+    /// remaining work of started ones when the options allow (docs/spec/10-advanced-scheduling.md,
+    /// deviations #28/#29). Recalculates.
+    /// </summary>
+    public LevelingResult Level(LevelingOptions? options = null)
+        => ResourceLeveler.Level(this, options ?? LevelingOptions.Default);
 
-    /// <summary>Removes every leveling delay and recalculates.</summary>
+    /// <summary>Removes every leveling delay and recalculates. Splits made by leveling stay (they are ordinary splits).</summary>
     public void ClearLeveling()
     {
         ResourceLeveler.ClearDelays(this);
@@ -643,8 +648,8 @@ public sealed class Project
 
     /// <summary>
     /// Pushes uncompleted work at or before the cutoff (default: status date) out
-    /// past it: started tasks split at their completion point (unless already
-    /// split — deviation #23); unstarted tasks get a start-no-earlier-than
+    /// past it: started tasks — split or not (deviation #23) — resume their
+    /// remaining work at the cutoff; unstarted tasks get a start-no-earlier-than
     /// constraint. Completed and manual tasks are untouched. Recalculates.
     /// </summary>
     public void RescheduleUncompletedWork(DateTime? after = null)
@@ -673,20 +678,7 @@ public sealed class Project
                 continue;
             }
 
-            if (task.IsSplit)
-            {
-                continue;
-            }
-
-            var completed = task.CompletedMinutes;
-            var completionPoint = calendar.AddWork(start, completed);
-            var gap = calendar.WorkBetween(completionPoint, cutoff);
-            if (gap > 0)
-            {
-                task.SplitAt(
-                    new Duration(completed, DurationUnit.Minutes),
-                    new Duration(gap, DurationUnit.Minutes));
-            }
+            Scheduling.SplitSurgery.PushWork(task, calendar, start, cutoff);
         }
 
         Recalculate();

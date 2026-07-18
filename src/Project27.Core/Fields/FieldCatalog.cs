@@ -82,6 +82,9 @@ public static class FieldCatalog
         Add("actualStart", "Actual Start", FieldKind.Date, t => t.ActualStart);
         Add("actualFinish", "Actual Finish", FieldKind.Date, t => t.ActualFinish);
         Add("remainingDuration", "Remaining Duration", FieldKind.Duration, t => t.RemainingMinutes);
+        Add("actualWork", "Actual Work", FieldKind.Work, t => t.ActualWorkMinutes);
+        Add("remainingWork", "Remaining Work", FieldKind.Work, t => t.RemainingWorkMinutes);
+        Add("actualCost", "Actual Cost", FieldKind.Cost, t => t.ActualCost);
         Add("levelingDelay", "Leveling Delay", FieldKind.Duration, t => t.LevelingDelayMinutes);
 
         // Baseline 0 & variances.

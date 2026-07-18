@@ -155,6 +155,46 @@ public sealed class AssignCommandTests : IDisposable
     }
 
     [Fact]
+    public void Variable_material_consumption_scales_with_duration()
+    {
+        Cli.Ok("resource", "add", "Fuel", "--type", "material", "--rate", "5", "--file", _file);
+        Cli.Ok("assign", "add", "1", "Fuel", "--units", "10", "--per", "d", "--file", _file);
+        var assignment = Task1().GetProperty("assignments").EnumerateArray()
+            .Single(a => a.GetProperty("resource").GetString() == "Fuel");
+        Assert.Equal("10/d", assignment.GetProperty("units").GetString());
+        Assert.Equal(40m, assignment.GetProperty("quantity").GetDecimal()); // 10/day × 4d
+        Assert.Equal(200m, assignment.GetProperty("cost").GetDecimal());    // 40 × 5
+
+        Cli.Ok("assign", "set", "1", "Fuel", "--per", "none", "--file", _file);
+        var fixedQuantity = Task1().GetProperty("assignments").EnumerateArray()
+            .Single(a => a.GetProperty("resource").GetString() == "Fuel");
+        Assert.Equal("10", fixedQuantity.GetProperty("units").GetString());
+        Assert.Equal(50m, fixedQuantity.GetProperty("cost").GetDecimal());
+    }
+
+    [Fact]
+    public void Explicit_actuals_override_the_derived_values()
+    {
+        Cli.Ok("assign", "add", "1", "Dev", "--file", _file);
+        Cli.Ok("task", "set", "1", "--percent-complete", "50", "--file", _file);
+        Cli.Ok("assign", "set", "1", "Dev", "--actual-work", "10h", "--actual-cost", "700", "--file", _file);
+
+        var assignment = Task1().GetProperty("assignments")[0];
+        Assert.Equal("10h", assignment.GetProperty("actualWork").GetString());
+        Assert.Equal(700m, assignment.GetProperty("actualCost").GetDecimal());
+
+        var view = Cli.Ok("view", "--fields", "name,actualWork,remainingWork,actualCost", "--json", "--file", _file).Json();
+        var values = view.GetProperty("groups")[0].GetProperty("rows")[0].GetProperty("values");
+        Assert.Equal(600m, values.GetProperty("actualWork").GetDecimal());       // minutes
+        Assert.Equal(1320m, values.GetProperty("remainingWork").GetDecimal());   // 32h − 10h
+        Assert.Equal(700m, values.GetProperty("actualCost").GetDecimal());
+
+        Cli.Ok("assign", "set", "1", "Dev", "--actual-work", "none", "--actual-cost", "none", "--file", _file);
+        var cleared = Task1().GetProperty("assignments")[0];
+        Assert.Equal(JsonValueKind.Null, cleared.GetProperty("actualWork").ValueKind);
+    }
+
+    [Fact]
     public void Delay_shifts_the_assignment()
     {
         Cli.Ok("assign", "add", "1", "Dev", "--delay", "1d", "--file", _file);

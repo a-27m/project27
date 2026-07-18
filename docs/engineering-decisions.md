@@ -548,6 +548,45 @@ collapses `Formatting` back to `null` via `TaskFormatting.IsDefault` (checks
 field (color, etc.) is added, extend `IsDefault`, not the call site, or the
 bag will stop collapsing correctly once two fields disagree on default-ness.
 
+### E36. Tracking-parity epic: decile walk ≡ closed form; costs priced from the usage slices; split surgery shared by reschedule and leveling
+
+**Chose:** (a) One decile source (`WorkContour.Deciles()`,
+`AverageUtilization` derived) and *keeping* the scheduler's closed-form
+duration `work/(units×avg)` — proven, not assumed, to equal a per-decile walk,
+because deciles are defined over working-time tenths of the span
+(`Σ units·rᵢ·D/10 = units·avg·D`). (b) `Assignment.Cost` computed from the
+same per-day slices usage renders (`Timephased.WorkCost/MaterialCost`), each
+day priced by the band at that day's start — bucket/cost conservation is then
+exact by construction, not by rounding discipline. (c) One split-parts
+rewriter (`SplitSurgery.PushWork`) under both `RescheduleUncompletedWork`
+(#23) and split-based leveling of started tasks (#29): find the work offset
+(floored at `CompletedMinutes` so completed work can never move), split a part
+or widen a boundary gap, let later segments ride along as a block.
+
+**Rejected:** a literal decile-walking scheduler (adds code that provably
+computes the same dates); telescoped-rounding the *cost* cumulatively as 9c
+did (a second rounding channel that fights per-band pricing — pricing the
+already-telescoped work slices needs no rounding of its own); separate
+remaining-work movers for reschedule vs leveling (they are the same surgery
+with different `from`/`resumeAt`); tracking leveling-split provenance so
+`ClearLeveling` could undo splits (needs schema + merge semantics for
+user-edited splits; documented as permanent instead, deviation #29).
+
+**Why:** every number the user can see (usage buckets, assignment cost,
+overallocation demand, BCWS) now derives from one distribution and one
+pricing rule, so views cannot disagree with totals.
+
+**Traps:** (1) `Timephased.AssignmentSchedule` masks split tasks to their
+*scheduled segments* (`ScheduleMask`) — anything that computes from it must
+run after `FinalizeDates` has written `task.Segments` (the scheduler's
+`FinalizeAssignments` does; ad-hoc callers must Recalculate first, as always).
+(2) The leveling loop must *skip* an unresolvable conflict (protected or
+completed contributors) and keep leveling later days — breaking on the first
+one silently abandons the rest of the schedule. (3) CLI tests run the command
+tree in-process: without the `CliHarness` env scrub, a developer's ambient
+`P27_SERVER` flips every file-mode test into server mode (80 failures that
+look like a regression).
+
 ---
 
 *When you add a significant engineering decision, append an E-record here in

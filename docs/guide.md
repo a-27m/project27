@@ -38,6 +38,7 @@ p27 resource add Cement --type material --rate 12.5 --material-label t
 p27 resource add Travel --type cost
 p27 assign add 2 Dev                     # work = duration × units
 p27 assign add 2 Cement --units 10
+p27 assign add 2 Fuel --units 10 --per d # variable consumption: 10 per working day
 p27 assign add 2 Travel --cost 300
 p27 task show 2                          # work, cost, assignments
 ```
@@ -55,6 +56,7 @@ p27 baseline set                         # freeze the plan (slots 0-10)
 p27 project set --status-date 2026-01-12
 p27 task set 2 --percent-complete 40
 p27 task set 1 --actual-start 2026-01-05 --actual-finish 2026-01-07
+p27 assign set 2 Dev --actual-work 10h --actual-cost 700   # explicit actuals ('none' re-derives)
 p27 schedule reschedule                  # push uncompleted work past the status date
 p27 task evm                             # BCWS/BCWP/ACWP, SPI/CPI, EAC…
 ```
@@ -75,11 +77,14 @@ p27 report overview -o status.html       # self-contained HTML; print to PDF fro
 
 ```sh
 p27 level run                            # delays lower-priority tasks out of overallocations
+p27 level run --order standard --granularity minute   # ignore priorities; step by the exact excess
+p27 level run --split-in-progress        # started tasks: split remaining work past the conflict
 p27 task drivers 4                       # why is this task scheduled where it is?
-p27 level clear
+p27 level clear                          # removes delays (leveling splits stay)
 ```
 
-Tasks with priority 1000 are never moved; started work is left alone.
+Tasks with priority 1000 are never moved; started work is left alone unless
+`--split-in-progress` is given (completed work never moves).
 
 ## 7. Team mode (server + web)
 

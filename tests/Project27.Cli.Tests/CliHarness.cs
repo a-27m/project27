@@ -13,6 +13,16 @@ internal sealed record CliResult(int ExitCode, string Stdout, string Stderr)
 /// <summary>Runs the command tree in-process with captured output.</summary>
 internal static class Cli
 {
+    static Cli()
+    {
+        // Tests must be immune to the developer's ambient P27_* configuration —
+        // P27_SERVER alone silently flips every file-mode test into server mode.
+        foreach (var name in (string[])["P27_FILE", "P27_SERVER", "P27_PROJECT", "P27_TOKEN"])
+        {
+            Environment.SetEnvironmentVariable(name, null);
+        }
+    }
+
     public static CliResult Run(params string[] args)
     {
         using var output = new StringWriter(CultureInfo.InvariantCulture);

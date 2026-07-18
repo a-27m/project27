@@ -34,7 +34,10 @@ public sealed record ScheduleAssignmentDto(
     decimal DelayMinutes,
     CostRateTableId RateTable,
     decimal Cost,
-    decimal CostInput);
+    decimal CostInput,
+    RateUnit? UnitsPer,
+    decimal? ActualWorkMinutes,
+    decimal? ActualCost);
 
 public sealed record ScheduleSegmentDto(DateTime Start, DateTime Finish);
 
@@ -236,7 +239,10 @@ public static class ScheduleProjection
                             a.DelayMinutes,
                             a.RateTable,
                             a.Cost,
-                            a.Resource.Type == ResourceType.Cost ? a.CostInput : 0m)),
+                            a.Resource.Type == ResourceType.Cost ? a.CostInput : 0m,
+                            a.MaterialRateUnit,
+                            a.ActualWorkMinutes,
+                            a.ActualCost)),
                     ],
                     project.CustomFields.Count == 0
                         ? null

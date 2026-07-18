@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ApiClient } from '../api/client'
 import type { Command, ScheduleProject, ScheduleTask, TaskDriver } from '../api/types'
-import { dateTime, durationDays, fromWireDate, toWireDate } from '../lib/format'
+import { dateTime, durationDays, formatUnits, fromWireDate, toWireDate } from '../lib/format'
 import { AccordionSection, CheckField, DateField, SelectField, StaticField, TextField } from './InspectorFields'
 import { Icon } from './icons/Icon'
 import { SegmentedPercent } from './SegmentedPercent'
@@ -33,6 +33,10 @@ const CONSTRAINTS = [
 
 const LINK_TYPES = ['finishToStart', 'startToStart', 'finishToFinish', 'startToFinish'] as const
 const CONTOURS = ['flat', 'backLoaded', 'frontLoaded', 'doublePeak', 'earlyPeak', 'latePeak', 'bell', 'turtle'] as const
+
+/** "Per" select for variable material consumption; '' = fixed quantity (no unitsPer). */
+const PER_OPTIONS = ['', 'hour', 'day', 'week', 'month', 'year'] as const
+const PER_LABELS = ['fixed', '/hour', '/day', '/week', '/month', '/year']
 
 /** Full-field task editor (docs/spec/12-polish.md parity matrix, 12p-2). */
 export function TaskInspector({ task, project, tasks, editable, client, projectId, onCommands, onClose, onCollapse }: Props) {
@@ -447,6 +451,37 @@ function ResourcesSection({
                 editable={editable}
                 onCommit={(v) => onCommands([{ op: 'setAssignment', uid: task.uid, resource: assignment.resource, contour: v }])}
               />
+              <TextField
+                label="Actual work"
+                value={assignment.actualWorkMinutes === null ? '' : `${Math.round((assignment.actualWorkMinutes / 60) * 100) / 100}h`}
+                editable={editable}
+                onCommit={(v) =>
+                  onCommands([
+                    v.trim() === ''
+                      ? { op: 'setAssignment', uid: task.uid, resource: assignment.resource, clearActualWork: true }
+                      : { op: 'setAssignment', uid: task.uid, resource: assignment.resource, actualWork: v },
+                  ])
+                }
+              />
+            </>
+          )}
+          {assignment.resourceType === 'material' && (
+            <>
+              <StaticField label="Units" value={formatUnits(assignment.units, assignment.unitsPer)} />
+              <SelectField
+                label="Per"
+                value={assignment.unitsPer ?? ''}
+                options={PER_OPTIONS}
+                labels={PER_LABELS}
+                editable={editable}
+                onCommit={(v) =>
+                  onCommands([
+                    v === ''
+                      ? { op: 'setAssignment', uid: task.uid, resource: assignment.resource, clearUnitsPer: true }
+                      : { op: 'setAssignment', uid: task.uid, resource: assignment.resource, unitsPer: v as (typeof PER_OPTIONS)[number] },
+                  ])
+                }
+              />
             </>
           )}
           {assignment.resourceType === 'cost' && (
@@ -457,6 +492,18 @@ function ResourcesSection({
               onCommit={(v) => onCommands([{ op: 'setAssignment', uid: task.uid, resource: assignment.resource, cost: Number(v) }])}
             />
           )}
+          <TextField
+            label="Actual cost"
+            value={assignment.actualCost === null ? '' : String(assignment.actualCost)}
+            editable={editable}
+            onCommit={(v) =>
+              onCommands([
+                v.trim() === ''
+                  ? { op: 'setAssignment', uid: task.uid, resource: assignment.resource, clearActualCost: true }
+                  : { op: 'setAssignment', uid: task.uid, resource: assignment.resource, actualCost: Number(v) },
+              ])
+            }
+          />
           <StaticField label="Costed" value={String(assignment.cost)} />
         </div>
       ))}

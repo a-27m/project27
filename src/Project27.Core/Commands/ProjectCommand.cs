@@ -251,7 +251,14 @@ public sealed record ClearBaselineCommand : ProjectCommand
     public IReadOnlyList<int> Uids { get; init; } = [];
 }
 
-public sealed record LevelCommand : ProjectCommand;
+public sealed record LevelCommand : ProjectCommand
+{
+    public Scheduling.LevelingOrder? Order { get; init; }
+
+    public Scheduling.LevelingGranularity? Granularity { get; init; }
+
+    public bool? SplitInProgress { get; init; }
+}
 
 public sealed record ClearLevelingCommand : ProjectCommand;
 
@@ -339,6 +346,9 @@ public sealed record AssignCommand : ProjectCommand
 
     public decimal? Units { get; init; }
 
+    /// <summary>Variable material consumption: Units are consumed per this time unit (deviations.md #13).</summary>
+    public RateUnit? UnitsPer { get; init; }
+
     public string? Work { get; init; }
 
     public decimal? Cost { get; init; }
@@ -361,6 +371,21 @@ public sealed record SetAssignmentCommand : ProjectCommand
     public CostRateTableId? RateTable { get; init; }
 
     public decimal? Cost { get; init; }
+
+    /// <summary>Variable material consumption time base (deviations.md #13).</summary>
+    public RateUnit? UnitsPer { get; init; }
+
+    public bool ClearUnitsPer { get; init; }
+
+    /// <summary>Engine duration syntax; explicit actual work (deviations.md #20).</summary>
+    public string? ActualWork { get; init; }
+
+    public bool ClearActualWork { get; init; }
+
+    /// <summary>Explicit actual cost (deviations.md #20).</summary>
+    public decimal? ActualCost { get; init; }
+
+    public bool ClearActualCost { get; init; }
 }
 
 public sealed record UnassignCommand : ProjectCommand
