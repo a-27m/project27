@@ -15,6 +15,7 @@ dotnet test tests/Project27.Core.Tests --filter "FullyQualifiedName~OutlineTests
 dotnet run --project src/Project27.Cli -- task list                  # CLI (p27) on the .p27 file in cwd
 ASPNETCORE_ENVIRONMENT=Development dotnet run --project src/Project27.Server   # :5240, DevAuth on
 docker compose up --build                                            # server + web (SQLite, DevAuth)
+dotnet run --project src/Project27.Mcp -- --file plan.p27             # MCP server (p27-mcp), stdio transport
 
 # Web — all of these run from web/
 npm run dev            # Vite; proxies /api to $P27_SERVER (default http://localhost:5240)
@@ -36,8 +37,9 @@ start with DevAuth outside Development.
 `Project27.Core` is a pure library — no I/O, no async, no host or storage types — and
 everything the product *is* lives there, so the CLI and server cannot diverge
 behaviorally. `Storage` (IProjectStore + SQLite `.p27` files) and `Interop`
-(MSPDI XML, CSV) sit beside it; `Cli` and `Server` are the two hosts; `web/` is a
-React 19 + TS SPA over the server's REST API. Tests mirror `src/` one-to-one.
+(MSPDI XML, CSV) sit beside it; `Cli`, `Server`, and `Mcp` (MCP tool server, `p27-mcp`)
+are the three hosts; `web/` is a React 19 + TS SPA over the server's REST API. Tests
+mirror `src/` one-to-one.
 
 Cross-cutting rules that are expensive to discover by reading code:
 
@@ -68,7 +70,7 @@ re-deriving from code.
 - `docs/progress.md` — current state, phase log, and the "engine facts that bite" list
   (summary durations, calendar presets, the effort triangle, xUnit v3 quirks). Update it
   when you finish a major task.
-- `docs/spec/` — per-phase specs (01–12) plus `deviations.md`, the numbered list of
+- `docs/spec/` — per-phase specs (01–14) plus `deviations.md`, the numbered list of
   intentional divergences from MS Project. The initial implementation is finished, all
   roadmap phases are complete, so next major tasks are better called "epics" but should
   be documented like phases were.

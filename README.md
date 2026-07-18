@@ -60,6 +60,25 @@ npm run build      # type-check + production bundle
 
 Sign in with a dev user (server must run in Development) or a bearer token.
 
+## MCP server (`p27-mcp`)
+
+Exposes the engine's task/schedule/resource/calendar operations as [MCP](https://modelcontextprotocol.io/)
+tools (stdio transport) for AI clients like Claude Desktop or Claude Code.
+
+```sh
+dotnet run --project src/Project27.Mcp -- --file plan.p27
+# or against a server project:
+dotnet run --project src/Project27.Mcp -- --server http://localhost:5240 --project Alpha --dev-user alice
+```
+
+Serves one project for the process's lifetime. Point it at a `.p27` file
+(`--file`/`P27_FILE`, or the sole `.p27` in the launch directory) or a
+checked-out server project (`--server`/`P27_SERVER` + `--project`/
+`P27_PROJECT`, `--dev-user`/`P27_DEV_USER` or `--token`/`P27_TOKEN`) — or omit
+`--file`/`--project` to launch idle and let the model call `create_project`
+or `open_project` once it knows what it's working with. See
+`docs/spec/14-mcp-server.md`.
+
 ## Examples
 
 [`examples/`](examples/README.md) has nine ready-to-open `.p27` files: seven

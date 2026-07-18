@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>p27-mcp</ToolCommandName>
+    <PackageId>Project27.Mcp</PackageId>
+    <Version>0.1.0</Version>
+    <Description>Project27 MCP server: exposes the engine's task/schedule/resource operations as MCP tools over a local .p27 file or a Project27.Server project.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>p27-mcp</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Project27.Mcp.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Project27.Core\Project27.Core.csproj" />
+    <ProjectReference Include="..\Project27.Storage\Project27.Storage.csproj" />
+  </ItemGroup>
+
+</Project>
