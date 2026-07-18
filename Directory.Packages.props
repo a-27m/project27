@@ -5,7 +5,7 @@
   <ItemGroup>
     <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.10" />
     <!-- Overrides the vulnerable 2.1.11 native lib pinned transitively by Microsoft.Data.Sqlite (GHSA-2m69-gcr7-jv3q). -->
-    <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
+    <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.4" />
     <PackageVersion Include="System.CommandLine" Version="2.0.10" />
     <!-- CLI auth & config -->
     <PackageVersion Include="Duende.IdentityModel" Version="8.1.0" />
