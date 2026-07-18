@@ -59,3 +59,11 @@ npm run build      # type-check + production bundle
 ```
 
 Sign in with a dev user (server must run in Development) or a bearer token.
+
+## Examples
+
+[`examples/`](examples/README.md) has nine ready-to-open `.p27` files: seven
+small single-feature demos (critical path, calendars, resource leveling,
+cost/materials, baselines & EVM, custom fields, recurring tasks & splits) and
+a 131-task realistic product-launch project exercising most of the engine at
+once.
