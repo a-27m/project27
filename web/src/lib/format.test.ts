@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dateTime, durationDays, fromWireDate, predecessorToken, toWireDate } from './format'
+import { dateTime, durationDays, formatUnits, fromWireDate, predecessorToken, toWireDate } from './format'
 
 describe('format', () => {
   it('renders durations in days from minutes', () => {
@@ -17,6 +17,15 @@ describe('format', () => {
     const date = fromWireDate('2026-01-05T08:00:00')
     expect(date).toEqual(new Date(2026, 0, 5, 8, 0))
     expect(toWireDate(date)).toBe('2026-01-05T08:00:00')
+  })
+
+  it('renders material assignment units, plain or with a per-time suffix', () => {
+    expect(formatUnits(10, null)).toBe('10')
+    expect(formatUnits(10, 'day')).toBe('10/d')
+    expect(formatUnits(2.5, 'hour')).toBe('2.5/h')
+    expect(formatUnits(1, 'week')).toBe('1/w')
+    expect(formatUnits(1, 'month')).toBe('1/mo')
+    expect(formatUnits(1, 'year')).toBe('1/y')
   })
 
   it('builds MSP-style predecessor tokens', () => {

@@ -127,6 +127,31 @@ public sealed class InverterTests
     }
 
     [Fact]
+    public void Set_assignment_inverse_restores_actuals_and_consumption()
+    {
+        var project = NewProject();
+        var fuel = project.AddResource("Fuel", ResourceType.Material);
+        var dev = project.AddResource("Dev");
+        var task = project.AddTask("T", Duration.Parse("2d"));
+        project.Assign(task, fuel, units: 10m);
+        var work = project.Assign(task, dev);
+        work.ActualWorkMinutes = 240m;
+
+        RoundTrip(project, new SetAssignmentCommand { Uid = task.UniqueId, Resource = "Fuel", UnitsPer = RateUnit.Day });
+        Assert.Null(task.Assignments[0].MaterialRateUnit);
+
+        RoundTrip(project, new SetAssignmentCommand
+        {
+            Uid = task.UniqueId,
+            Resource = "Dev",
+            ActualWork = "8h",
+            ActualCost = 99m,
+        });
+        Assert.Equal(240m, work.ActualWorkMinutes);
+        Assert.Null(work.ActualCost);
+    }
+
+    [Fact]
     public void Set_project_inverse_restores_settings()
     {
         var project = NewProject();

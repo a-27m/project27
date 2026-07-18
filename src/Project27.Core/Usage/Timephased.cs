@@ -14,79 +14,181 @@ public readonly record struct TimephasedBucket(DateOnly Date, decimal WorkMinute
 /// </summary>
 public static class Timephased
 {
-    /// <summary>Per-decile utilisation patterns (same tables as AverageUtilization).</summary>
-    private static readonly Dictionary<WorkContour, int[]> Deciles = new()
-    {
-        [WorkContour.Flat] = [100, 100, 100, 100, 100, 100, 100, 100, 100, 100],
-        [WorkContour.BackLoaded] = [10, 15, 25, 50, 50, 75, 75, 100, 100, 100],
-        [WorkContour.FrontLoaded] = [100, 100, 100, 75, 75, 50, 50, 25, 15, 10],
-        [WorkContour.DoublePeak] = [25, 50, 100, 50, 25, 25, 50, 100, 50, 25],
-        [WorkContour.EarlyPeak] = [25, 50, 100, 100, 50, 50, 25, 25, 15, 10],
-        [WorkContour.LatePeak] = [10, 15, 25, 25, 50, 50, 100, 100, 50, 25],
-        [WorkContour.Bell] = [10, 20, 40, 80, 100, 100, 80, 40, 20, 10],
-        [WorkContour.Turtle] = [25, 50, 75, 100, 100, 100, 100, 75, 50, 25],
-    };
-
-    /// <summary>Daily work/cost buckets of one assignment; empty when unscheduled.</summary>
+    /// <summary>
+    /// Daily work/cost buckets of one assignment; empty when unscheduled. Work-day
+    /// costs are priced by the rate band in force at the start of each bucket's day
+    /// (deviations.md #17), so buckets sum exactly to the assignment cost.
+    /// </summary>
     public static IReadOnlyList<TimephasedBucket> ForAssignment(Assignment assignment)
     {
         ArgumentNullException.ThrowIfNull(assignment);
-        var task = assignment.Task;
         if (assignment.Start is not { } start || assignment.Finish is not { } finish)
         {
             return [];
         }
 
-        var project = task.Project;
+        var settings = assignment.Task.Project.TimeSettings;
         var schedule = AssignmentSchedule(assignment);
+        var table = assignment.Resource.RateTable(assignment.RateTable);
         var buckets = new List<TimephasedBucket>();
 
         if (assignment.Resource.Type == ResourceType.Work && assignment.WorkMinutes > 0 && finish > start)
         {
-            var span = schedule.WorkBetween(start, finish);
-            if (span > 0)
+            foreach (var (day, work) in WorkSlices(assignment, schedule, start, finish))
             {
-                var shares = Deciles[assignment.Contour];
-                decimal total = shares.Sum();
-                var cumulative = 0m; // working minutes of the span consumed so far
-                // Rounded cumulative work/cost telescope, so buckets sum exactly to the totals.
-                var rateCost = assignment.Resource
-                    .RateTable(assignment.RateTable)
-                    .RateAt(start).StandardRate
-                    .CostForMinutes(assignment.WorkMinutes, project.TimeSettings);
-                var (workSoFar, costSoFar) = (0m, 0m);
-
-                for (var day = DateOnly.FromDateTime(start); day <= DateOnly.FromDateTime(finish); day = day.AddDays(1))
+                var cost = table.RateAt(day.ToDateTime(TimeOnly.MinValue)).StandardRate.CostForMinutes(work, settings);
+                buckets.Add(new TimephasedBucket(day, work, cost));
+            }
+        }
+        else if (assignment.Resource.Type == ResourceType.Material && assignment.MaterialRateUnit is not null && finish > start)
+        {
+            foreach (var (day, quantity) in MaterialSlices(assignment, schedule, start, finish))
+            {
+                var cost = quantity * table.RateAt(day.ToDateTime(TimeOnly.MinValue)).StandardRate.Amount;
+                if (cost != 0m)
                 {
-                    var dayStart = Later(day.ToDateTime(TimeOnly.MinValue), start);
-                    var dayEnd = Earlier(day.AddDays(1).ToDateTime(TimeOnly.MinValue), finish);
-                    if (dayEnd <= dayStart)
-                    {
-                        continue;
-                    }
-
-                    var minutesToday = schedule.WorkBetween(dayStart, dayEnd);
-                    if (minutesToday <= 0)
-                    {
-                        continue;
-                    }
-
-                    cumulative += minutesToday;
-                    var share = CumulativeShare(shares, total, cumulative / span);
-                    var workCumulative = Math.Round(assignment.WorkMinutes * share, 8);
-                    var costCumulative = Math.Round(rateCost * share, 8);
-                    var work = workCumulative - workSoFar;
-                    if (work > 0)
-                    {
-                        buckets.Add(new TimephasedBucket(day, work, costCumulative - costSoFar));
-                        (workSoFar, costSoFar) = (workCumulative, costCumulative);
-                    }
+                    buckets.Add(new TimephasedBucket(day, 0m, cost));
                 }
             }
         }
 
         AddLumpCosts(assignment, buckets, start, finish);
         return buckets;
+    }
+
+    /// <summary>
+    /// Work-resource assignment cost: each day's contoured work priced by the band in
+    /// force that day, plus per-use at the start band (deviations.md #17). Falls back
+    /// to flat start-band pricing while the assignment is unscheduled.
+    /// </summary>
+    internal static decimal WorkCost(Assignment assignment)
+    {
+        var project = assignment.Task.Project;
+        var table = assignment.Resource.RateTable(assignment.RateTable);
+        var anchor = assignment.Start ?? project.StartDate;
+        var perUse = table.RateAt(anchor).CostPerUse;
+        if (assignment.WorkMinutes <= 0)
+        {
+            return perUse;
+        }
+
+        if (assignment.Start is not { } start || assignment.Finish is not { } finish || finish <= start)
+        {
+            return table.RateAt(anchor).StandardRate.CostForMinutes(assignment.WorkMinutes, project.TimeSettings) + perUse;
+        }
+
+        var schedule = AssignmentSchedule(assignment);
+        var cost = 0m;
+        foreach (var (day, work) in WorkSlices(assignment, schedule, start, finish))
+        {
+            cost += table.RateAt(day.ToDateTime(TimeOnly.MinValue)).StandardRate.CostForMinutes(work, project.TimeSettings);
+        }
+
+        return cost + perUse;
+    }
+
+    /// <summary>
+    /// Material assignment cost. Fixed quantities are priced whole at the start band;
+    /// variable consumption (deviations.md #13) accrues per day and is priced by the
+    /// band in force each day. Per-use fees price at the start band.
+    /// </summary>
+    internal static decimal MaterialCost(Assignment assignment)
+    {
+        var project = assignment.Task.Project;
+        var table = assignment.Resource.RateTable(assignment.RateTable);
+        var anchor = assignment.Start ?? project.StartDate;
+        var perUse = table.RateAt(anchor).CostPerUse;
+        if (assignment.MaterialRateUnit is null
+            || assignment.Start is not { } start || assignment.Finish is not { } finish || finish <= start)
+        {
+            return (assignment.MaterialQuantity * table.RateAt(anchor).StandardRate.Amount) + perUse;
+        }
+
+        var schedule = AssignmentSchedule(assignment);
+        var cost = 0m;
+        foreach (var (day, quantity) in MaterialSlices(assignment, schedule, start, finish))
+        {
+            cost += quantity * table.RateAt(day.ToDateTime(TimeOnly.MinValue)).StandardRate.Amount;
+        }
+
+        return cost + perUse;
+    }
+
+    /// <summary>
+    /// Per-day contoured work of one assignment over its span. Rounded cumulative
+    /// telescoping: slices sum exactly to the assignment work.
+    /// </summary>
+    internal static IEnumerable<(DateOnly Day, decimal WorkMinutes)> WorkSlices(
+        Assignment assignment, IWorkSchedule schedule, DateTime start, DateTime finish)
+    {
+        var span = schedule.WorkBetween(start, finish);
+        if (span <= 0)
+        {
+            yield break;
+        }
+
+        var shares = assignment.Contour.Deciles();
+        decimal total = shares.Sum();
+        var cumulative = 0m; // working minutes of the span consumed so far
+        var workSoFar = 0m;
+        foreach (var (day, minutesToday) in DaySlices(schedule, start, finish))
+        {
+            cumulative += minutesToday;
+            var share = CumulativeShare(shares, total, cumulative / span);
+            var workCumulative = Math.Round(assignment.WorkMinutes * share, 8);
+            var work = workCumulative - workSoFar;
+            if (work > 0)
+            {
+                yield return (day, work);
+                workSoFar = workCumulative;
+            }
+        }
+    }
+
+    /// <summary>Per-day variable material consumption, linear over the span's working time; slices sum exactly to the total quantity.</summary>
+    internal static IEnumerable<(DateOnly Day, decimal Quantity)> MaterialSlices(
+        Assignment assignment, IWorkSchedule schedule, DateTime start, DateTime finish)
+    {
+        var span = schedule.WorkBetween(start, finish);
+        if (span <= 0)
+        {
+            yield break;
+        }
+
+        var total = assignment.MaterialQuantity;
+        var cumulative = 0m;
+        var quantitySoFar = 0m;
+        foreach (var (day, minutesToday) in DaySlices(schedule, start, finish))
+        {
+            cumulative += minutesToday;
+            var quantityCumulative = Math.Round(total * cumulative / span, 8);
+            var quantity = quantityCumulative - quantitySoFar;
+            if (quantity > 0)
+            {
+                yield return (day, quantity);
+                quantitySoFar = quantityCumulative;
+            }
+        }
+    }
+
+    /// <summary>Working minutes of each day the span touches, on the given schedule.</summary>
+    private static IEnumerable<(DateOnly Day, decimal Minutes)> DaySlices(IWorkSchedule schedule, DateTime start, DateTime finish)
+    {
+        for (var day = DateOnly.FromDateTime(start); day <= DateOnly.FromDateTime(finish); day = day.AddDays(1))
+        {
+            var dayStart = Later(day.ToDateTime(TimeOnly.MinValue), start);
+            var dayEnd = Earlier(day.AddDays(1).ToDateTime(TimeOnly.MinValue), finish);
+            if (dayEnd <= dayStart)
+            {
+                continue;
+            }
+
+            var minutesToday = schedule.WorkBetween(dayStart, dayEnd);
+            if (minutesToday > 0)
+            {
+                yield return (day, minutesToday);
+            }
+        }
     }
 
     /// <summary>Daily buckets of a task: its own assignments, or the rolled-up active children for summaries.</summary>
@@ -135,7 +237,7 @@ public static class Timephased
     // ---------------------------------------------------------------- helpers
 
     /// <summary>Cumulative share of total work at a span fraction (piecewise linear over deciles).</summary>
-    private static decimal CumulativeShare(int[] shares, decimal total, decimal fraction)
+    private static decimal CumulativeShare(IReadOnlyList<int> shares, decimal total, decimal fraction)
     {
         var clamped = Math.Clamp(fraction, 0m, 1m);
         var position = clamped * 10m;
@@ -154,14 +256,18 @@ public static class Timephased
         return sum / total;
     }
 
-    /// <summary>Material quantity cost, expense amounts, and per-use fees, placed by the resource's accrual.</summary>
+    /// <summary>
+    /// Fixed material quantity cost, expense amounts, and per-use fees, placed by the
+    /// resource's accrual. Variable material consumption is already spread per day, so
+    /// only its per-use fee lands here.
+    /// </summary>
     private static void AddLumpCosts(Assignment assignment, List<TimephasedBucket> buckets, DateTime start, DateTime finish)
     {
         var resource = assignment.Resource;
         var lump = resource.Type switch
         {
             ResourceType.Cost => assignment.CostInput,
-            ResourceType.Material => assignment.Cost,
+            ResourceType.Material when assignment.MaterialRateUnit is null => assignment.Cost,
             _ => resource.RateTable(assignment.RateTable).RateAt(start).CostPerUse,
         };
         if (lump == 0m)
@@ -207,21 +313,30 @@ public static class Timephased
         buckets.Insert(insertAt < 0 ? buckets.Count : insertAt, new TimephasedBucket(day, 0m, cost));
     }
 
-    /// <summary>Mirrors the scheduler's assignment-schedule rule (task × resource calendars).</summary>
-    private static IWorkSchedule AssignmentSchedule(Assignment assignment)
+    /// <summary>
+    /// Mirrors the scheduler's assignment-schedule rule (task × resource calendars),
+    /// masked to the task's scheduled segments for split tasks so work never lands in
+    /// a gap (deviations.md #16).
+    /// </summary>
+    internal static IWorkSchedule AssignmentSchedule(Assignment assignment)
     {
         var task = assignment.Task;
         var resourceCalendar = !task.IgnoresResourceCalendars && assignment.Resource.Type == ResourceType.Work
             ? assignment.Resource.Calendar
             : null;
+        IWorkSchedule schedule;
         if (resourceCalendar is null)
         {
-            return task.Calendar ?? task.Project.Calendar;
+            schedule = task.Calendar ?? task.Project.Calendar;
+        }
+        else
+        {
+            schedule = task.Calendar is { } taskCalendar
+                ? new ScheduleIntersection(taskCalendar, resourceCalendar)
+                : resourceCalendar;
         }
 
-        return task.Calendar is { } taskCalendar
-            ? new ScheduleIntersection(taskCalendar, resourceCalendar)
-            : resourceCalendar;
+        return task.IsSplit && task.Segments.Count > 1 ? new ScheduleMask(schedule, task.Segments) : schedule;
     }
 
     private static DateTime Later(DateTime a, DateTime b) => a > b ? a : b;

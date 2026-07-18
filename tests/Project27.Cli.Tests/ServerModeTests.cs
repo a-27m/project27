@@ -214,4 +214,142 @@ public sealed class ServerModeTests : IDisposable
             }
         }
     }
+
+    [Fact]
+    public void Import_mspdi_creates_a_server_project()
+    {
+        // Export a local project to MSPDI, then import it to the server.
+        var tempDir = new TempDir();
+        try
+        {
+            var localFile = tempDir.File("local.p27");
+            var xmlFile = tempDir.File("export.xml");
+            Cli.Ok("init", "SourceProject", "--start", "2026-01-05", "--file", localFile);
+            Cli.Ok("task", "add", "Design", "-d", "2d", "--file", localFile);
+            Cli.Ok("task", "add", "Build", "-d", "3d", "--file", localFile);
+            Cli.Ok("link", "add", "1", "2", "--file", localFile);
+            Cli.Ok("export", "mspdi", "--out", xmlFile, "--file", localFile);
+
+            // Import to the server; JSON output matches `project create`'s shape (full project info, not just id/name).
+            var imported = Cli.Ok(AsAlice("import", "mspdi", xmlFile, "--json")).Json();
+            Assert.Equal("SourceProject", imported.GetProperty("name").GetString());
+            Assert.Equal(1, imported.GetProperty("version").GetInt32());
+            Assert.Equal("owner", imported.GetProperty("role").GetString());
+
+            // Verify the project exists on the server and tasks are intact.
+            var list = Cli.Ok(AsAlice("task", "list", "--project", "SourceProject", "--json")).Json();
+            Assert.Equal(2, list.GetArrayLength());
+            Assert.Equal("Design", list[0].GetProperty("name").GetString());
+            Assert.Equal("Build", list[1].GetProperty("name").GetString());
+            Assert.Equal("2026-01-07T08:00:00", list[1].GetProperty("start").GetString()); // FS link kept
+        }
+        finally
+        {
+            tempDir.Dispose();
+        }
+    }
+
+    [Fact]
+    public void Import_mspdi_rejects_missing_files()
+    {
+        var result = Cli.Fail(AsAlice("import", "mspdi", "/nonexistent/file.xml"));
+        Assert.Contains("not found", result.Stderr, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Import_p27_creates_a_server_project()
+    {
+        // Create a local .p27 file and import it to the server.
+        var tempDir = new TempDir();
+        try
+        {
+            var localFile = tempDir.File("local.p27");
+            Cli.Ok("init", "ImportedP27", "--start", "2026-02-01", "--file", localFile);
+            Cli.Ok("task", "add", "Phase1", "-d", "1d", "--file", localFile);
+            Cli.Ok("task", "add", "Phase2", "-d", "2d", "--file", localFile);
+
+            // Import to the server.
+            Cli.Ok(AsAlice("import", "p27", localFile));
+
+            // Verify the project exists on the server and tasks are intact.
+            var list = Cli.Ok(AsAlice("task", "list", "--project", "ImportedP27", "--json")).Json();
+            Assert.Equal(2, list.GetArrayLength());
+            Assert.Equal("Phase1", list[0].GetProperty("name").GetString());
+            Assert.Equal("Phase2", list[1].GetProperty("name").GetString());
+        }
+        finally
+        {
+            tempDir.Dispose();
+        }
+    }
+
+    [Fact]
+    public void Import_p27_rejects_missing_files()
+    {
+        var result = Cli.Fail(AsAlice("import", "p27", "/nonexistent/file.p27"));
+        Assert.Contains("not found", result.Stderr, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Import_mspdi_still_works_without_server_flag()
+    {
+        var tempDir = new TempDir();
+        try
+        {
+            var localFile = tempDir.File("local.p27");
+            var xmlFile = tempDir.File("export.xml");
+            Cli.Ok("init", "SourceProject", "--start", "2026-01-05", "--file", localFile);
+            Cli.Ok("export", "mspdi", "--out", xmlFile, "--file", localFile);
+
+            var importedFile = tempDir.File("imported.p27");
+            Cli.Ok("import", "mspdi", xmlFile, "--file", importedFile);
+            Assert.True(File.Exists(importedFile));
+        }
+        finally
+        {
+            tempDir.Dispose();
+        }
+    }
+
+    [Fact]
+    public void Import_p27_without_server_mode_fails()
+    {
+        var tempDir = new TempDir();
+        try
+        {
+            var localFile = tempDir.File("local.p27");
+            Cli.Ok("init", "SourceProject", "--start", "2026-01-05", "--file", localFile);
+
+            // p27 import without --server should fail.
+            var result = Cli.Fail("import", "p27", localFile);
+            Assert.Contains("--server", result.Stderr, StringComparison.Ordinal);
+        }
+        finally
+        {
+            tempDir.Dispose();
+        }
+    }
+
+    [Fact]
+    public void Import_mspdi_rejects_file_together_with_server()
+    {
+        var tempDir = new TempDir();
+        try
+        {
+            var localFile = tempDir.File("local.p27");
+            var xmlFile = tempDir.File("export.xml");
+            Cli.Ok("init", "SourceProject", "--start", "2026-01-05", "--file", localFile);
+            Cli.Ok("export", "mspdi", "--out", xmlFile, "--file", localFile);
+
+            // --file is a local-mode concept; combined with --server it's ambiguous
+            // (there's no local file to write to remotely), so it errors rather than
+            // being silently dropped.
+            var result = Cli.Fail(AsAlice("import", "mspdi", xmlFile, "--file", "ignored.p27"));
+            Assert.Contains("--file", result.Stderr, StringComparison.Ordinal);
+        }
+        finally
+        {
+            tempDir.Dispose();
+        }
+    }
 }

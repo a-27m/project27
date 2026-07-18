@@ -54,7 +54,7 @@ button {
   font: inherit;
   padding: 4px 10px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-none);
   background: var(--surface);
   color: var(--text);
   cursor: pointer;
@@ -96,7 +96,7 @@ button.link {
   font: inherit;
   padding: 4px 10px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-none);
   background: var(--surface);
   color: var(--text);
   cursor: pointer;
@@ -112,7 +112,7 @@ select {
   font: inherit;
   padding: 4px 8px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-none);
   background: var(--field-01);
   color: var(--text);
 }
@@ -207,7 +207,7 @@ input[type='radio'] {
   padding: 24px;
   background: var(--layer-01);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-none);
 }
 
 .signin-card h1 {
@@ -245,8 +245,10 @@ input[type='radio'] {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  height: 44px;
+  padding: 0 12px;
   border-bottom: 1px solid var(--border);
+  flex: none;
 }
 
 .toolbar h2 {
@@ -254,24 +256,35 @@ input[type='radio'] {
   font-size: 16px;
 }
 
+/* Ghost-button chrome, shared by every icon/text control in the toolbar rows —
+   a hairline border always visible (not just on hover), 12px, 3px 8px padding.
+   Explicit height: a bare 12px SVG icon and a line of 12px text don't share the
+   same intrinsic content height (text line-height runs taller), so icon-only
+   buttons (Indent, Overflow, Zoom…) would otherwise render shorter than text
+   or icon+text buttons (Task, Delete, Space +) sitting right next to them. */
 .icon-btn {
-  background: none;
-  border: 1px solid transparent;
-  padding: 4px 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 23px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 3px 8px;
+  font-size: 12px;
   color: var(--muted);
 }
 
 .icon-btn:hover:not(:disabled) {
-  border-color: var(--border);
-  background: var(--surface);
+  background: var(--hover);
   color: var(--text);
 }
 
 .project-btn {
   background: none;
   border: 1px solid transparent;
-  padding: 3px 6px;
-  font-size: 16px;
+  padding: 3px 8px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text);
 }
@@ -281,26 +294,27 @@ input[type='radio'] {
   background: var(--surface);
 }
 
-/* Chips follow the DS Tag recipe: pill radius, translucent tint of a base hue. */
+/* Flat bordered tags — mono data, square corners; radius is reserved for avatars only. */
 .version-chip,
 .status-chip {
   display: inline-flex;
   align-items: center;
-  font: var(--type-label-01);
+  font: var(--type-code-01);
   letter-spacing: 0.32px;
-  padding: 2px 10px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--gray-50) 22%, transparent);
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-none);
+  background: var(--bg);
   color: var(--muted);
 }
 
 .version-chip {
   cursor: pointer;
-  border: none;
 }
 
 .status-chip.behind {
-  background: color-mix(in srgb, var(--support-warning) 22%, transparent);
+  background: color-mix(in srgb, var(--support-warning) 18%, transparent);
+  border-color: color-mix(in srgb, var(--support-warning) 60%, var(--border));
   color: var(--text);
 }
 
@@ -311,17 +325,42 @@ input[type='radio'] {
 
 .version-chip:hover {
   color: var(--text);
-  background: color-mix(in srgb, var(--interactive) 22%, transparent);
+  background: var(--hover);
 }
 
 .action-bar {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 12px;
+  min-height: 38px;
+  padding: 4px 10px;
   border-bottom: 1px solid var(--border);
   background: var(--bg);
   flex-wrap: wrap;
+}
+
+/* Bare <select> controls in the action bar (e.g. "Assign to N selected…") get the
+   same square, hairline-bordered ghost chrome as the surrounding icon-btns instead
+   of the browser's native rounded/circular picker chrome. */
+.action-bar select,
+.dropdown-panel select {
+  appearance: none;
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 22px 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-none);
+  background:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%),
+    var(--bg);
+  background-position:
+    calc(100% - 13px) 55%,
+    calc(100% - 8px) 55%,
+    0 0;
+  background-size: 5px 5px, 5px 5px, 100% 100%;
+  background-repeat: no-repeat;
+  color: var(--text);
 }
 
 .action-group {
@@ -358,7 +397,7 @@ input[type='radio'] {
   list-style: none;
   min-width: 180px;
   background: var(--layer-02);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-none);
   box-shadow: var(--shadow-md);
 }
 
@@ -368,6 +407,14 @@ input[type='radio'] {
 
 .dropdown-panel.align-right {
   right: 0;
+}
+
+/* Groups are separated by a divider line, not a heading label — a heading is added
+   only where the group needs one (see `.dropdown-heading`). */
+.dropdown-panel > li:not(:first-child) {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 4px;
 }
 
 .dropdown-heading {
@@ -420,7 +467,7 @@ input[type='radio'] {
   gap: 2px;
   background: var(--layer-01);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-none);
   box-shadow: var(--shadow-sm);
   padding: 2px 3px;
 }
@@ -436,7 +483,7 @@ input[type='radio'] {
   align-items: center;
   gap: 4px;
   padding: 2px 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-none);
   font: var(--type-label-01);
   letter-spacing: 0.32px;
   background: color-mix(in srgb, var(--support-warning) 22%, transparent);
@@ -450,7 +497,7 @@ input[type='radio'] {
   align-items: center;
   gap: 6px;
   padding: 2px 8px 2px 3px;
-  border-radius: 999px;
+  border-radius: var(--radius-none);
   background: var(--bg);
   font-size: 12px;
 }
@@ -477,11 +524,12 @@ input[type='radio'] {
 }
 
 .split-btn-main {
-  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  border-radius: var(--radius-none) 0 0 var(--radius-none);
 }
 
 .split-btn-caret {
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  margin-left: -1px;
+  border-radius: 0 var(--radius-none) var(--radius-none) 0;
   border-left: 1px solid var(--border);
   padding: 4px 4px;
 }
@@ -494,11 +542,12 @@ input[type='radio'] {
 }
 
 .checkin-main {
-  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  border-radius: var(--radius-none) 0 0 var(--radius-none);
 }
 
 .checkin-caret {
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  margin-left: -1px;
+  border-radius: 0 var(--radius-none) var(--radius-none) 0;
   border-left: 1px solid rgba(255, 255, 255, 0.35);
   padding: 4px 6px;
 }
@@ -509,6 +558,12 @@ input[type='radio'] {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* Portaled to document.body (see CheckinPopover) — position is set inline from the
+   anchor's viewport rect, so this only needs to switch the positioning scheme. */
+.checkin-popover-portal {
+  position: fixed;
 }
 
 .checkin-popover textarea {
@@ -569,6 +624,7 @@ input[type='radio'] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 12px;
 }
 
 .cell.header {
@@ -576,6 +632,24 @@ input[type='radio'] {
   font-weight: 500;
   display: flex;
   align-items: flex-end;
+  border-right: none;
+}
+
+/* IDs, dates, durations, percentages — mono data cells, IDE-grade density. */
+.cell.mono {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.cell.num {
+  text-align: right;
+}
+
+/* .cell.header is itself a nested flex container (for baseline alignment), so a plain
+   text-align doesn't move its text — align the flex line instead. */
+.cell.header.num {
+  justify-content: flex-end;
 }
 
 .sheet-row {
@@ -600,7 +674,7 @@ input[type='radio'] {
   width: 100%;
   padding: 1px 4px;
   border: 1px solid var(--accent);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-none);
 }
 
 /* ------------------------------------------------------------------- gantt */
@@ -724,7 +798,7 @@ g:hover > .gantt-linkhandle,
   display: flex;
   gap: 0;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-none);
   overflow: hidden;
 }
 
@@ -895,7 +969,7 @@ g:hover > .gantt-linkhandle,
   font: inherit;
   padding: 4px 8px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-none);
   background: var(--surface);
 }
 
@@ -909,7 +983,7 @@ g:hover > .gantt-linkhandle,
   width: 330px;
   background: var(--layer-01);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-none);
   box-shadow: var(--shadow-md);
   display: flex;
   flex-direction: column;
@@ -945,7 +1019,7 @@ g:hover > .gantt-linkhandle,
   bottom: 12px;
   width: 26px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-none);
   background: var(--surface);
   color: var(--muted);
   display: flex;
@@ -954,6 +1028,31 @@ g:hover > .gantt-linkhandle,
   gap: 10px;
   padding-top: 10px;
   z-index: 5;
+}
+
+/* Docked variant: inside the Gantt split, the inspector is a normal flex child
+   (fixed width, in-flow) instead of a floating overlay — it pushes the Gantt
+   pane's width rather than covering it. */
+.split > .inspector {
+  position: static;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  flex: none;
+  height: 100%;
+  border-top: none;
+  border-right: none;
+  border-bottom: none;
+  box-shadow: none;
+}
+
+.split > .inspector-tab {
+  position: static;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  flex: none;
+  height: 100%;
 }
 
 .inspector-tab span {
@@ -1051,7 +1150,7 @@ g:hover > .gantt-linkhandle,
   width: 130px;
   height: 20px;
   flex: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-none);
   background: var(--field-01);
   border: 1px solid var(--border);
   touch-action: none;
@@ -1060,7 +1159,7 @@ g:hover > .gantt-linkhandle,
 .pct-slider-fill {
   position: absolute;
   inset: 0 auto 0 0;
-  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  border-radius: var(--radius-none) 0 0 var(--radius-none);
   background: color-mix(in srgb, var(--interactive) 35%, transparent);
   pointer-events: none;
 }
@@ -1079,18 +1178,24 @@ g:hover > .gantt-linkhandle,
   position: absolute;
   top: 0;
   bottom: 0;
+  z-index: 1;
   width: 20%;
   margin-left: -10%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: none;
   border: none;
   padding: 0;
-  color: transparent;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 1;
   cursor: pointer;
 }
 
 .inspector-group {
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-none);
   padding: 8px;
   display: flex;
   flex-direction: column;
@@ -1151,7 +1256,7 @@ g:hover > .gantt-linkhandle,
 
 .modal {
   background: var(--layer-01);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-none);
   padding: 20px;
   width: 420px;
   display: flex;

@@ -365,6 +365,29 @@ public sealed class ProjectTask
         _actualFinish = actualFinish;
     }
 
+    /// <summary>
+    /// Actual work in working minutes: explicit assignment actuals where entered, else
+    /// derived from percent complete; summaries roll up active children (deviations.md #20).
+    /// </summary>
+    public decimal ActualWorkMinutes => IsSummary
+        ? ChildrenList.Where(c => c.IsActive).Sum(c => c.ActualWorkMinutes)
+        : _assignments.Where(a => a.Resource.Type == ResourceType.Work).Sum(a => a.EffectiveActualWorkMinutes);
+
+    /// <summary>Remaining work in working minutes: assignment work minus actual work; summaries roll up.</summary>
+    public decimal RemainingWorkMinutes => IsSummary
+        ? ChildrenList.Where(c => c.IsActive).Sum(c => c.RemainingWorkMinutes)
+        : _assignments.Where(a => a.Resource.Type == ResourceType.Work).Sum(a => a.RemainingWorkMinutes);
+
+    /// <summary>
+    /// Actual cost: fixed cost by percent complete plus assignment actuals (explicit
+    /// where entered, else derived); summaries roll up active children. Assignment
+    /// costs are outputs of Recalculate (deviations.md #20).
+    /// </summary>
+    public decimal ActualCost
+        => (FixedCost * PercentComplete / 100m) + (IsSummary
+            ? ChildrenList.Where(c => c.IsActive).Sum(c => c.ActualCost)
+            : _assignments.Sum(a => a.EffectiveActualCost));
+
     /// <summary>Remaining working minutes: duration × (1 − percent complete).</summary>
     public decimal RemainingMinutes => IsSummary
         ? ChildrenList.Where(c => c.IsActive).Sum(c => c.RemainingMinutes)

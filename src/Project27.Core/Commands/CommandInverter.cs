@@ -121,6 +121,7 @@ public static class CommandInverter
                 ? assignment.WorkMinutes.ToString(CultureInfo.InvariantCulture) + "m"
                 : null,
             Cost = assignment.Resource.Type == ResourceType.Cost ? assignment.CostInput : null,
+            UnitsPer = assignment.MaterialRateUnit,
         };
     }
 
@@ -133,6 +134,9 @@ public static class CommandInverter
             return null;
         }
 
+        var touchesUnitsPer = command.UnitsPer is not null || command.ClearUnitsPer;
+        var touchesActualWork = command.ActualWork is not null || command.ClearActualWork;
+        var touchesActualCost = command.ActualCost is not null || command.ClearActualCost;
         return new SetAssignmentCommand
         {
             Uid = command.Uid,
@@ -143,6 +147,14 @@ public static class CommandInverter
             Delay = command.Delay is null ? null : assignment.DelayMinutes.ToString(CultureInfo.InvariantCulture) + "m",
             RateTable = command.RateTable is null ? null : assignment.RateTable,
             Cost = command.Cost is null ? null : assignment.CostInput,
+            UnitsPer = touchesUnitsPer ? assignment.MaterialRateUnit : null,
+            ClearUnitsPer = touchesUnitsPer && assignment.MaterialRateUnit is null,
+            ActualWork = touchesActualWork && assignment.ActualWorkMinutes is { } actualWork
+                ? actualWork.ToString(CultureInfo.InvariantCulture) + "m"
+                : null,
+            ClearActualWork = touchesActualWork && assignment.ActualWorkMinutes is null,
+            ActualCost = touchesActualCost ? assignment.ActualCost : null,
+            ClearActualCost = touchesActualCost && assignment.ActualCost is null,
         };
     }
 

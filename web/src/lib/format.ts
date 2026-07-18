@@ -10,6 +10,19 @@ export function trimNumber(value: number): string {
   return Number.isInteger(value) ? String(value) : String(value)
 }
 
+const RATE_UNIT_SUFFIX: Record<string, string> = {
+  hour: '/h',
+  day: '/d',
+  week: '/w',
+  month: '/mo',
+  year: '/y',
+}
+
+/** Material assignment units, e.g. "10" (fixed) or "10/d" (variable consumption); mirrors the CLI's Render.PerSuffix. */
+export function formatUnits(units: number, unitsPer: string | null): string {
+  return trimNumber(units) + (unitsPer === null ? '' : (RATE_UNIT_SUFFIX[unitsPer] ?? ''))
+}
+
 /** "2026-01-05 08:00" from an ISO wall-clock string; empty for null. */
 export function dateTime(iso: string | null): string {
   if (iso === null) return ''

@@ -60,7 +60,11 @@ export function SegmentedPercent({ value, editable, onCommit, ariaLabel = '% com
           key={stop}
           type="button"
           className="pct-slider-stop"
-          style={{ left: `${stop}%` }}
+          style={{
+            left: `${stop}%`,
+            color: stop <= display ? 'var(--accent)' : 'var(--muted)',
+            fontWeight: stop === display ? 700 : 400,
+          }}
           disabled={!editable}
           title={`${stop}%`}
           onClick={(event) => {

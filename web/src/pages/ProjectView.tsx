@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { ApiClient } from '../api/client'
 import type { Command, ProjectInfo, Schedule } from '../api/types'
 import { Gantt } from '../components/Gantt'
+import { MultiTaskInspector } from '../components/MultiTaskInspector'
 import { NetworkView } from '../components/NetworkView'
 import { ProjectInspector } from '../components/ProjectInspector'
 import { CalendarManager, CustomFieldsManager, HistoryDialog, RecurringTaskDialog } from '../components/Managers'
-import { ProjectSettings } from '../components/ProjectSettings'
 import { TableView } from '../components/TableView'
 import { ResourcesView } from '../components/ResourcesView'
 import { SegmentedPercent } from '../components/SegmentedPercent'
@@ -23,13 +24,13 @@ import {
   sheetWidth,
 } from '../components/sheetColumns'
 import { buildDisplayRows, displayIndexByUid } from '../lib/displayRows'
-import { durationDays, fromWireDate } from '../lib/format'
+import { fromWireDate } from '../lib/format'
 import { pruneNested, rangeBetween, siblingMove } from '../lib/outline'
 import { makeScale, ticks, monthTicks } from '../lib/timescale'
 import { useOutsideClose } from '../lib/useOutsideClose'
 import { windowRange } from '../lib/virtualize'
 
-const ROW_HEIGHT = 28
+const ROW_HEIGHT = 26
 const HEADER_HEIGHT = 40
 const ZOOM_LEVELS = [6, 10, 16, 24, 36, 56] as const
 
@@ -45,7 +46,7 @@ interface Props {
 }
 
 type ViewMode = 'gantt' | 'table' | 'network' | 'timeline' | 'usage' | 'resources'
-type Dialog = 'fields' | 'calendars' | 'recurring' | 'history' | 'columns' | 'settings' | null
+type Dialog = 'fields' | 'calendars' | 'recurring' | 'history' | 'columns' | 'level' | null
 
 export function ProjectView({ client, projectId, userId, userDisplayName, dark, onToggleTheme, onSignOut, onBack }: Props) {
   const [schedule, setSchedule] = useState<Schedule | null>(null)
@@ -66,6 +67,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false)
   const [inspectorScope, setInspectorScope] = useState<'task' | 'project'>('task')
   const [checkinOpen, setCheckinOpen] = useState(false)
+  const checkinAnchorRef = useRef<HTMLSpanElement>(null)
   const [imageTag, setImageTag] = useState<string | null>(null)
   const scrollerRef = useRef<HTMLDivElement>(null)
   const ganttScrollRef = useRef<HTMLDivElement>(null)
@@ -243,6 +245,10 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
     () => [...selectedUids].filter((uid) => tasks[indexByUid.get(uid) ?? -1]?.summary === false),
     [selectedUids, tasks, indexByUid],
   )
+  const selectedTasks = useMemo(
+    () => [...selectedUids].map((uid) => tasks[indexByUid.get(uid) ?? -1]).filter((task) => task !== undefined),
+    [selectedUids, tasks, indexByUid],
+  )
 
   function addTask(kind: 'task' | 'milestone') {
     const command: Command = {
@@ -348,11 +354,15 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
     return () => window.removeEventListener('keydown', onKeyDown)
   })
 
-  function download(kind: 'p27' | 'mspdi') {
-    const path = kind === 'p27' ? `/api/projects/${projectId}/file` : `/api/projects/${projectId}/export/mspdi`
-    void client
-      .download(path, kind === 'p27' ? 'project.p27' : 'project.xml')
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
+  function download(kind: 'p27' | 'mspdi' | 'csv') {
+    const path =
+      kind === 'p27'
+        ? `/api/projects/${projectId}/file`
+        : kind === 'mspdi'
+          ? `/api/projects/${projectId}/export/mspdi`
+          : `/api/projects/${projectId}/export/csv`
+    const fallbackName = kind === 'p27' ? 'project.p27' : kind === 'mspdi' ? 'project.xml' : 'project.csv'
+    void client.download(path, fallbackName).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
   }
 
   function openReport(name: string) {
@@ -368,6 +378,22 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
 
   const gridWidth = sheetWidth(columns)
 
+  // Inspector docking (Gantt view only — other views keep the floating overlay since
+  // they have no shared split layout to dock into): it's a normal grid column that
+  // pushes the Gantt pane's width, sized to match the panel or its collapsed tab.
+  const showTaskInspector = inspectorScope === 'task' && selected !== null && schedule !== null && !inspectorCollapsed
+  const showMultiInspector = inspectorScope === 'task' && selectedTasks.length > 1 && schedule !== null && !inspectorCollapsed
+  const showProjectInspector = inspectorScope === 'project' && schedule !== null && !inspectorCollapsed
+  const showInspectorTab = inspectorCollapsed && (inspectorScope === 'project' || selectedTasks.length > 0)
+  const dockedInspectorWidth =
+    viewMode === 'gantt'
+      ? showTaskInspector || showMultiInspector || showProjectInspector
+        ? ' 330px'
+        : showInspectorTab
+          ? ' 26px'
+          : ''
+      : ''
+
   /** Rare/global actions that don't belong on the hot path: grouped under the ⋯ menu.
    *  Available to readers too (D6, readers never blocked) — Reports/Export/Manage all view state. */
   const overflowGroups: MenuGroup[] = [
@@ -376,9 +402,6 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
       items: [
         { label: 'Custom fields', onClick: () => setDialog('fields') },
         { label: 'Calendars', onClick: () => setDialog('calendars') },
-        { label: 'Add recurring task', onClick: () => setDialog('recurring') },
-        { label: 'Project settings', onClick: () => setDialog('settings') },
-        { label: 'Version history', onClick: () => setDialog('history') },
       ],
     },
     {
@@ -401,6 +424,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
       items: [
         { label: 'Project file (.p27)', onClick: () => download('p27') },
         { label: 'MS Project XML', onClick: () => download('mspdi') },
+        { label: 'Task list (CSV)', onClick: () => download('csv') },
       ],
     },
   ]
@@ -413,19 +437,23 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
           ariaLabel="Workspace menu"
           trigger={({ open, toggle }) => (
             <button className="icon-btn" onClick={toggle} title="Workspace menu" aria-label="Workspace menu" aria-haspopup="menu" aria-expanded={open}>
-              <Icon name="Menu" size={16} />
+              <Icon name="Menu" size={12} />
             </button>
           )}
           groups={[
-            { heading: 'WORKSPACE', items: [{ label: 'All projects', onClick: onBack }] },
+            { items: [{ label: '← All projects', onClick: onBack }] },
             {
               items: [
-                { label: dark ? 'Switch to light theme' : 'Switch to dark theme', onClick: onToggleTheme },
+                { label: dark ? '☀ Light mode' : '☾ Dark mode', onClick: onToggleTheme },
+              ],
+            },
+            {
+              items: [
                 {
                   label: 'Help & docs',
                   onClick: () =>
                     window.open(
-                      `https://github.com/a-27m/project27/blob/${imageTag ?? 'main'}/docs/guide.md`,
+                      `https://github.com/a-27m/project27/blob/${imageTag !== null ? 'v' + imageTag : 'main'}/docs/guide.md`,
                       '_blank',
                       'noopener',
                     ),
@@ -454,9 +482,6 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
           </button>
         )}
         {schedule !== null && <StatusDateBadge statusDate={schedule.project.statusDate} />}
-        <span className="muted">
-          {schedule !== null && `${durationDays(schedule.project.totalWorkMinutes, schedule.project.minutesPerDay)} work`}
-        </span>
         <nav className="view-switch" aria-label="View">
           {(['gantt', 'table', 'network', 'timeline', 'usage', 'resources'] as const).map((mode) => (
             <button key={mode} className={viewMode === mode ? 'active' : ''} onClick={() => setViewMode(mode)}>
@@ -469,7 +494,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
           <span className="lock-banner">checked out by {info.lock.displayName}</span>
         )}
         {editable ? (
-          <span className="dropdown checkin-split">
+          <span className="dropdown checkin-split" ref={checkinAnchorRef}>
             <button className="primary checkin-main" onClick={() => void checkin()} title="Check in — releases your lock">
               Check in
             </button>
@@ -482,7 +507,14 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
             >
               <Icon name="CaretDown" size={12} />
             </button>
-            {checkinOpen && <CheckinPopover version={schedule?.version ?? 0} onCheckin={(comment) => void checkin(comment)} onClose={() => setCheckinOpen(false)} />}
+            {checkinOpen && (
+              <CheckinPopover
+                version={schedule?.version ?? 0}
+                anchorRef={checkinAnchorRef}
+                onCheckin={(comment) => void checkin(comment)}
+                onClose={() => setCheckinOpen(false)}
+              />
+            )}
           </span>
         ) : (
           (info?.role === 'editor' || info?.role === 'owner') && (
@@ -501,10 +533,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
               <Icon name="CaretDown" size={12} />
             </button>
           )}
-          groups={[
-            { items: [{ label: dark ? 'Switch to light theme' : 'Switch to dark theme', onClick: onToggleTheme }] },
-            { items: [{ label: 'Sign out', onClick: onSignOut }] },
-          ]}
+          groups={[{ items: [{ label: 'Sign out', onClick: onSignOut }] }]}
         />
       </div>
 
@@ -526,7 +555,8 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
                 trigger={({ open, toggle }) => (
                   <span className="split-btn">
                     <button className="icon-btn split-btn-main" onClick={() => addTask('task')} title="Add task (N)">
-                      <Icon name="Add" size={12} /> Task
+                      <Icon name="Add" size={12} />
+                      Task
                     </button>
                     <button
                       className="icon-btn split-btn-caret"
@@ -558,20 +588,21 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
                 <button className="icon-btn" onClick={() => setSpaceAfter(-1)} title="Remove space below the selected row(s)">
                   Space −
                 </button>
-                <button className="icon-btn" onClick={() => forSelection('indentTask')} title="Indent (Alt+Shift+→)" aria-label="Indent">
-                  <Icon name="ArrowRight" size={14} />
-                </button>
                 <button className="icon-btn" onClick={() => forSelection('outdentTask')} title="Outdent (Alt+Shift+←)" aria-label="Outdent">
-                  <Icon name="ArrowLeft" size={14} />
+                  <Icon name="ArrowRight" size={12} style={{ transform: 'scaleX(-1)' }} />
+                </button>
+                <button className="icon-btn" onClick={() => forSelection('indentTask')} title="Indent (Alt+Shift+→)" aria-label="Indent">
+                  <Icon name="ArrowRight" size={12} />
                 </button>
                 <button className="icon-btn" disabled={selected === null} onClick={() => moveSelection('up')} title="Move up (Ctrl+↑)" aria-label="Move up">
-                  <Icon name="ArrowUp" size={14} />
+                  <Icon name="ArrowUp" size={12} />
                 </button>
                 <button className="icon-btn" disabled={selected === null} onClick={() => moveSelection('down')} title="Move down (Ctrl+↓)" aria-label="Move down">
-                  <Icon name="ArrowDown" size={14} />
+                  <Icon name="ArrowDown" size={12} />
                 </button>
-                <button className="icon-btn danger" onClick={deleteSelection} title="Delete (Del)" aria-label="Delete">
-                  <Icon name="Close" size={14} />
+                <button className="icon-btn danger" onClick={deleteSelection} title="Delete (Del)">
+                  <Icon name="Close" size={12} />
+                  Delete
                 </button>
               </span>
             )}
@@ -642,6 +673,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
                   {
                     items: [
                       { label: 'Level resources', onClick: () => void sendCommands([{ op: 'level' }]) },
+                      { label: 'Level with options…', onClick: () => setDialog('level') },
                       { label: 'Clear leveling', onClick: () => void sendCommands([{ op: 'clearLeveling' }]) },
                     ],
                   },
@@ -662,7 +694,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
             align="right"
             trigger={({ open, toggle }) => (
               <button className="icon-btn" onClick={toggle} title="More project actions" aria-haspopup="menu" aria-expanded={open}>
-                <Icon name="OverflowMenuHorizontal" size={16} />
+                <Icon name="OverflowMenuHorizontal" size={12} />
               </button>
             )}
             groups={overflowGroups}
@@ -712,7 +744,10 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
       )}
       <div
         className="split"
-        style={{ gridTemplateColumns: `${splitX}px 6px 1fr`, display: viewMode === 'gantt' ? undefined : 'none' }}
+        style={{
+          gridTemplateColumns: `${splitX}px 6px 1fr${dockedInspectorWidth}`,
+          display: viewMode === 'gantt' ? undefined : 'none',
+        }}
       >
         <div
           className="pane"
@@ -721,7 +756,11 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
         >
           <div className="sheet-header" style={{ width: gridWidth, height: HEADER_HEIGHT }}>
             {columns.map((column) => (
-              <span key={column.key} className="cell header" style={{ width: column.width }}>
+              <span
+                key={column.key}
+                className={'cell header' + (column.numeric === true ? ' num' : '')}
+                style={{ width: column.width }}
+              >
                 {column.label}
               </span>
             ))}
@@ -729,6 +768,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
           <TaskSheet
             displayRows={displayRows}
             columns={columns}
+            gridWidth={gridWidth}
             context={columnContext}
             rowHeight={ROW_HEIGHT}
             window_={window_}
@@ -783,7 +823,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
           {viewMode === 'gantt' && (
             <div className="gantt-floating-controls">
               <button className="icon-btn" onClick={() => setZoomIndex((z) => Math.max(0, z - 1))} disabled={zoomIndex === 0} title="Zoom out" aria-label="Zoom out">
-                <Icon name="Subtract" size={14} />
+                <Icon name="Subtract" size={12} />
               </button>
               <span className="zoom-label">{pxPerDay}px/d</span>
               <button
@@ -793,11 +833,60 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
                 title="Zoom in"
                 aria-label="Zoom in"
               >
-                <Icon name="Add" size={14} />
+                <Icon name="Add" size={12} />
               </button>
             </div>
           )}
         </div>
+        {viewMode === 'gantt' && showTaskInspector && selected !== null && schedule !== null && (
+          <TaskInspector
+            task={selected}
+            project={schedule.project}
+            tasks={tasks}
+            editable={editable}
+            client={client}
+            projectId={projectId}
+            onCommands={(commands) => void sendCommands(commands)}
+            onClose={() => selectTask(null)}
+            onCollapse={() => setInspectorCollapsed(true)}
+          />
+        )}
+        {viewMode === 'gantt' && showMultiInspector && schedule !== null && (
+          <MultiTaskInspector
+            tasks={selectedTasks}
+            project={schedule.project}
+            editable={editable}
+            onSetPercent={setPercent}
+            onAssign={assignToSelection}
+            onIndent={() => forSelection('indentTask')}
+            onOutdent={() => forSelection('outdentTask')}
+            onDelete={deleteSelection}
+            onClose={() => selectTask(null)}
+            onCollapse={() => setInspectorCollapsed(true)}
+          />
+        )}
+        {viewMode === 'gantt' && inspectorScope === 'project' && schedule !== null && !inspectorCollapsed && (
+          <ProjectInspector
+            project={schedule.project}
+            editable={editable}
+            onCommands={(commands) => void sendCommands(commands)}
+            onClose={() => setInspectorCollapsed(true)}
+            onCollapse={() => setInspectorCollapsed(true)}
+            onOpenCalendars={() => setDialog('calendars')}
+            onOpenCustomFields={() => setDialog('fields')}
+          />
+        )}
+        {viewMode === 'gantt' && inspectorCollapsed && (inspectorScope === 'project' || selectedTasks.length > 0) && (
+          <button
+            className="inspector-tab"
+            onClick={() => setInspectorCollapsed(false)}
+            title="Open inspector"
+            aria-label="Open inspector"
+          >
+            <Icon name="ChevronLeft" size={14} />
+            <span>INSPECTOR</span>
+          </button>
+        )}
       </div>
 
       {dialog === 'fields' && schedule !== null && (
@@ -842,15 +931,10 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
           onClose={() => setDialog(null)}
         />
       )}
-      {dialog === 'settings' && schedule !== null && (
-        <ProjectSettings
-          project={schedule.project}
-          editable={editable}
-          onCommands={(commands) => void sendCommands(commands)}
-          onClose={() => setDialog(null)}
-        />
+      {dialog === 'level' && (
+        <LevelDialog onCommand={(command) => void sendCommands([command])} onClose={() => setDialog(null)} />
       )}
-      {inspectorScope === 'task' && selected !== null && schedule !== null && !inspectorCollapsed && (
+      {viewMode !== 'gantt' && showTaskInspector && selected !== null && schedule !== null && (
         <TaskInspector
           task={selected}
           project={schedule.project}
@@ -863,7 +947,21 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
           onCollapse={() => setInspectorCollapsed(true)}
         />
       )}
-      {inspectorScope === 'project' && schedule !== null && !inspectorCollapsed && (
+      {viewMode !== 'gantt' && showMultiInspector && schedule !== null && (
+        <MultiTaskInspector
+          tasks={selectedTasks}
+          project={schedule.project}
+          editable={editable}
+          onSetPercent={setPercent}
+          onAssign={assignToSelection}
+          onIndent={() => forSelection('indentTask')}
+          onOutdent={() => forSelection('outdentTask')}
+          onDelete={deleteSelection}
+          onClose={() => selectTask(null)}
+          onCollapse={() => setInspectorCollapsed(true)}
+        />
+      )}
+      {viewMode !== 'gantt' && inspectorScope === 'project' && schedule !== null && !inspectorCollapsed && (
         <ProjectInspector
           project={schedule.project}
           editable={editable}
@@ -874,7 +972,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
           onOpenCustomFields={() => setDialog('fields')}
         />
       )}
-      {inspectorCollapsed && (inspectorScope === 'project' || selected !== null) && (
+      {viewMode !== 'gantt' && inspectorCollapsed && (inspectorScope === 'project' || selectedTasks.length > 0) && (
         <button
           className="inspector-tab"
           onClick={() => setInspectorCollapsed(false)}
@@ -889,13 +987,40 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
   )
 }
 
-/** Check-in-with-comment popover, opened from the check-in split button's caret. */
-function CheckinPopover({ version, onCheckin, onClose }: { version: number; onCheckin: (comment: string) => void; onClose: () => void }) {
+/** Check-in-with-comment popover, opened from the check-in split button's caret.
+ *  Portaled to document.body with a viewport-fixed position instead of being an
+ *  absolutely-positioned descendant of the toolbar: its content is tall enough to
+ *  overlap the Gantt pane below, and nesting it under the toolbar put it in the same
+ *  stacking context as the pane's sticky date header — a header/popover ordering
+ *  fight that a body-level portal sidesteps entirely, regardless of z-index tuning. */
+function CheckinPopover({
+  version,
+  anchorRef,
+  onCheckin,
+  onClose,
+}: {
+  version: number
+  anchorRef: React.RefObject<HTMLElement | null>
+  onCheckin: (comment: string) => void
+  onClose: () => void
+}) {
   const [comment, setComment] = useState('')
   const ref = useRef<HTMLDivElement>(null)
   useOutsideClose(ref, true, onClose)
-  return (
-    <div className="dropdown-panel align-right checkin-popover" ref={ref} role="dialog" aria-label="Check in with a comment">
+  const [position, setPosition] = useState<{ top: number; right: number } | null>(null)
+  useEffect(() => {
+    const rect = anchorRef.current?.getBoundingClientRect()
+    if (rect !== undefined) setPosition({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
+  }, [anchorRef])
+  if (position === null) return null
+  return createPortal(
+    <div
+      className="dropdown-panel align-right checkin-popover checkin-popover-portal"
+      ref={ref}
+      role="dialog"
+      aria-label="Check in with a comment"
+      style={{ top: position.top, right: position.right }}
+    >
       <span className="dropdown-heading">CHECK-IN COMMENT · v{version + 1}</span>
       <textarea
         autoFocus
@@ -909,7 +1034,8 @@ function CheckinPopover({ version, onCheckin, onClose }: { version: number; onCh
           Check in
         </button>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -922,6 +1048,10 @@ function ColumnsDialog({
   onChange: (keys: string[]) => void
   onClose: () => void
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    dialogRef.current?.focus()
+  }, [])
   return (
     <div
       className="modal-backdrop"
@@ -937,7 +1067,7 @@ function ColumnsDialog({
         aria-modal="true"
         aria-label="Sheet columns"
         tabIndex={-1}
-        ref={(element) => element?.focus()}
+        ref={dialogRef}
         onClick={(event) => event.stopPropagation()}
       >
         <h3>Sheet columns</h3>
@@ -962,6 +1092,82 @@ function ColumnsDialog({
         </div>
         <div className="modal-actions">
           <button onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const LEVELING_ORDERS = ['priorityStandard', 'standard', 'idOnly'] as const
+const LEVELING_ORDER_LABELS = ['Priority, standard', 'Standard', 'ID only']
+const LEVELING_GRANULARITIES = ['day', 'minute'] as const
+const LEVELING_GRANULARITY_LABELS = ['Day', 'Minute']
+
+function LevelDialog({ onCommand, onClose }: { onCommand: (command: Command) => void; onClose: () => void }) {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const [order, setOrder] = useState<(typeof LEVELING_ORDERS)[number]>('priorityStandard')
+  const [granularity, setGranularity] = useState<(typeof LEVELING_GRANULARITIES)[number]>('day')
+  const [splitInProgress, setSplitInProgress] = useState(false)
+  useEffect(() => {
+    dialogRef.current?.focus()
+  }, [])
+  return (
+    <div
+      className="modal-backdrop"
+      role="presentation"
+      onClick={onClose}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') onClose()
+      }}
+    >
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Level resources…"
+        tabIndex={-1}
+        ref={dialogRef}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <h3>Level resources…</h3>
+        <label className="inspector-row">
+          <span className="inspector-label">Order</span>
+          <select value={order} onChange={(event) => setOrder(event.target.value as (typeof LEVELING_ORDERS)[number])}>
+            {LEVELING_ORDERS.map((value, index) => (
+              <option key={value} value={value}>
+                {LEVELING_ORDER_LABELS[index]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="inspector-row">
+          <span className="inspector-label">Granularity</span>
+          <select
+            value={granularity}
+            onChange={(event) => setGranularity(event.target.value as (typeof LEVELING_GRANULARITIES)[number])}
+          >
+            {LEVELING_GRANULARITIES.map((value, index) => (
+              <option key={value} value={value}>
+                {LEVELING_GRANULARITY_LABELS[index]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="inspector-row">
+          <span className="inspector-label">Split in-progress tasks</span>
+          <input type="checkbox" checked={splitInProgress} onChange={(event) => setSplitInProgress(event.target.checked)} />
+        </label>
+        <div className="modal-actions">
+          <button onClick={onClose}>Cancel</button>
+          <button
+            className="primary"
+            onClick={() => {
+              onCommand({ op: 'level', order, granularity, splitInProgress })
+              onClose()
+            }}
+          >
+            Level
+          </button>
         </div>
       </div>
     </div>

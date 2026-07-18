@@ -25,18 +25,21 @@ public readonly record struct Rate(decimal Amount, RateUnit Per)
 
     /// <summary>Cost of the given working minutes at this rate (division last, exact for whole units).</summary>
     public decimal CostForMinutes(decimal workMinutes, TimeSettings settings)
+        => workMinutes * Amount / MinutesPer(Per, settings);
+
+    /// <summary>Working minutes one unit of a rate time base represents (a year is 52 weeks — deviations.md #15).</summary>
+    public static decimal MinutesPer(RateUnit unit, TimeSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        var minutesPerUnit = Per switch
+        return unit switch
         {
             RateUnit.Hour => 60m,
             RateUnit.Day => settings.MinutesPerDay,
             RateUnit.Week => settings.MinutesPerWeek,
             RateUnit.Month => settings.DaysPerMonth * settings.MinutesPerDay,
             RateUnit.Year => 52m * settings.MinutesPerWeek,
-            _ => throw new InvalidOperationException($"Unknown rate unit {Per}."),
+            _ => throw new InvalidOperationException($"Unknown rate unit {unit}."),
         };
-        return workMinutes * Amount / minutesPerUnit;
     }
 
     /// <summary>Parses "50", "50/h", "400/d", "2000/w", "8000/mo", "100000/y". A bare number is per hour.</summary>

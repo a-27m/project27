@@ -139,7 +139,17 @@ internal static class Render
     public static string Units(Assignment assignment)
         => assignment.Resource.Type == ResourceType.Work
             ? Num(assignment.Units * 100m) + "%"
-            : Num(assignment.Units);
+            : Num(assignment.Units) + (assignment.MaterialRateUnit is { } per ? PerSuffix(per) : "");
+
+    private static string PerSuffix(RateUnit per) => per switch
+    {
+        RateUnit.Hour => "/h",
+        RateUnit.Day => "/d",
+        RateUnit.Week => "/w",
+        RateUnit.Month => "/mo",
+        RateUnit.Year => "/y",
+        _ => "",
+    };
 
     /// <summary>Work in hours, MSP's display unit: `16h`.</summary>
     public static string WorkHours(decimal minutes) => Num(minutes / 60m) + "h";

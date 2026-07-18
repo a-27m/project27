@@ -21,9 +21,11 @@ public sealed record EarnedValueData(
 
 /// <summary>
 /// EVM against baseline slot 0 (docs/spec/08-tracking-evm.md). Schedule-dependent:
-/// recalculate before asking. BCWS prorates the baseline cost linearly over the
-/// baseline span's working time (deviation #19); ACWP derives from percent
-/// complete until real actuals land in phase 9 (deviation #20).
+/// recalculate before asking. BCWS places each assignment's baseline cost by its
+/// resource's accrual — prorated cost spreads linearly over the baseline span's
+/// working time, start/end-accrued cost lands as a lump (deviation #19, closed).
+/// ACWP is the task's actual cost: explicit assignment actuals where entered, else
+/// derived from percent complete (deviation #20, closed).
 /// </summary>
 public static class EarnedValue
 {
@@ -68,11 +70,42 @@ public static class EarnedValue
         var project = task.Project;
         var statusDate = project.StatusDate ?? project.FinishDate ?? project.StartDate;
         var bac = captured.Cost;
-        var bcws = bac * PlannedFraction(task, captured, statusDate);
-        var percent = task.PercentComplete / 100m;
-        var bcwp = bac * percent;
-        var acwp = task.Cost * percent;
+        var bcws = Bcws(task, captured, slot, PlannedFraction(task, captured, statusDate));
+        var bcwp = bac * task.PercentComplete / 100m;
+        var acwp = task.ActualCost;
         return Derive(bac, bcws, bcwp, acwp, task.Cost);
+    }
+
+    /// <summary>
+    /// Baseline cost due by the status date: each baselined assignment's cost placed
+    /// by its resource's accrual; the remainder (fixed cost plus assignments without
+    /// baselines) by the task's fixed-cost accrual (deviation #19).
+    /// </summary>
+    private static decimal Bcws(ProjectTask task, TaskBaseline captured, int slot, decimal fraction)
+    {
+        decimal due = 0m, assigned = 0m;
+        foreach (var assignment in task.AssignmentsList)
+        {
+            if (assignment.Baseline(slot) is not { } baseline)
+            {
+                continue;
+            }
+
+            assigned += baseline.Cost;
+            var accrual = assignment.Resource.Type == ResourceType.Cost
+                ? CostAccrual.Prorated
+                : assignment.Resource.Accrual;
+            due += Accrue(baseline.Cost, accrual, fraction);
+        }
+
+        return due + Accrue(captured.Cost - assigned, task.FixedCostAccrual, fraction);
+
+        static decimal Accrue(decimal cost, CostAccrual accrual, decimal fraction) => accrual switch
+        {
+            CostAccrual.Start => fraction > 0m ? cost : 0m,
+            CostAccrual.End => fraction >= 1m ? cost : 0m,
+            _ => cost * fraction,
+        };
     }
 
     /// <summary>Share of the baseline span's working time that lies at or before the status date.</summary>

@@ -22,8 +22,10 @@ expensive to re-derive; conventions live in `decisions.md` (D1–D9 + D6a).
 | 11 | Reports | done (3b38136) | — |
 | 12 | Polish & web parity | **done** (02ff3c5, fd5a123, 50ea3b5, aed9069, 3e5ba5d, 4e4ab3a) | — |
 | 13 | Shell completion (bash/zsh/fzf) | **done** — spec 13, E36 | — |
+| — | MCP server (epic) | **done** — see below | — |
+| — | `.p27` import / CSV export | **done** — see below | — |
 
-Specs: `docs/spec/01…04, 06, 07, 08, 09, 13`. Deviations from MS Project: `docs/spec/deviations.md` (#1–#25).
+Specs: `docs/spec/01…04, 06, 07, 08, 09, 13, 14`. Deviations from MS Project: `docs/spec/deviations.md` (#1–#25).
 
 ## Build & test
 
@@ -297,6 +299,167 @@ engineering-decisions.md); everything else stays dependency-free.
   is `https://sts.windows.net/{tenantid}/`. This is a five-second, fully
   local, reversible check — run it before any live Azure-side change
   (`signInAudience`, admin consent) when access tokens come back opaque.
+
+## MCP server epic (2026-07-18)
+
+Spec: `docs/spec/14-mcp-server.md`. New host, `src/Project27.Mcp` (`p27-mcp`),
+exposing Core's task/schedule/resource/calendar operations as MCP tools for
+AI clients (Claude Desktop/Code, etc.), on top of the official
+`ModelContextProtocol` SDK (stdio transport).
+
+- Dual-mode like the CLI (D8): a local `.p27` file (`--file`/`P27_FILE`, else
+  the sole `.p27` in the cwd) or a checked-out server project
+  (`--server`/`P27_SERVER` + `--project`/`P27_PROJECT`, `--dev-user`/
+  `P27_DEV_USER` or `--token`/`P27_TOKEN`). Mode is resolved once at process
+  start; the server then serves one project for its whole stdio session —
+  but unlike the CLI, the *project* doesn't have to be: `--project`/
+  `P27_PROJECT` (remote) or a resolvable `--file`/`P27_FILE`/cwd (local) are
+  now optional. Added after initial ship, prompted by the realization that a
+  chat client asked to "create a project for what we just discussed" has no
+  file/project to point the server at when it launches — restarting an
+  MCP server mid-conversation isn't something the model can do. Without one,
+  the session starts idle; `Session/ProjectSessionHost` forwards
+  `IProjectSession` to whichever session is current and adds `create_project`
+  (bootstraps a new local file or `POST /api/projects`) / `open_project`
+  (attaches to an existing one) to establish it. Both reserve the session's
+  "project slot" before doing any file/HTTP work and release it on failure,
+  so a rejected create/open never leaves an orphan `.p27` file or checkout
+  behind — the first version of this had exactly that bug (the guard ran
+  *after* the file was already created) until a live smoke test caught it.
+  Deliberately still one project per process (D1-scale simplicity, not full
+  multi-project support): a second create/open call, including one that
+  would follow an eager startup open, fails fast with a "restart the server"
+  message.
+- `Session/IProjectSession` is the mode-agnostic seam: `LocalProjectSession`
+  opens the file directly via `Storage.SqliteProjectStore` and applies
+  mutations through Core's existing `Commands.CommandExecutor` (no new
+  mutation path — full reuse of the command layer built for the web client,
+  E20); `RemoteProjectSession` checks the project out on open, applies
+  mutations via `POST /commands`, and releases the lock on dispose only if
+  this session acquired it (mirrors the CLI's inferred-keep rule, E19).
+  Both recalculate once after load and once per mutation batch, matching
+  every existing host (E2).
+- Tools are grouped by entity, not 1:1 with `ProjectCommand` (~13 tools
+  covering all ~35 command variants, plus `create_project`/`open_project`) —
+  flatter tool list, smaller schema per tool, still a direct field-for-field
+  mapping onto the command records so there's no parallel data model to
+  maintain. Reads (`get_project`,
+  `list_tasks`, `get_task`, `list_resources`, `get_task_drivers`,
+  `get_usage`, `get_report`) reuse Core's view/report/tracking/usage
+  building blocks directly for local mode and the server's matching GET
+  endpoints for remote mode — same "projections are consumer-owned"
+  pattern as CLI/server (E22), just a third consumer.
+- Gotcha #1 worth flagging for future tool additions: the MCP C# SDK's
+  reflection-based schema builder treats a nullable parameter as *required*
+  unless it also has a `= null`/literal default — nullability alone isn't
+  enough. Missing defaults surfaced as a runtime "arguments dictionary is
+  missing a value" error during manual smoke testing, not a compile error.
+- Gotcha #2, also found by live smoke testing rather than a unit test: the
+  SDK swallows every tool exception to a generic "An error occurred invoking
+  '<tool>'" string by default — only `ModelContextProtocol.McpException`'s
+  `Message` is considered safe to forward to the client. All of this
+  codebase's user-facing exceptions (`ProjectSessionException`,
+  `ArgumentException`, `KeyNotFoundException`, `Commands.CommandException`)
+  were being silently flattened to that generic string until `Program.cs`
+  added a `WithRequestFilters(f => f.AddCallToolFilter(...))` that catches
+  them and rethrows as `McpException`. Every hand-written validation message
+  in this codebase (`"No task with uid {uid}."`, the create/open guards,
+  etc.) depends on this filter to actually reach the model.
+- Verified live for **both** modes, via a hand-rolled JSON-RPC/stdio client:
+  local mode against a real example `.p27` file (initialize, tools/list,
+  `get_project`, `list_tasks`, `task_write` add), then reopening the same
+  file with `p27 task list --json` and confirming the CLI saw the
+  MCP-added task; remote mode against a throwaway project on a real
+  `Project27.Server` (DevAuth, localhost) — `get_project`, `list_tasks`,
+  `task_write` add, `get_task_drivers`, `get_usage`, `get_report` all
+  round-tripped through the server's checkout/commands/view/schedule/usage/
+  drivers/reports endpoints, and `p27 task list` against the same server
+  confirmed the write persisted. Both are genuine cross-host round-trips,
+  not just unit tests. The idle-start path (no `--file`/`--project`) got the
+  same live treatment for both modes: launched idle, confirmed `get_project`
+  surfaces the real "no project open" message, `create_project` →
+  `task_write` → a second `create_project` (confirmed rejected with no
+  orphan file/checkout), each cross-checked via the CLI against the same
+  file/server. `Project27.Mcp.Tests` covers `LocalProjectSession`,
+  `ProjectSessionHost` (create/open guards, the no-orphan-file regression),
+  and the tool classes directly (18 tests) — `RemoteProjectSession` has no
+  automated test yet (would need a server fixture; the CLI/Server test
+  projects' `WebApplicationFactory` harness is the natural base for a
+  follow-up), so its live-server smoke tests above are its only coverage
+  today.
+- Counts at epic close: Core 237, Storage 3, Interop 9, Cli 90, Server 31,
+  Mcp 18 (.NET 388).
+
+## Tracking-parity epic (2026-07-18) — deviations #13/#14/#16/#17/#19/#20/#23/#28/#29
+
+Spec: `docs/spec/13-tracking-parity.md`; rationale: E36. Scope locked with the
+owner: #20 = *scalar actuals now, time-phased buckets later* (seam documented
+in spec 13); leveling gets split-based + configurable order + minute
+granularity; #14 = unify scheduling with the decile tables.
+
+- Contour deciles single-sourced in `WorkContour.Deciles()`
+  (`AverageUtilization` derived); the scheduler's closed form provably equals
+  the decile walk — no date changes.
+- `Assignment.Cost` = per-day usage slices priced by the band in force that
+  day (`Timephased.WorkCost/MaterialCost`); buckets sum exactly to cost.
+  Variable material consumption: `MaterialRateUnit` (+`MaterialQuantity`),
+  CLI `--per`, command `unitsPer`.
+- `ScheduleMask` confines split-task assignment work/dates to scheduled
+  segments (resource calendars now shape split/manual assignments; #16).
+- Scalar actuals: `Assignment.ActualWorkMinutes/ActualCost` (null = derived
+  from % complete → old numbers unchanged); task rollups + fields
+  `actualWork/remainingWork/actualCost`; ACWP = `task.ActualCost`; BCWS placed
+  by resource accrual (#19). CLI `assign set --actual-work/--actual-cost`
+  ('none' clears).
+- `SplitSurgery.PushWork` (completed work never moves) shared by
+  `RescheduleUncompletedWork` (#23, split tasks now handled) and
+  `Level(LevelingOptions)` with `Order` (id/standard/priority),
+  `Granularity` (day/minute = exact excess), `SplitInProgress` (#29);
+  leveling skips unresolvable conflicts instead of stopping;
+  `LevelingResult.SplitTasks` added. CLI `level run --order --granularity
+  --split-in-progress`.
+- Persistence **schema v7** (assignment `materialRateUnit`/`actualWorkMinutes`/
+  `actualCost`); commands `setAssignment` + `level` extended, inverses done;
+  projection carries the three new assignment fields.
+- `CliHarness` now scrubs ambient `P27_*` env vars — without it a developer's
+  `P27_SERVER` flips all file-mode CLI tests into server mode.
+- Web: inspector gains per-select (material), actual work/cost inputs;
+  "Level with options…" dialog (order/granularity/split-in-progress);
+  `formatUnits` in `lib/format.ts`.
+- Counts at epic close: Core 237, Storage 3, Interop 9, Cli 90, Server 28
+  (.NET 367) + web 43 (Vitest).
+
+## `.p27` import and CSV export, with CLI parity (2026-07-18)
+
+`POST /api/projects/import/p27` (`ProjectEndpoints.cs`) mirrors the existing
+`/import/mspdi` path: uploads a `.p27` file (`SqliteProjectStore.Open(…).Load()`
+on a temp copy), always creates a **new** project with a fresh id — the source
+project, if any exists on this server, is never touched — and on a project-name
+collision for the caller appends `" imported <yyyy-MM-dd HH:mm:ss>"` rather than
+overwriting. `GET /api/projects/{id}/export/csv` wires the existing
+`Interop.CsvExporter` (already used by CLI `p27 export csv`) into the server,
+returning the default `entry` table (no filter/sort/groupBy UI in web yet — CSV
+export always emits the whole task list). Web: `ProjectList.tsx` gets an "Import
+.p27…" control beside "Import MSPDI…"; `ProjectView.tsx`'s ⋯ → EXPORT menu gets
+"Task list (CSV)".
+
+CLI parity (D4): `p27 import p27 <file>` is server-mode only, POSTing to
+`/import/p27` for cases where copying the `.p27` file directly onto the server
+isn't practical (scripting against a server not reachable over the
+filesystem). `p27 import mspdi` gained `--server` support too, closing the same
+gap for the pre-existing MSPDI import path. `--file`/`P27_FILE` and `--server`
+together error rather than silently ignoring `--file` — it has no meaning for a
+remote import, which always creates a new server project.
+
+`export csv` already worked remotely with no changes needed — it's a plain read
+through the existing `context.OpenProject()` seam.
+
+Covered by three new `Project27.Server.Tests` cases (round-trip import, name-
+conflict suffix + invalid-file 422, CSV content) and seven new
+`Project27.Cli.Tests` cases (remote/local import for both formats, the
+wrong-mode errors, the `--file`+`--server` conflict), plus a live smoke test
+against a running server. Counts at close: Core 237, Storage 3, Interop 9,
+Cli 97, Server 31, Mcp 18 (.NET 395).
 
 ## Checkout/lock/history UI now shows display names, not user ids (2026-07-15)
 

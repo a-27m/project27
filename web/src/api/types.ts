@@ -32,6 +32,10 @@ export interface VersionInfo {
 export type DependencyType = 'finishToStart' | 'startToStart' | 'finishToFinish' | 'startToFinish'
 export type LagKind = 'working' | 'elapsed' | 'percent'
 export type TaskMode = 'auto' | 'manual'
+/** Variable material consumption time base (deviations.md #13). */
+export type RateUnit = 'hour' | 'day' | 'week' | 'month' | 'year'
+export type LevelingOrder = 'idOnly' | 'standard' | 'priorityStandard'
+export type LevelingGranularity = 'day' | 'minute'
 export type ConstraintType =
   | 'asSoonAsPossible'
   | 'asLateAsPossible'
@@ -111,6 +115,12 @@ export interface ScheduleAssignment {
   rateTable: 'a' | 'b' | 'c' | 'd' | 'e'
   cost: number
   costInput: number
+  /** Variable material consumption base; non-null only for material assignments. */
+  unitsPer: RateUnit | null
+  /** Explicit actual work; null = derived from task % complete. */
+  actualWorkMinutes: number | null
+  /** Explicit actual cost; null = derived. */
+  actualCost: number | null
 }
 
 export interface ScheduleProject {
@@ -243,12 +253,28 @@ export type Command =
   | { op: 'setLink'; predecessorUid: number; successorUid: number; type?: DependencyType; lag?: CommandLag }
   | { op: 'unlink'; predecessorUid: number; successorUid: number }
   | { op: 'setProject'; name?: string; start?: string; statusDate?: string; clearStatusDate?: boolean }
-  | { op: 'assign'; uid: number; resource: string; units?: number; work?: string; cost?: number }
-  | { op: 'setAssignment'; uid: number; resource: string; units?: number; work?: string; contour?: string; delay?: string; rateTable?: string; cost?: number }
+  | { op: 'assign'; uid: number; resource: string; units?: number; work?: string; cost?: number; unitsPer?: RateUnit }
+  | {
+      op: 'setAssignment'
+      uid: number
+      resource: string
+      units?: number
+      work?: string
+      contour?: string
+      delay?: string
+      rateTable?: string
+      cost?: number
+      unitsPer?: RateUnit
+      clearUnitsPer?: boolean
+      actualWork?: string
+      clearActualWork?: boolean
+      actualCost?: number
+      clearActualCost?: boolean
+    }
   | { op: 'unassign'; uid: number; resource: string }
   | { op: 'setBaseline'; slot?: number }
   | { op: 'clearBaseline'; slot?: number }
-  | { op: 'level' }
+  | { op: 'level'; order?: LevelingOrder; granularity?: LevelingGranularity; splitInProgress?: boolean }
   | { op: 'clearLeveling' }
   | { op: 'reschedule'; after?: string }
   | { op: string; [key: string]: unknown }

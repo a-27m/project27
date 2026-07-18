@@ -350,6 +350,17 @@ internal static class Parsers
         }
     }
 
+    /// <summary>Time base for variable material consumption: `h`, `d`, `w`, `mo`, `y`.</summary>
+    public static RateUnit RateUnitInput(string text) => text.Trim().ToUpperInvariant() switch
+    {
+        "H" or "HR" or "HOUR" => RateUnit.Hour,
+        "D" or "DAY" => RateUnit.Day,
+        "W" or "WK" or "WEEK" => RateUnit.Week,
+        "MO" or "MON" or "MONTH" => RateUnit.Month,
+        "Y" or "YR" or "YEAR" => RateUnit.Year,
+        _ => throw new CliException($"invalid time unit '{text}'; use h, d, w, mo, or y"),
+    };
+
     public static decimal MoneyInput(string text)
         => decimal.TryParse(text.Trim(), NumberStyles.Number, CultureInfo.InvariantCulture, out var value)
             ? value

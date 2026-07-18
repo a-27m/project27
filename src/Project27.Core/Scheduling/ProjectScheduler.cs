@@ -1,4 +1,5 @@
 using Project27.Core.Time;
+using Project27.Core.Usage;
 
 namespace Project27.Core.Scheduling;
 
@@ -154,27 +155,42 @@ internal static class ProjectScheduler
                 }
                 else
                 {
-                    assignment.Start = task.Start;
-                    assignment.Finish = task.Finish;
+                    (assignment.Start, assignment.Finish) = PinnedAssignmentDates(task, assignment);
                 }
 
-                assignment.Cost = ComputeCost(project, assignment);
+                assignment.Cost = ComputeCost(assignment);
             }
         }
     }
 
-    private static decimal ComputeCost(Project project, Assignment assignment)
+    /// <summary>
+    /// Dates for assignments the walk does not drive (split/manual tasks, workless
+    /// assignments): the task span, narrowed to the assignment schedule's working
+    /// time inside it — resource calendars and split gaps now shape these too
+    /// (deviations.md #16). Falls back to the raw task span when the narrowed span
+    /// would be empty.
+    /// </summary>
+    private static (DateTime? Start, DateTime? Finish) PinnedAssignmentDates(ProjectTask task, Assignment assignment)
     {
-        if (assignment.Resource.Type == ResourceType.Cost)
+        if (task.Start is not { } start || task.Finish is not { } finish
+            || assignment.Resource.Type != ResourceType.Work || assignment.WorkMinutes <= 0)
         {
-            return assignment.CostInput;
+            return (task.Start, task.Finish);
         }
 
-        var rate = assignment.Resource.RateTable(assignment.RateTable).RateAt(assignment.Start ?? project.StartDate);
-        return assignment.Resource.Type == ResourceType.Work
-            ? rate.StandardRate.CostForMinutes(assignment.WorkMinutes, project.TimeSettings) + rate.CostPerUse
-            : (assignment.Units * rate.StandardRate.Amount) + rate.CostPerUse;
+        var schedule = Timephased.AssignmentSchedule(assignment);
+        var narrowedStart = schedule.NextWorkingTime(start);
+        var narrowedFinish = schedule.PreviousWorkingTime(finish);
+        return narrowedStart < narrowedFinish ? (narrowedStart, narrowedFinish) : (start, finish);
     }
+
+    private static decimal ComputeCost(Assignment assignment)
+        => assignment.Resource.Type switch
+        {
+            ResourceType.Cost => assignment.CostInput,
+            ResourceType.Work => Timephased.WorkCost(assignment),
+            _ => Timephased.MaterialCost(assignment),
+        };
 
     private static long ComputeGuard(IReadOnlyList<ProjectTask> tasks)
     {

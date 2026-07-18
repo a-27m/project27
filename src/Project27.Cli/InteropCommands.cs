@@ -20,6 +20,7 @@ internal static class InteropCommands
     {
         var command = new Command("import", "Import from interchange formats.");
         command.Add(MspdiIn());
+        command.Add(P27In());
         return command;
     }
 
@@ -80,14 +81,52 @@ internal static class InteropCommands
     private static Command MspdiIn()
     {
         var fileArg = new Argument<string>("xml") { Description = "MSPDI XML file to import." }.SuggestsPaths();
-        var outOpt = new Option<string?>("--file") { HelpName = "new.p27", Description = "Target project file; default <name>.p27." }
+        var outOpt = new Option<string?>("--file") { HelpName = "new.p27", Description = "Target project file; default <name>.p27. Local mode only — errors with --server." }
             .SuggestsPaths(CompletionDirective.ProjectFiles);
-        var command = new Command("mspdi", "Create a new .p27 from Microsoft Project XML.") { fileArg, outOpt };
+        var command = new Command("mspdi", "Create a new .p27 from Microsoft Project XML, or import into the server.") { fileArg, outOpt };
         command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
         {
+            var source = parseResult.GetRequiredValue(fileArg);
+            if (!File.Exists(source))
+            {
+                throw new CliException($"'{source}' not found");
+            }
+
+            var xml = File.ReadAllText(source);
+
             if (context.IsRemote)
             {
-                throw new CliException("import creates local files; run it without --server");
+                if (parseResult.GetValue(outOpt) is not null)
+                {
+                    throw new CliException("--file only applies in local mode; a remote import always creates a new server project");
+                }
+
+                using var client = context.CreateRemoteClient();
+                var imported = client.ImportMspdi(xml);
+                context.Report(imported, $"imported into project '{imported.Name}' ({imported.Id:D})");
+                return 0;
+            }
+
+            var project = MspdiReader.Read(xml);
+            var path = parseResult.GetValue(outOpt) ?? SafeName(project.Name) + SqliteProjectStore.FileExtension;
+            SqliteProjectStore.Create(path, project);
+            context.Report(
+                new { imported = project.Tasks.Count, resources = project.Resources.Count, path },
+                $"imported {Render.Num(project.Tasks.Count)} task(s), {Render.Num(project.Resources.Count)} resource(s) into {path}");
+            return 0;
+        }));
+        return command;
+    }
+
+    private static Command P27In()
+    {
+        var fileArg = new Argument<string>("p27") { Description = ".p27 file to import." };
+        var command = new Command("p27", "Import a .p27 project file into the server (server mode only).") { fileArg };
+        command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
+        {
+            if (!context.IsRemote)
+            {
+                throw new CliException("p27 import only works in --server mode");
             }
 
             var source = parseResult.GetRequiredValue(fileArg);
@@ -96,12 +135,10 @@ internal static class InteropCommands
                 throw new CliException($"'{source}' not found");
             }
 
-            var project = MspdiReader.Read(File.ReadAllText(source));
-            var path = parseResult.GetValue(outOpt) ?? SafeName(project.Name) + SqliteProjectStore.FileExtension;
-            SqliteProjectStore.Create(path, project);
-            context.Report(
-                new { imported = project.Tasks.Count, resources = project.Resources.Count, path },
-                $"imported {Render.Num(project.Tasks.Count)} task(s), {Render.Num(project.Resources.Count)} resource(s) into {path}");
+            using var fileStream = File.OpenRead(source);
+            using var client = context.CreateRemoteClient();
+            var imported = client.ImportP27(fileStream);
+            context.Report(imported, $"imported into project '{imported.Name}' ({imported.Id:D})");
             return 0;
         }));
         return command;

@@ -63,6 +63,38 @@ public sealed class LevelCommandTests : IDisposable
     }
 
     [Fact]
+    public void Order_and_granularity_flags_steer_the_leveler()
+    {
+        Cli.Ok("task", "set", "1", "--priority", "100", "--file", _file);
+        Cli.Ok("task", "set", "2", "--priority", "900", "--file", _file);
+
+        var byPriority = Cli.Ok("level", "run", "--json", "--file", _file).Json();
+        Assert.Equal("A", byPriority.GetProperty("delays")[0].GetProperty("name").GetString());
+
+        var byId = Cli.Ok("level", "run", "--order", "id", "--json", "--file", _file).Json();
+        Assert.Equal("B", byId.GetProperty("delays")[0].GetProperty("name").GetString());
+
+        Cli.Fail("level", "run", "--order", "bogus", "--file", _file);
+        Cli.Ok("level", "run", "--granularity", "minute", "--file", _file);
+    }
+
+    [Fact]
+    public void Split_in_progress_levels_started_tasks()
+    {
+        // A is protected and starts Tue; B started Monday — only B's remaining work can move.
+        Cli.Ok("task", "set", "1", "--priority", "1000", "--constraint", "snet", "--constraint-date", "2026-01-06", "--file", _file);
+        Cli.Ok("task", "set", "2", "--actual-start", "2026-01-05", "--percent-complete", "25", "--file", _file);
+
+        var untouched = Cli.Ok("level", "run", "--json", "--file", _file).Json();
+        Assert.Equal(0, untouched.GetProperty("delays").GetArrayLength());
+        Assert.True(untouched.GetProperty("remainingOverallocations").GetArrayLength() > 0);
+
+        var split = Cli.Ok("level", "run", "--split-in-progress", "--json", "--file", _file).Json();
+        Assert.Equal("B", split.GetProperty("splitTasks")[0].GetProperty("name").GetString());
+        Assert.Equal(0, split.GetProperty("remainingOverallocations").GetArrayLength());
+    }
+
+    [Fact]
     public void Resource_import_copies_from_another_file()
     {
         var poolFile = _dir.File("pool.p27");

@@ -234,6 +234,80 @@ public static class ProjectEndpoints
                 await Info(store, locking, record, ProjectRole.Owner, cancellationToken));
         });
 
+        projects.MapPost("/import/p27", async (HttpRequest request, ClaimsPrincipal user, IServerStore store, LockingOptions locking, CancellationToken cancellationToken) =>
+        {
+            var temp = Path.Combine(Path.GetTempPath(), $"p27-import-{Guid.NewGuid():N}.p27");
+            Project imported;
+            try
+            {
+                await using (var file = File.Create(temp))
+                {
+                    await request.Body.CopyToAsync(file, cancellationToken);
+                }
+
+                try
+                {
+                    imported = SqliteProjectStore.Open(temp).Load();
+                }
+                catch (Exception exception) when (exception is NotSupportedException or InvalidDataException or Microsoft.Data.Sqlite.SqliteException)
+                {
+                    return Problem(422, $"Not a readable .p27 file: {exception.Message}");
+                }
+            }
+            finally
+            {
+                File.Delete(temp);
+            }
+
+            var existingNames = (await store.ListProjects(UserId(user), cancellationToken))
+                .Select(p => p.Project.Name)
+                .ToHashSet(StringComparer.Ordinal);
+            var name = existingNames.Contains(imported.Name)
+                ? $"{imported.Name} imported {DateTime.Now:yyyy-MM-dd HH:mm:ss}"
+                : imported.Name;
+
+            var json = ProjectDocumentSerializer.Serialize(ProjectDocumentMapper.ToDocument(imported));
+            var record = new ServerProject(Guid.NewGuid(), name, UserId(user), DateTime.UtcNow, Version: 1);
+            await store.CreateProject(record, json, cancellationToken);
+            return Results.Created(
+                $"/api/projects/{record.Id:D}",
+                await Info(store, locking, record, ProjectRole.Owner, cancellationToken));
+        });
+
+        projects.MapGet("/{id:guid}/export/csv", async (Guid id, string? fields, string? filter, string? sort, string? groupBy, string? table, ClaimsPrincipal user, IServerStore store, CancellationToken cancellationToken) =>
+        {
+            var (access, error) = await Authorize(store, id, user, ProjectRole.Reader, cancellationToken);
+            if (error is not null)
+            {
+                return error;
+            }
+
+            var json = await store.GetDocument(id, cancellationToken)
+                ?? throw new InvalidOperationException($"Project {id:D} has no snapshot; the store is corrupt.");
+            var project = ProjectDocumentMapper.FromDocument(ProjectDocumentSerializer.Deserialize(json));
+            project.Recalculate();
+            try
+            {
+                IReadOnlyList<string> fieldKeys = fields is { Length: > 0 }
+                    ? [.. fields.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)]
+                    : Interop.CsvExporter.FieldsOf(table);
+                var definition = new Core.Views.ViewDefinition(
+                    fieldKeys,
+                    filter is { Length: > 0 } ? Core.Views.FilterParser.Parse(project, filter) : null,
+                    sort is { Length: > 0 } ? Core.Views.TaskView.ParseSorts(sort) : null,
+                    string.IsNullOrWhiteSpace(groupBy) ? null : groupBy);
+                var csv = Interop.CsvExporter.Write(project, definition);
+                return Results.File(
+                    System.Text.Encoding.UTF8.GetBytes(csv),
+                    "text/csv",
+                    SafeFileName(access!.Project.Name) + ".csv");
+            }
+            catch (Exception exception) when (exception is FormatException or KeyNotFoundException)
+            {
+                return Problem(422, exception.Message);
+            }
+        });
+
         projects.MapGet("/{id:guid}/file", async (Guid id, ClaimsPrincipal user, IServerStore store, CancellationToken cancellationToken) =>
         {
             var (access, error) = await Authorize(store, id, user, ProjectRole.Reader, cancellationToken);
