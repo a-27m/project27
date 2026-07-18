@@ -256,6 +256,74 @@ public sealed class CommandApiTests
     }
 
     [Fact]
+    public async Task P27_import_creates_a_new_project_from_an_exported_file()
+    {
+        var (id, alice) = await CreateProject("P27Import-" + Guid.NewGuid().ToString("N"));
+        await alice.PostAsync($"/api/projects/{id:D}/checkout", null, Token);
+        await alice.PostAsJsonAsync($"/api/projects/{id:D}/commands", GoldenBatch(), Token);
+        await alice.DeleteAsync($"/api/projects/{id:D}/lock", Token);
+
+        var file = await alice.GetAsync($"/api/projects/{id:D}/file", Token);
+        var bytes = await file.Content.ReadAsByteArrayAsync(Token);
+
+        var import = await alice.PostAsync(
+            "/api/projects/import/p27",
+            new System.Net.Http.ByteArrayContent(bytes),
+            Token);
+        Assert.Equal(HttpStatusCode.Created, import.StatusCode);
+        var info = await import.Content.ReadFromJsonAsync<JsonElement>(Token);
+        var importedId = info.GetProperty("id").GetGuid();
+        Assert.NotEqual(id, importedId);
+
+        // Importing does not mutate the original project.
+        var original = await alice.GetFromJsonAsync<JsonElement>($"/api/projects/{id:D}", Token);
+        Assert.Equal(2, original.GetProperty("version").GetInt32());
+
+        var importedSchedule = await alice.GetFromJsonAsync<JsonElement>($"/api/projects/{importedId:D}/schedule", Token);
+        Assert.Equal(2, importedSchedule.GetProperty("tasks").GetArrayLength());
+
+        var bad = await alice.PostAsync(
+            "/api/projects/import/p27",
+            new System.Net.Http.ByteArrayContent(System.Text.Encoding.UTF8.GetBytes("not a p27 file")),
+            Token);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, bad.StatusCode);
+    }
+
+    [Fact]
+    public async Task P27_import_appends_imported_datetime_on_name_conflict()
+    {
+        var name = "P27Conflict-" + Guid.NewGuid().ToString("N");
+        var (id, alice) = await CreateProject(name);
+
+        var file = await alice.GetAsync($"/api/projects/{id:D}/file", Token);
+        var bytes = await file.Content.ReadAsByteArrayAsync(Token);
+
+        var import = await alice.PostAsync(
+            "/api/projects/import/p27",
+            new System.Net.Http.ByteArrayContent(bytes),
+            Token);
+        Assert.Equal(HttpStatusCode.Created, import.StatusCode);
+        var info = await import.Content.ReadFromJsonAsync<JsonElement>(Token);
+        Assert.StartsWith($"{name} imported ", info.GetProperty("name").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Csv_export_streams_the_default_task_table()
+    {
+        var (id, alice) = await CreateProject("Csv-" + Guid.NewGuid().ToString("N"));
+        await alice.PostAsync($"/api/projects/{id:D}/checkout", null, Token);
+        await alice.PostAsJsonAsync($"/api/projects/{id:D}/commands", GoldenBatch(), Token);
+        await alice.DeleteAsync($"/api/projects/{id:D}/lock", Token);
+
+        var response = await alice.GetAsync($"/api/projects/{id:D}/export/csv", Token);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("text/csv", response.Content.Headers.ContentType?.MediaType);
+        var csv = await response.Content.ReadAsStringAsync(Token);
+        Assert.Contains("Design", csv, StringComparison.Ordinal);
+        Assert.Contains("Build", csv, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Reports_render_as_html_for_readers()
     {
         var (id, alice) = await CreateProject("Report-" + Guid.NewGuid().ToString("N"));

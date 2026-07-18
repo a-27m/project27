@@ -66,6 +66,22 @@ export function ProjectList({ client, onOpen }: Props) {
     }
   }
 
+  async function importP27(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    setImporting(true)
+    try {
+      const created = await client.importP27(file)
+      setError(null)
+      onOpen(created)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setImporting(false)
+    }
+  }
+
   async function remove(project: ProjectInfo) {
     if (!window.confirm(`Delete project '${project.name}'? This cannot be undone.`)) return
     try {
@@ -96,6 +112,16 @@ export function ProjectList({ client, onOpen }: Props) {
             type="file"
             accept=".xml,application/xml"
             onChange={(event) => void importMspdi(event)}
+            disabled={importing}
+            hidden
+          />
+        </label>
+        <label className="button-like">
+          {importing ? 'Importing…' : 'Import .p27…'}
+          <input
+            type="file"
+            accept=".p27,application/octet-stream"
+            onChange={(event) => void importP27(event)}
             disabled={importing}
             hidden
           />

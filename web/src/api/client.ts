@@ -95,6 +95,18 @@ export class ApiClient {
     return this.request('POST', '/api/projects/import/mspdi', undefined, xml)
   }
 
+  async importP27(file: Blob): Promise<ProjectInfo> {
+    const headers = await this.headers()
+    headers['Content-Type'] = 'application/octet-stream'
+    const response = await fetch(this.credentials.serverUrl + '/api/projects/import/p27', {
+      method: 'POST',
+      headers,
+      body: file,
+    })
+    if (!response.ok) throw new ApiError(response.status, await problemDetail(response))
+    return (await response.json()) as ProjectInfo
+  }
+
   /** Fetches a binary/text endpoint with auth and triggers a browser download. */
   async download(path: string, fallbackName: string): Promise<void> {
     const response = await fetch(this.credentials.serverUrl + path, { headers: await this.headers() })

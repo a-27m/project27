@@ -354,11 +354,15 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
     return () => window.removeEventListener('keydown', onKeyDown)
   })
 
-  function download(kind: 'p27' | 'mspdi') {
-    const path = kind === 'p27' ? `/api/projects/${projectId}/file` : `/api/projects/${projectId}/export/mspdi`
-    void client
-      .download(path, kind === 'p27' ? 'project.p27' : 'project.xml')
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
+  function download(kind: 'p27' | 'mspdi' | 'csv') {
+    const path =
+      kind === 'p27'
+        ? `/api/projects/${projectId}/file`
+        : kind === 'mspdi'
+          ? `/api/projects/${projectId}/export/mspdi`
+          : `/api/projects/${projectId}/export/csv`
+    const fallbackName = kind === 'p27' ? 'project.p27' : kind === 'mspdi' ? 'project.xml' : 'project.csv'
+    void client.download(path, fallbackName).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
   }
 
   function openReport(name: string) {
@@ -420,6 +424,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
       items: [
         { label: 'Project file (.p27)', onClick: () => download('p27') },
         { label: 'MS Project XML', onClick: () => download('mspdi') },
+        { label: 'Task list (CSV)', onClick: () => download('csv') },
       ],
     },
   ]
