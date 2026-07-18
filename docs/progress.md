@@ -22,6 +22,7 @@ expensive to re-derive; conventions live in `decisions.md` (D1–D9 + D6a).
 | 11 | Reports | done (3b38136) | — |
 | 12 | Polish & web parity | **done** (02ff3c5, fd5a123, 50ea3b5, aed9069, 3e5ba5d, 4e4ab3a) | — |
 | — | MCP server (epic) | **done** — see below | — |
+| — | `.p27` import / CSV export | **done** — see below | — |
 
 Specs: `docs/spec/01…04, 06, 07, 08, 09, 14`. Deviations from MS Project: `docs/spec/deviations.md` (#1–#25).
 
@@ -411,6 +412,38 @@ granularity; #14 = unify scheduling with the decile tables.
   `formatUnits` in `lib/format.ts`.
 - Counts at epic close: Core 237, Storage 3, Interop 9, Cli 90, Server 28
   (.NET 367) + web 43 (Vitest).
+
+## `.p27` import and CSV export, with CLI parity (2026-07-18)
+
+`POST /api/projects/import/p27` (`ProjectEndpoints.cs`) mirrors the existing
+`/import/mspdi` path: uploads a `.p27` file (`SqliteProjectStore.Open(…).Load()`
+on a temp copy), always creates a **new** project with a fresh id — the source
+project, if any exists on this server, is never touched — and on a project-name
+collision for the caller appends `" imported <yyyy-MM-dd HH:mm:ss>"` rather than
+overwriting. `GET /api/projects/{id}/export/csv` wires the existing
+`Interop.CsvExporter` (already used by CLI `p27 export csv`) into the server,
+returning the default `entry` table (no filter/sort/groupBy UI in web yet — CSV
+export always emits the whole task list). Web: `ProjectList.tsx` gets an "Import
+.p27…" control beside "Import MSPDI…"; `ProjectView.tsx`'s ⋯ → EXPORT menu gets
+"Task list (CSV)".
+
+CLI parity (D4): `p27 import p27 <file>` is server-mode only, POSTing to
+`/import/p27` for cases where copying the `.p27` file directly onto the server
+isn't practical (scripting against a server not reachable over the
+filesystem). `p27 import mspdi` gained `--server` support too, closing the same
+gap for the pre-existing MSPDI import path. `--file`/`P27_FILE` and `--server`
+together error rather than silently ignoring `--file` — it has no meaning for a
+remote import, which always creates a new server project.
+
+`export csv` already worked remotely with no changes needed — it's a plain read
+through the existing `context.OpenProject()` seam.
+
+Covered by three new `Project27.Server.Tests` cases (round-trip import, name-
+conflict suffix + invalid-file 422, CSV content) and seven new
+`Project27.Cli.Tests` cases (remote/local import for both formats, the
+wrong-mode errors, the `--file`+`--server` conflict), plus a live smoke test
+against a running server. Counts at close: Core 237, Storage 3, Interop 9,
+Cli 97, Server 31, Mcp 18 (.NET 395).
 
 ## Checkout/lock/history UI now shows display names, not user ids (2026-07-15)
 

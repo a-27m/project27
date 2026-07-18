@@ -54,6 +54,8 @@ A lock is **stale** once idle (no checkout refresh/check-in) longer than
 ```
 GET    /api/projects                          list projects visible to the caller
 POST   /api/projects                          {name, start} → creates + owner role
+POST   /api/projects/import/mspdi             body = MSPDI XML → creates + owner role
+POST   /api/projects/import/p27               body = .p27 (SQLite) file → creates + owner role
 GET    /api/projects/{id}                     info: name, version, lock, own role
 DELETE /api/projects/{id}                     owner only
 GET    /api/projects/{id}/document            latest snapshot (ETag: version)
@@ -108,6 +110,8 @@ by `--project <name|id>`:
 p27 --server http://host project list | create | delete
 p27 --server http://host --project Alpha task add "Design" -d 2d
 p27 --server http://host --project Alpha checkout | checkin | unlock [--force]
+p27 --server http://host import mspdi plan.xml
+p27 --server http://host import p27 plan.p27
 ```
 
 Read verbs GET the document and render via the in-process engine. Mutating verbs
