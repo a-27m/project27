@@ -28,6 +28,44 @@ dotnet run --project src/Project27.Cli -- task list
 Works on the single `.p27` file in the current directory (or `--file`).
 Add `--json` for machine output; `p27 --help` lists every verb.
 
+### Shell completion
+
+```sh
+scripts/install-completion.sh          # your current shell
+scripts/install-completion.sh all      # bash and zsh
+scripts/install-completion.sh --dry-run
+```
+
+It writes one file into a directory your shell already searches and **never
+edits `~/.zshrc`, `~/.bashrc`, or any other startup file**:
+
+| Shell | Location | Needs an rc line? |
+|-------|----------|-------------------|
+| bash | `${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/p27` | No — bash-completion loads it on demand (needs `bash-completion` installed; `brew install bash-completion@2`). |
+| zsh | `_p27` in the first writable `site-functions` directory on your `$fpath` | No. Only if none is writable does it fall back to `~/.zfunc` and print the one `fpath=(…)` line for you to add. |
+
+Then start a new shell (`exec $SHELL`). To do it by hand, or for a package
+recipe, the script is just stdout:
+
+```sh
+p27 completion zsh > ~/.zfunc/_p27
+p27 completion bash > "${XDG_DATA_HOME:-$HOME/.local/share}"/bash-completion/completions/p27
+```
+
+Completion covers subcommands, options, and the project's own nouns — task rows
+(shown with their names), resource and calendar names, custom fields, view
+fields, and **server project names**. It follows the same source the command
+would use, so it works whether the server comes from `--server` or from
+`P27_SERVER` in your environment. If a server is slow or unreachable, TAB stays
+silent rather than hanging.
+
+[fzf](https://github.com/junegunn/fzf) is supported first-class:
+
+- **zsh**: install [fzf-tab](https://github.com/Aloxaf/fzf-tab) and every
+  completion becomes fuzzy-searchable with descriptions — no extra setup.
+- **zsh/bash**: fzf's own `**` trigger works too — `p27 --project **<TAB>`.
+  Plain TAB is unaffected.
+
 ## Server
 
 ```sh

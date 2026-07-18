@@ -589,5 +589,81 @@ look like a regression).
 
 ---
 
+### E36. Shell completion resolved in-process; System.CommandLine's own completion measured and rejected
+
+**Chose:** a `__complete` command (kubectl/cobra shape) whose candidates come from
+`Completion/CompletionEngine.cs` walking the tree `CliRoot.Build()` returns, plus
+`p27 completion <shell>` printing an embedded script.
+
+**Rejected:** System.CommandLine 2.0.10's `Option.CompletionSources` +
+`ParseResult.GetCompletions()`, and the `[suggest]` directive over it.
+
+**Why:** both of its paths were probed and both are unusable *for values containing
+spaces*, which is the central case here — projects are `"Alpha Project"`, resources
+are `"Alice Smith"`:
+
+| Path | Measured behaviour |
+|------|--------------------|
+| `Parse(string).GetCompletions()` | `InvalidOperationException` ("Sequence contains no matching element") on **any** quoted value. Unquoted-with-space silently completes the wrong symbol. |
+| `Parse(string[]).GetCompletions()` | An option's `CompletionSources` **never fire**; `--project <TAB>` returns sibling commands. Option-value completion only works via `TextCompletionContext`, i.e. only via the throwing path. |
+
+The engine only ever *introspects* the real symbols (`Subcommands`, `Options`,
+`Aliases`, `Arity`, `Description`), so the command surface is still declared once.
+The shell hands us argv it has already dequoted, so no tokenizer runs on our side
+and the quoting bug has no place to occur.
+
+**Trap:** recursive options (`--file`, `--server`, `--json`…) are **not** present in a
+subcommand's `.Options` — `task add --<TAB>` must union the current command's options
+with the recursive ones of every ancestor, or the global flags vanish at depth.
+
+**Trap:** `Arity.MinimumNumberOfValues == 0` — not the type — is what says an option
+does not consume the next word. `Option<bool>` is arity 0..1, so testing the maximum
+would make `--json <TAB>` complete a value instead of the next subcommand.
+
+**Trap:** completion runs `CliContext` for real, because `P27_SERVER`/`P27_PROJECT`
+put the CLI in server mode with nothing on the command line to show it. Use
+`OpenProjectForCompletion` (timeboxed, no lock) — never `OpenProject`, whose remote
+save path checks the project out. Pressing TAB must not take a lock.
+
+**Trap:** a test that drives the script must run p27 from the **CLI's own output
+directory**, not from the test binary's. `Project27.Cli.Tests` references the server, so
+its output is built against the ASP.NET shared framework and MSBuild prunes assemblies
+that framework provides — `Microsoft.Extensions.Configuration` among them. The test host
+loads those from the framework, but the `p27.dll` copied alongside declares only
+`Microsoft.NETCore.App` and aborts with `FileNotFoundException` (exit 134). Whether a
+given assembly is pruned depends on the installed runtime, so this passes locally and
+fails on CI. The .csproj captures the CLI's output path as assembly metadata for the shim.
+
+**Trap:** the script sends p27's stderr to `/dev/null` — right at a prompt, fatal in a
+test. When the above bit, all five tests reported `Actual: ""` and nothing else, and a
+plausible-but-wrong cause (a missing apphost) reproduced the same symptom locally. The
+harness now probes `command -v p27`, captures p27's stderr, and prints both on failure;
+that turned a guess into the exact exception in one CI run. Diagnose from the failure,
+not from the first theory that reproduces the symptom.
+
+**Trap:** in the bash script, read `__complete`'s lines in the completion function
+itself. A `while read … < <(helper)` runs the helper in a subshell, so a directive it
+sets is lost and path completion silently does nothing — this shipped broken until a
+real shell was driven.
+
+**Trap:** the bash script must stay **bash 3.2**-clean — macOS still ships 3.2 as
+`/bin/bash`, and it rejects negative array subscripts outright (`${a[-1]}` →
+"bad array subscript", so the `:none` directive ends up in `COMPREPLY`). Verifying
+against Homebrew's bash 5 hides this; `CompletionScriptTests` runs `/bin/bash` for
+exactly that reason.
+
+**Trap:** fzf only delegates a triggerless TAB back to the completion it replaced if
+that completion existed when **fzf** loaded. bash-completion lazy-loads our script on
+the first `p27<TAB>`, long after — so `__fzf_defc` records no original and plain TAB
+returns nothing. The script therefore checks `FZF_COMPLETION_TRIGGER` itself and calls
+`_p27_completion` directly rather than trusting fzf's delegation.
+
+**Trap:** in the zsh fzf helper, `${(z)lbuf}` splits into words but **keeps the quotes**,
+so `-p "Alpha Project"` reaches `__complete` quoted and matches nothing. `${(Q)${(z)lbuf}}`
+strips them — the normal `$words` path is already dequoted and needs no such care. The
+quoting bug this whole design avoids can still sneak back in through fzf.
+
+---
+
 *When you add a significant engineering decision, append an E-record here in
 the same Chose/Rejected/Why/Trap shape — especially the traps.*

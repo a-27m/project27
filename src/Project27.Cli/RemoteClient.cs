@@ -46,10 +46,19 @@ internal sealed class RemoteClient : IDisposable
 
     private readonly HttpClient _http;
 
-    public RemoteClient(string baseUrl, string? token, string? devUser)
+    /// <summary>
+    /// <paramref name="timeout"/> overrides the default (100s) request timeout; the
+    /// completion path uses a short one so a slow server cannot stall a shell prompt.
+    /// </summary>
+    public RemoteClient(string baseUrl, string? token, string? devUser, TimeSpan? timeout = null)
     {
         _http = HandlerFactory is { } factory ? new HttpClient(factory(), disposeHandler: true) : new HttpClient();
         _http.BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/", UriKind.Absolute);
+        if (timeout is { } limit)
+        {
+            _http.Timeout = limit;
+        }
+
         if (!string.IsNullOrEmpty(token))
         {
             _http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);

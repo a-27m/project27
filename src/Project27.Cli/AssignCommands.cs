@@ -1,4 +1,5 @@
 using System.CommandLine;
+using Project27.Cli.Completion;
 using System.Globalization;
 using Project27.Core;
 using Project27.Core.Time;
@@ -18,10 +19,12 @@ internal static class AssignCommands
     }
 
     private static Argument<string> TaskArg()
-        => new("task") { Description = "Task reference: row id or uid:<n>." };
+        => new Argument<string>("task") { Description = "Task reference: row id or uid:<n>." }
+            .Suggests(CompletionValues.Tasks);
 
     private static Argument<string> ResourceArg()
-        => new("resource") { Description = "Resource name (case-insensitive) or uid:<n>." };
+        => new Argument<string>("resource") { Description = "Resource name (case-insensitive) or uid:<n>." }
+            .Suggests(CompletionValues.Resources);
 
     private static Command Add()
     {
@@ -29,9 +32,10 @@ internal static class AssignCommands
         var resourceArg = ResourceArg();
         var unitsOpt = new Option<string?>("--units") { HelpName = "units", Description = "Assignment units (50%) or material quantity." };
         var workOpt = new Option<string?>("--work") { HelpName = "duration", Description = "Work, e.g. 20h; default duration × units." };
-        var contourOpt = new Option<string?>("--contour") { HelpName = "name" };
+        var contourOpt = new Option<string?>("--contour") { HelpName = "name" }.Suggests(CompletionValues.Contours);
         var delayOpt = new Option<string?>("--delay") { HelpName = "duration" };
-        var tableOpt = new Option<string?>("--table") { HelpName = "A..E", Description = "Cost rate table; default A." };
+        var tableOpt = new Option<string?>("--table") { HelpName = "A..E", Description = "Cost rate table; default A." }
+            .Suggests(CompletionValues.RateTables);
         var costOpt = new Option<string?>("--cost") { HelpName = "amount", Description = "Expense amount (cost resources)." };
         var perOpt = new Option<string?>("--per")
         {
@@ -74,7 +78,7 @@ internal static class AssignCommands
         {
             Description = "Optional task reference; default: all assignments.",
             Arity = ArgumentArity.ZeroOrOne,
-        };
+        }.Suggests(CompletionValues.Tasks);
         var command = new Command("list", "List assignments.") { taskArg };
         command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
         {
@@ -122,9 +126,9 @@ internal static class AssignCommands
         var resourceArg = ResourceArg();
         var unitsOpt = new Option<string?>("--units") { HelpName = "units" };
         var workOpt = new Option<string?>("--work") { HelpName = "duration" };
-        var contourOpt = new Option<string?>("--contour") { HelpName = "name" };
+        var contourOpt = new Option<string?>("--contour") { HelpName = "name" }.Suggests(CompletionValues.Contours);
         var delayOpt = new Option<string?>("--delay") { HelpName = "duration" };
-        var tableOpt = new Option<string?>("--table") { HelpName = "A..E" };
+        var tableOpt = new Option<string?>("--table") { HelpName = "A..E" }.Suggests(CompletionValues.RateTables);
         var costOpt = new Option<string?>("--cost") { HelpName = "amount" };
         var perOpt = new Option<string?>("--per")
         {

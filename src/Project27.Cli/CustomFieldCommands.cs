@@ -1,4 +1,5 @@
 using System.CommandLine;
+using Project27.Cli.Completion;
 using Project27.Core;
 using Project27.Core.Fields;
 using Project27.Core.Views;
@@ -25,7 +26,8 @@ internal static class CustomFieldCommands
 
     private static Command Define()
     {
-        var idArg = new Argument<string>("slot") { Description = "Slot id: text1..text30, number1..number20, cost1..cost10, date1..date10, flag1..flag20, duration1..duration10." };
+        var idArg = new Argument<string>("slot") { Description = "Slot id: text1..text30, number1..number20, cost1..cost10, date1..date10, flag1..flag20, duration1..duration10." }
+            .Suggests(CompletionValues.CustomFieldSlots);
         var aliasOpt = new Option<string?>("--alias") { HelpName = "name", Description = "Unique display name usable as a field key." };
         var formulaOpt = new Option<string?>("--formula") { HelpName = "expr", Description = "e.g. \"IIf([totalSlack] < 1d, 100, 0)\"." };
         var indicatorOpt = new Option<string[]>("--indicator")
@@ -95,7 +97,7 @@ internal static class CustomFieldCommands
 
     private static Command Remove()
     {
-        var idArg = new Argument<string>("field") { Description = "Slot id or alias." };
+        var idArg = new Argument<string>("field") { Description = "Slot id or alias." }.Suggests(CompletionValues.DefinedCustomFields);
         var command = new Command("remove", "Remove a definition and its stored values.") { idArg };
         command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
         {

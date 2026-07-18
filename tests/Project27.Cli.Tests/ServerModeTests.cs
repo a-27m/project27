@@ -112,6 +112,109 @@ public sealed class ServerModeTests : IDisposable
             StringComparison.Ordinal);
     }
 
+    // ---------------------------------------------------------- completion (D4)
+
+    private static Completion.CompletionResult Complete(params string[] argv)
+        => Completion.CompletionCommands.Resolve(argv);
+
+    [Fact]
+    public void Completes_server_project_names_with_the_callers_role()
+    {
+        Cli.Ok(AsAlice("project", "create", "Alpha Project"));
+        Cli.Ok(AsAlice("project", "create", "Beta"));
+
+        var candidates = Complete(
+            "p27", "--server", "http://localhost", "--dev-user", "alice", "--project", "").Candidates;
+
+        // A name with a space stays one candidate; the shell dequoted it for us.
+        Assert.Contains(candidates, c => c.Value == "Alpha Project" && c.Description == "owner");
+        Assert.Contains(candidates, c => c.Value == "Beta");
+    }
+
+    [Fact]
+    public void Completes_task_references_from_the_server_project()
+    {
+        Cli.Ok(AsAlice("project", "create", "Remote Plan", "--start", "2026-01-05"));
+        Cli.Ok(AsAlice("task", "add", "Remote design", "-d", "2d", "--project", "Remote Plan"));
+
+        var candidates = Complete(
+            "p27", "--server", "http://localhost", "--dev-user", "alice",
+            "--project", "Remote Plan", "task", "show", "").Candidates;
+
+        Assert.Equal(["1"], candidates.Select(c => c.Value));
+        Assert.Equal(["Remote design"], candidates.Select(c => c.Description));
+    }
+
+    /// <summary>
+    /// `Resolve` rejects a name shared by two projects, so completing the name would only
+    /// produce a value the command refuses. Ambiguous names come back as ids instead.
+    /// </summary>
+    [Fact]
+    public void An_ambiguous_project_name_completes_to_ids_not_the_name()
+    {
+        Cli.Ok(AsAlice("project", "create", "Twin"));
+        Cli.Ok(AsAlice("project", "create", "Twin"));
+
+        var candidates = Complete(
+            "p27", "--server", "http://localhost", "--dev-user", "alice", "--project", "").Candidates;
+
+        Assert.DoesNotContain(candidates, c => c.Value == "Twin");
+        var ids = candidates.Where(c => c.Description?.StartsWith("Twin", StringComparison.Ordinal) == true).ToList();
+        Assert.Equal(2, ids.Count);
+        Assert.All(ids, c => Assert.True(Guid.TryParse(c.Value, out _), $"'{c.Value}' should be an id"));
+    }
+
+    /// <summary>
+    /// P27_SERVER puts the CLI in server mode with nothing on the command line to show
+    /// it, so completion has to resolve the source exactly the way the verbs do.
+    /// </summary>
+    [Fact]
+    public void The_server_environment_variable_alone_puts_completion_in_server_mode()
+    {
+        Cli.Ok(AsAlice("project", "create", "Env Only"));
+
+        var candidates = WithEnvironment(
+            () => Complete("p27", "--dev-user", "alice", "--project", "").Candidates,
+            ("P27_SERVER", "http://localhost"));
+
+        Assert.Contains(candidates, c => c.Value == "Env Only");
+    }
+
+    [Fact]
+    public void The_project_environment_variable_resolves_task_references_too()
+    {
+        Cli.Ok(AsAlice("project", "create", "Env Plan", "--start", "2026-01-05"));
+        Cli.Ok(AsAlice("task", "add", "Env task", "-d", "1d", "--project", "Env Plan"));
+
+        var candidates = WithEnvironment(
+            () => Complete("p27", "--dev-user", "alice", "task", "show", "").Candidates,
+            ("P27_SERVER", "http://localhost"),
+            ("P27_PROJECT", "Env Plan"));
+
+        Assert.Equal(["Env task"], candidates.Select(c => c.Description));
+    }
+
+    private static T WithEnvironment<T>(Func<T> action, params (string Name, string Value)[] variables)
+    {
+        var previous = variables.Select(v => (v.Name, Old: Environment.GetEnvironmentVariable(v.Name))).ToList();
+        foreach (var (name, value) in variables)
+        {
+            Environment.SetEnvironmentVariable(name, value);
+        }
+
+        try
+        {
+            return action();
+        }
+        finally
+        {
+            foreach (var (name, old) in previous)
+            {
+                Environment.SetEnvironmentVariable(name, old);
+            }
+        }
+    }
+
     [Fact]
     public void Import_mspdi_creates_a_server_project()
     {

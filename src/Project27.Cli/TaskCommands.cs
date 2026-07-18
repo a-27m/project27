@@ -1,4 +1,5 @@
 using System.CommandLine;
+using Project27.Cli.Completion;
 using System.Globalization;
 using Project27.Core;
 using Project27.Core.Time;
@@ -30,7 +31,8 @@ internal static class TaskCommands
     {
         var nameArg = new Argument<string>("name");
         var durationOpt = new Option<string?>("--duration", "-d") { HelpName = "duration" };
-        var parentOpt = new Option<string?>("--parent") { HelpName = "ref", Description = "Parent task; default: top level." };
+        var parentOpt = new Option<string?>("--parent") { HelpName = "ref", Description = "Parent task; default: top level." }
+            .Suggests(CompletionValues.Tasks);
         var atOpt = new Option<int?>("--at") { Description = "0-based child position under the parent; default: append." };
         var milestoneOpt = new Option<bool>("--milestone") { Description = "Add a zero-duration milestone." };
         var command = new Command("add", "Add a task.") { nameArg, durationOpt, parentOpt, atOpt, milestoneOpt };
@@ -70,7 +72,7 @@ internal static class TaskCommands
         var fromOpt = new Option<string>("--from") { HelpName = "date", Required = true };
         var untilOpt = new Option<string?>("--until") { HelpName = "date" };
         var timesOpt = new Option<int?>("--times") { Description = "Number of occurrences (alternative to --until)." };
-        var parentOpt = new Option<string?>("--parent") { HelpName = "ref" };
+        var parentOpt = new Option<string?>("--parent") { HelpName = "ref" }.Suggests(CompletionValues.Tasks);
         var command = new Command("add-recurring", "Add a recurring task (a summary with one child per occurrence).")
         {
             nameArg, durationOpt, recurOpt, fromOpt, untilOpt, timesOpt, parentOpt,
@@ -143,7 +145,7 @@ internal static class TaskCommands
 
     private static Command Show()
     {
-        var refArg = new Argument<string>("task") { Description = "Task reference: row id or uid:<n>." };
+        var refArg = new Argument<string>("task") { Description = "Task reference: row id or uid:<n>." }.Suggests(CompletionValues.Tasks);
         var command = new Command("show", "Print every field of one task.") { refArg };
         command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
         {
@@ -218,26 +220,30 @@ internal static class TaskCommands
 
     private static Command Set()
     {
-        var refArg = new Argument<string>("task") { Description = "Task reference: row id or uid:<n>." };
+        var refArg = new Argument<string>("task") { Description = "Task reference: row id or uid:<n>." }.Suggests(CompletionValues.Tasks);
         var nameOpt = new Option<string?>("--name");
         var durationOpt = new Option<string?>("--duration", "-d") { HelpName = "duration" };
-        var modeOpt = new Option<string?>("--mode") { HelpName = "auto|manual" };
-        var activeOpt = new Option<string?>("--active") { HelpName = "bool" };
-        var milestoneOpt = new Option<string?>("--milestone") { HelpName = "bool" };
+        var modeOpt = new Option<string?>("--mode") { HelpName = "auto|manual" }.Suggests("auto", "manual");
+        var activeOpt = new Option<string?>("--active") { HelpName = "bool" }.Suggests(CompletionValues.Booleans);
+        var milestoneOpt = new Option<string?>("--milestone") { HelpName = "bool" }.Suggests(CompletionValues.Booleans);
         var priorityOpt = new Option<int?>("--priority") { Description = "0-1000, default 500." };
         var spaceAfterOpt = new Option<int?>("--space-after") { Description = "Blank rows shown after this task, 0-20; 0 clears it." };
         var deadlineOpt = new Option<string?>("--deadline") { HelpName = "date|none" };
-        var constraintOpt = new Option<string?>("--constraint") { HelpName = "asap|alap|snet|snlt|fnet|fnlt|mso|mfo" };
+        var constraintOpt = new Option<string?>("--constraint") { HelpName = "asap|alap|snet|snlt|fnet|fnlt|mso|mfo" }
+            .Suggests(CompletionValues.Constraints);
         var constraintDateOpt = new Option<string?>("--constraint-date") { HelpName = "date" };
-        var calendarOpt = new Option<string?>("--calendar") { HelpName = "name|default" };
+        var calendarOpt = new Option<string?>("--calendar") { HelpName = "name|default" }
+            .Suggests(r => CompletionValues.Calendars(r).Prepend(new Candidate("default", "Use the project calendar.")));
         var wbsOpt = new Option<string?>("--wbs") { HelpName = "code|auto" };
         var manualStartOpt = new Option<string?>("--manual-start") { HelpName = "date|none" };
         var manualFinishOpt = new Option<string?>("--manual-finish") { HelpName = "date|none" };
-        var typeOpt = new Option<string?>("--type") { HelpName = "fixed-units|fixed-duration|fixed-work" };
-        var effortOpt = new Option<string?>("--effort-driven") { HelpName = "bool" };
+        var typeOpt = new Option<string?>("--type") { HelpName = "fixed-units|fixed-duration|fixed-work" }
+            .Suggests(CompletionValues.TaskTypes);
+        var effortOpt = new Option<string?>("--effort-driven") { HelpName = "bool" }.Suggests(CompletionValues.Booleans);
         var fixedCostOpt = new Option<string?>("--fixed-cost") { HelpName = "amount" };
-        var accrualOpt = new Option<string?>("--accrual") { HelpName = "start|prorated|end" };
-        var ignoreResCalOpt = new Option<string?>("--ignore-resource-calendars") { HelpName = "bool" };
+        var accrualOpt = new Option<string?>("--accrual") { HelpName = "start|prorated|end" }.Suggests(CompletionValues.Accruals);
+        var ignoreResCalOpt = new Option<string?>("--ignore-resource-calendars") { HelpName = "bool" }
+            .Suggests(CompletionValues.Booleans);
         var percentOpt = new Option<int?>("--percent-complete") { Description = "0-100." };
         var actualStartOpt = new Option<string?>("--actual-start") { HelpName = "date|none" };
         var actualFinishOpt = new Option<string?>("--actual-finish") { HelpName = "date|none" };
@@ -428,7 +434,7 @@ internal static class TaskCommands
 
     private static Command Remove()
     {
-        var refArg = new Argument<string>("task") { Description = "Task reference: row id or uid:<n>." };
+        var refArg = new Argument<string>("task") { Description = "Task reference: row id or uid:<n>." }.Suggests(CompletionValues.Tasks);
         var command = new Command("remove", "Remove a task (and its subtree).") { refArg };
         command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
         {
@@ -447,8 +453,9 @@ internal static class TaskCommands
 
     private static Command Move()
     {
-        var refArg = new Argument<string>("task") { Description = "Task reference: row id or uid:<n>." };
-        var parentOpt = new Option<string>("--parent") { HelpName = "ref|top", Required = true };
+        var refArg = new Argument<string>("task") { Description = "Task reference: row id or uid:<n>." }.Suggests(CompletionValues.Tasks);
+        var parentOpt = new Option<string>("--parent") { HelpName = "ref|top", Required = true }
+            .Suggests(r => CompletionValues.Tasks(r).Prepend(new Candidate("top", "Move to the top level.")));
         var atOpt = new Option<int?>("--at") { Description = "0-based child position; default: append." };
         var command = new Command("move", "Move a task (and its subtree) elsewhere in the outline.") { refArg, parentOpt, atOpt };
         command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
@@ -478,7 +485,7 @@ internal static class TaskCommands
         {
             Arity = ArgumentArity.OneOrMore,
             Description = "Task references: row ids or uid:<n>.",
-        };
+        }.Suggests(CompletionValues.Tasks);
         var command = new Command(verb, description) { refsArg };
         command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
         {
@@ -509,7 +516,7 @@ internal static class TaskCommands
 
     private static Command Split()
     {
-        var refArg = new Argument<string>("task") { Description = "Task reference: row id or uid:<n>." };
+        var refArg = new Argument<string>("task") { Description = "Task reference: row id or uid:<n>." }.Suggests(CompletionValues.Tasks);
         var atOpt = new Option<string>("--at") { HelpName = "duration", Required = true, Description = "Working-time offset from the task start." };
         var gapOpt = new Option<string>("--gap") { HelpName = "duration", Required = true, Description = "Length of the interruption." };
         var command = new Command("split", "Split a task at a working-time offset.") { refArg, atOpt, gapOpt };
@@ -532,7 +539,7 @@ internal static class TaskCommands
 
     private static Command Unsplit()
     {
-        var refArg = new Argument<string>("task") { Description = "Task reference: row id or uid:<n>." };
+        var refArg = new Argument<string>("task") { Description = "Task reference: row id or uid:<n>." }.Suggests(CompletionValues.Tasks);
         var command = new Command("unsplit", "Remove all splits from a task.") { refArg };
         command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
         {
@@ -555,7 +562,7 @@ internal static class TaskCommands
         {
             Description = "Optional task reference; default: every task plus the project row.",
             Arity = ArgumentArity.ZeroOrOne,
-        };
+        }.Suggests(CompletionValues.Tasks);
         var command = new Command("evm", "Earned-value figures at the status date (baseline 0).") { refArg };
         command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
         {
@@ -602,7 +609,7 @@ internal static class TaskCommands
 
     private static Command Drivers()
     {
-        var refArg = new Argument<string>("task") { Description = "Task reference: row id or uid:<n>." };
+        var refArg = new Argument<string>("task") { Description = "Task reference: row id or uid:<n>." }.Suggests(CompletionValues.Tasks);
         var command = new Command("drivers", "Explain what places the task where it is (inspector).") { refArg };
         command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
         {

@@ -1,4 +1,5 @@
 using System.CommandLine;
+using Project27.Cli.Completion;
 using Project27.Core;
 
 namespace Project27.Cli;
@@ -17,7 +18,7 @@ internal static class BaselineCommands
         => new("--slot") { Description = "Baseline slot 0-10; default 0.", DefaultValueFactory = _ => 0 };
 
     private static Option<string[]> TasksOption()
-        => new("--tasks")
+        => new Option<string[]>("--tasks")
         {
             Description = "Task references (row ids or uid:<n>); default: the whole project.",
             AllowMultipleArgumentsPerToken = true,

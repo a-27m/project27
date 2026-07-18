@@ -1,4 +1,5 @@
 using System.CommandLine;
+using Project27.Cli.Completion;
 using Project27.Cli;
 
 namespace Project27.Cli;
@@ -63,7 +64,7 @@ internal static class ServerCommands
 
     public static Command ProjectDelete()
     {
-        var refArg = new Argument<string>("project") { Description = "Project name or id." };
+        var refArg = new Argument<string>("project") { Description = "Project name or id." }.Suggests(CompletionValues.Projects);
         var command = new Command("delete", "Delete a project on the server (owner only).") { refArg };
         command.SetAction(parseResult => CliRoot.Run(parseResult, context =>
         {

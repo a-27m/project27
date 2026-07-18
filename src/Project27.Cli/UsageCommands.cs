@@ -1,4 +1,5 @@
 using System.CommandLine;
+using Project27.Cli.Completion;
 using System.Globalization;
 using Project27.Core;
 using Project27.Core.Usage;
@@ -23,7 +24,8 @@ internal static class UsageCommands
     {
         var fromOpt = new Option<string?>("--from") { HelpName = "date", Description = "First bucket; default: the project start." };
         var toOpt = new Option<string?>("--to") { HelpName = "date", Description = "Last bucket; default: the project finish." };
-        var granularityOpt = new Option<string?>("--granularity", "-g") { HelpName = "day|week", Description = "Bucket size; default week." };
+        var granularityOpt = new Option<string?>("--granularity", "-g") { HelpName = "day|week", Description = "Bucket size; default week." }
+            .Suggests("day", "week");
         var assignmentsOpt = new Option<bool>("--assignments") { Description = "Break each task down into its assignments." };
         var costOpt = new Option<bool>("--cost") { Description = "Show cost per bucket instead of work." };
         var filterOpt = new Option<string?>("--filter") { HelpName = "expr", Description = "Task filter, as in `view`." };

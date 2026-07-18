@@ -1,4 +1,5 @@
 using System.CommandLine;
+using Project27.Cli.Completion;
 using Project27.Core;
 using Project27.Core.Time;
 using Project27.Storage;
@@ -99,12 +100,14 @@ internal static class ProjectCommands
         var nameOpt = new Option<string?>("--name") { Description = "Rename the project." };
         var startOpt = new Option<string?>("--start") { HelpName = "date", Description = "Project start (schedule-from-start anchor)." };
         var finishOpt = new Option<string?>("--finish") { HelpName = "date", Description = "Project finish (schedule-from-finish anchor)." };
-        var scheduleFromOpt = new Option<string?>("--schedule-from") { HelpName = "start|finish" };
-        var calendarOpt = new Option<string?>("--calendar") { HelpName = "name", Description = "Project default calendar." };
+        var scheduleFromOpt = new Option<string?>("--schedule-from") { HelpName = "start|finish" }
+            .Suggests(CompletionValues.ScheduleFrom);
+        var calendarOpt = new Option<string?>("--calendar") { HelpName = "name", Description = "Project default calendar." }
+            .Suggests(CompletionValues.Calendars);
         var minutesPerDayOpt = new Option<int?>("--minutes-per-day");
         var minutesPerWeekOpt = new Option<int?>("--minutes-per-week");
         var daysPerMonthOpt = new Option<decimal?>("--days-per-month");
-        var weekStartsOnOpt = new Option<string?>("--week-starts-on") { HelpName = "day" };
+        var weekStartsOnOpt = new Option<string?>("--week-starts-on") { HelpName = "day" }.Suggests(CompletionValues.DaysOfWeek);
         var dayStartOpt = new Option<string?>("--day-start") { HelpName = "HH:mm", Description = "Default start time for date-only inputs." };
         var dayEndOpt = new Option<string?>("--day-end") { HelpName = "HH:mm", Description = "Default end time for date-only inputs." };
         var statusDateOpt = new Option<string?>("--status-date") { HelpName = "date|none", Description = "Progress reporting date for EVM and rescheduling." };

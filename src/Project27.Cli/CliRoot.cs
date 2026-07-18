@@ -1,16 +1,17 @@
 using System.CommandLine;
+using Project27.Cli.Completion;
 
 namespace Project27.Cli;
 
 /// <summary>Assembles the `p27` command tree (see docs/spec/03-persistence-cli.md §2.3).</summary>
 internal static class CliRoot
 {
-    internal static readonly Option<string?> FileOption = new("--file", "-f")
+    internal static readonly Option<string?> FileOption = new Option<string?>("--file", "-f")
     {
         Description = "Project file (default: the single *.p27 in the current directory).",
         HelpName = "path",
         Recursive = true,
-    };
+    }.SuggestsPaths(CompletionDirective.ProjectFiles);
 
     internal static readonly Option<bool> JsonOption = new("--json")
     {
@@ -18,19 +19,19 @@ internal static class CliRoot
         Recursive = true,
     };
 
-    internal static readonly Option<string?> ServerOption = new("--server")
+    internal static readonly Option<string?> ServerOption = new Option<string?>("--server")
     {
         Description = "Server base URL (or P27_SERVER); switches from local files to the REST API.",
         HelpName = "url",
         Recursive = true,
-    };
+    }.Suggests(CompletionValues.Servers);
 
-    internal static readonly Option<string?> ProjectOption = new("--project", "-p")
+    internal static readonly Option<string?> ProjectOption = new Option<string?>("--project", "-p")
     {
         Description = "Server project by name or id (server mode).",
         HelpName = "name|id",
         Recursive = true,
-    };
+    }.Suggests(CompletionValues.Projects);
 
     internal static readonly Option<string?> TokenOption = new("--token")
     {
@@ -78,6 +79,8 @@ internal static class CliRoot
         root.Add(ServerCommands.Checkout());
         root.Add(ServerCommands.Checkin());
         root.Add(ServerCommands.Unlock());
+        root.Add(CompletionCommands.Completion());
+        root.Add(CompletionCommands.Complete());
         return root;
     }
 

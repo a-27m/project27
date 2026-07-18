@@ -16,4 +16,20 @@
     <ProjectReference Include="..\..\src\Project27.Server\Project27.Server.csproj" Aliases="server" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!--
+      CompletionScriptTests runs p27 as a real process, and it must come from the CLI's own
+      output — not from this directory. This project references the server, so its output is
+      built against the ASP.NET shared framework, and MSBuild prunes assemblies that
+      framework provides (Microsoft.Extensions.Configuration among them). That is correct
+      for the test host, which loads them from the framework, but the p27.dll copied here
+      declares only Microsoft.NETCore.App and cannot. Whether a given assembly gets pruned
+      depends on the installed runtime, so this passes locally and fails on CI.
+    -->
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>CliOutputDirectory</_Parameter1>
+      <_Parameter2>$(MSBuildThisFileDirectory)../../src/Project27.Cli/bin/$(Configuration)/$(TargetFramework)/</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
 </Project>
