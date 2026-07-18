@@ -35,3 +35,11 @@ export → import → recalculate.
 p27 export mspdi [--out file.xml]
 p27 import mspdi <file.xml> [--file new.p27]
 ```
+
+`import mspdi` also works in `--server` mode: it POSTs the XML to
+`/api/projects/import/mspdi` and creates a new server project instead of a
+local `.p27` (`--file`/`P27_FILE` has no meaning there — it errors rather than
+being silently dropped). `import p27 <file.p27>` is server-mode only — it
+POSTs the SQLite file to `/api/projects/import/p27` for cases where copying
+the `.p27` file directly isn't practical (e.g. scripting against a server
+that isn't reachable over the filesystem).

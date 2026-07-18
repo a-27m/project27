@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
@@ -116,6 +117,26 @@ internal sealed class RemoteClient : IDisposable
     }
 
     public void Unlock(Guid id) => Send(HttpMethod.Delete, $"api/projects/{id:D}/lock").Dispose();
+
+    public RemoteProjectInfo ImportMspdi(string xml)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "api/projects/import/mspdi")
+        {
+            Content = new StringContent(xml, Encoding.UTF8, "application/xml"),
+        };
+        return Read<RemoteProjectInfo>(SendRequest(request));
+    }
+
+    public RemoteProjectInfo ImportP27(Stream fileStream)
+    {
+        var content = new StreamContent(fileStream);
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+        using var request = new HttpRequestMessage(HttpMethod.Post, "api/projects/import/p27")
+        {
+            Content = content,
+        };
+        return Read<RemoteProjectInfo>(SendRequest(request));
+    }
 
     // ---------------------------------------------------------------- plumbing
 
