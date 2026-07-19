@@ -498,6 +498,64 @@ test against `dotnet run --project src/Project27.Server` + `npm run dev`
 (indicator icon on the task list, lazy fetch on accordion expand, edit +
 reload persistence).
 
+## Per-view, server-persisted column preferences + custom fields as columns (2026-07-19, see spec 12c, decisions D10)
+
+Three independent gaps closed together: custom fields were fully modeled end
+to end (`project.customFields`/`task.customValues` on the wire) but never
+reachable from any column picker; the one existing picker (Gantt's) was a
+single `localStorage` key shared by the whole app, so switching views or
+subviews clobbered it; and Table/Resources had no picker at all (Table used a
+free-text `fields=` box, Resources a fixed 4-column layout).
+
+New server-side: `preferences(project_id, user_id, data, updated_at)` table,
+modeled directly on `members` — one JSON `ColumnPreferencesDto` blob
+(`gantt`, `resources`, `table` keyed by subview) per project per user, via
+`IServerStore.Get/SetPreferences` and `GET/PUT /api/projects/{id}/preferences`
+(reader role, caller's own user id, no `If-Match`/version — independent of the
+checkout lock and document write path, D10). New `GET /api/projects/{id}/fields`
+returns every field `FieldCatalog` can resolve (built-ins + the project's
+custom fields), powering the Table picker since any field key is legal in any
+table regardless of that table's *default* set (`TaskView.Tables`).
+
+Web: `sheetColumns.ts`'s `columnsForProject(project)` merges the existing
+16 built-in Gantt columns with one generated per custom field (rendered via
+the new shared `formatFieldValue` in `lib/format.ts`, extracted out of
+`TableView`'s old `formatCell`). A new `useColumnPreferences` hook
+(`lib/preferences.ts`) seeds instantly from a per-project `localStorage` cache
+(`p27.columns.<projectId>`, avoids a flash of defaults), adopts the server's
+copy on load, and writes back debounced (400ms) on change — readers can save
+their own picks without holding the lock. A generalized `ColumnsDialog`
+component (pulled out of the page-level inline one) is now shared by Gantt,
+the new Resources picker (`resourceColumns.ts`: name/type/maxUnits/rate, name
+mandatory), and the new Table picker (replaces the free-text box; catalog
+fetched once from `/fields`, selection keyed per subview).
+
+Covered by `Project27.Server.Tests` (round-trip per user, readers can save
+without checkout, non-members 403/404, `/fields` returns built-ins + a defined
+custom field) and `web`'s `format.test.ts`/`preferences.test.ts` for the pure
+formatting/merge logic.
+
+**Follow-up (same day):** three refinements landed after initial review. (1)
+"Columns…" for Resources and Table moved out of their own toolbar buttons into
+the same ⋯ overflow menu Gantt already used — `TableView`'s subview select and
+its `/fields` catalog fetch got lifted from local state up into `ProjectView`
+(`tableSubview`, `fieldCatalog`) so the shared menu item can reach whichever
+view is active; a static `TABLE_DEFAULT_FIELDS` (`tableColumns.ts`, mirrors
+Core's `TaskView.Tables`) lets the dialog preselect a subview's server
+defaults without needing TableView's live query result. (2) `ColumnsDialog`
+gained a `defaultKeys` prop and a "Reset" button — resets Gantt/Resources to
+their built-in defaults, and Table to no stored override (falls back to the
+server's per-subview default the same way "never touched" already did). (3)
+`ColumnOption` gained an optional `group`; `ColumnsDialog` renders one
+`<h4>`-headed section per distinct group in first-seen order (falls back to a
+flat list when no option carries a group, e.g. Resources' 4 columns). Groups
+come from `FieldCatalog.FieldDefinition.Group` server-side (Identity /
+Schedule / Work & Cost / Tracking / Baseline & Variance / Earned Value /
+Custom Fields — a new optional record parameter defaulting to "Custom
+Fields", threaded through `/fields`' new `FieldSummaryDto`) and from a
+hand-set `group` per entry in `sheetColumns.ts`'s `BUILTIN_COLUMNS` for
+Gantt, which renders client-side and so doesn't go through `/fields`.
+
 ## Checkout/lock/history UI now shows display names, not user ids (2026-07-15)
 
 "Checked out by", the version-history "By" column, and project members all

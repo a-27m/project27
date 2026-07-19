@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dateTime, durationDays, formatUnits, fromWireDate, predecessorToken, toWireDate } from './format'
+import { dateTime, durationDays, formatFieldValue, formatUnits, fromWireDate, predecessorToken, toWireDate } from './format'
 
 describe('format', () => {
   it('renders durations in days from minutes', () => {
@@ -33,5 +33,17 @@ describe('format', () => {
     expect(predecessorToken(3, 'finishToStart', 'working', 480, 480)).toBe('3FS+1d')
     expect(predecessorToken(5, 'startToStart', 'percent', -50, 480)).toBe('5SS-50%')
     expect(predecessorToken(2, 'finishToFinish', 'elapsed', 1440, 480)).toBe('2FF+1ed')
+  })
+
+  it('formats view-engine field values by kind', () => {
+    expect(formatFieldValue('Duration', 960)).toBe('2d')
+    expect(formatFieldValue('Work', 120)).toBe('2h')
+    expect(formatFieldValue('Percent', 50)).toBe('50%')
+    expect(formatFieldValue('Date', '2026-01-05T08:00:00')).toBe('2026-01-05 08:00')
+    expect(formatFieldValue('Flag', true)).toBe('yes')
+    expect(formatFieldValue('Flag', false)).toBe('no')
+    expect(formatFieldValue('Cost', 12.345)).toBe('12.35')
+    expect(formatFieldValue('Text', 'hi')).toBe('hi')
+    expect(formatFieldValue('Text', null)).toBe('')
   })
 })

@@ -44,3 +44,12 @@ public sealed record LabelRequest(int? Version, string? Label);
 public sealed record RevertRequest(int Version, string? Label);
 
 public sealed record SnapshotDto(int Version, string SavedBy, string SavedByName, DateTime SavedAt, string? Label);
+
+/// <summary>Per-user, server-persisted UI state; display preferences, not domain data (D4 exemption, see decisions.md).</summary>
+public sealed record ColumnPreferencesDto(
+    IReadOnlyList<string>? Gantt,
+    IReadOnlyList<string>? Resources,
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? Table);
+
+/// <summary>One field the view engine can resolve, with its column-picker section (see FieldCatalog.FieldDefinition.Group).</summary>
+public sealed record FieldSummaryDto(string Key, string Caption, string Kind, string Group);

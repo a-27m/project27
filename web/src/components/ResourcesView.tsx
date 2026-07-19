@@ -5,13 +5,15 @@ interface Props {
   project: ScheduleProject
   editable: boolean
   onCommands: (commands: Command[]) => void
+  columnKeys: string[]
 }
 
 /** Resource management: list, add, rename, rate, max units, remove (12p-3). */
-export function ResourcesView({ project, editable, onCommands }: Props) {
+export function ResourcesView({ project, editable, onCommands, columnKeys }: Props) {
   const [name, setName] = useState('')
   const [type, setType] = useState<'work' | 'material' | 'cost'>('work')
   const [rate, setRate] = useState('')
+  const show = (key: string) => columnKeys.includes(key)
 
   return (
     <div className="page">
@@ -56,59 +58,65 @@ export function ResourcesView({ project, editable, onCommands }: Props) {
         <table className="data-table">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Type</th>
-              <th>Max units</th>
-              <th>Rate</th>
+              {show('name') && <th>Name</th>}
+              {show('type') && <th>Type</th>}
+              {show('maxUnits') && <th>Max units</th>}
+              {show('rate') && <th>Rate</th>}
               <th />
             </tr>
           </thead>
           <tbody>
             {project.resources.map((resource) => (
               <tr key={resource.uid}>
-                <td>
-                  <InlineEdit
-                    value={resource.name}
-                    editable={editable}
-                    label={`Rename ${resource.name}`}
-                    onCommit={(v) => onCommands([{ op: 'setResource', resource: resource.name, name: v }])}
-                  />
-                </td>
-                <td>{resource.type}</td>
-                <td>
-                  {resource.type === 'work' ? (
+                {show('name') && (
+                  <td>
                     <InlineEdit
-                      value={`${resource.maxUnits * 100}%`}
+                      value={resource.name}
                       editable={editable}
-                      label={`Max units of ${resource.name}`}
-                      onCommit={(v) =>
-                        onCommands([
-                          {
-                            op: 'setResource',
-                            resource: resource.name,
-                            maxUnits: v.endsWith('%') ? Number(v.slice(0, -1)) / 100 : Number(v),
-                          },
-                        ])
-                      }
+                      label={`Rename ${resource.name}`}
+                      onCommit={(v) => onCommands([{ op: 'setResource', resource: resource.name, name: v }])}
                     />
-                  ) : (
-                    ''
-                  )}
-                </td>
-                <td>
-                  {resource.type !== 'cost' ? (
-                    <InlineEdit
-                      value={resource.rate}
-                      editable={editable}
-                      label={`Rate of ${resource.name}`}
-                      onCommit={(v) =>
-                        onCommands([{ op: 'setResourceRate', resource: resource.name, rate: v }])
-                      }
-                    />
-                  ) : (
-                    ''
-                  )}
-                </td>
+                  </td>
+                )}
+                {show('type') && <td>{resource.type}</td>}
+                {show('maxUnits') && (
+                  <td>
+                    {resource.type === 'work' ? (
+                      <InlineEdit
+                        value={`${resource.maxUnits * 100}%`}
+                        editable={editable}
+                        label={`Max units of ${resource.name}`}
+                        onCommit={(v) =>
+                          onCommands([
+                            {
+                              op: 'setResource',
+                              resource: resource.name,
+                              maxUnits: v.endsWith('%') ? Number(v.slice(0, -1)) / 100 : Number(v),
+                            },
+                          ])
+                        }
+                      />
+                    ) : (
+                      ''
+                    )}
+                  </td>
+                )}
+                {show('rate') && (
+                  <td>
+                    {resource.type !== 'cost' ? (
+                      <InlineEdit
+                        value={resource.rate}
+                        editable={editable}
+                        label={`Rate of ${resource.name}`}
+                        onCommit={(v) =>
+                          onCommands([{ op: 'setResourceRate', resource: resource.name, rate: v }])
+                        }
+                      />
+                    ) : (
+                      ''
+                    )}
+                  </td>
+                )}
                 <td>
                   {editable && (
                     <button

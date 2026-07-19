@@ -89,3 +89,21 @@ Every web operation has a CLI equivalent (D4).
 - xUnit v3 for tests. Engine behavior is locked by golden-scenario tests.
 - Conventional commits. YAML files use the `.yaml` extension.
 - Namespaces/solution: `Project27.*`; CLI binary: `p27`; local project file: `.p27`.
+
+## D10 — Amendment (2026-07-19): per-user UI preferences are exempt from D4/D6
+
+Server-persisted, per-user display state (column selections in Gantt, Resources, and
+each Table subview) is UI state, not domain data, and is treated differently from the
+project document:
+
+- **Independent of the checkout lock and snapshot write path (D6/D6a).** Preferences
+  live in their own `preferences(project_id, user_id, data, updated_at)` table, keyed
+  by the caller's own user id — not the project document — so a Reader can save their
+  own column choices without checking the project out, and saving them never bumps the
+  document version or broadcasts over SSE (nobody else observes another user's picks).
+- **Exempt from D4's "every web operation has a CLI equivalent."** Column preferences
+  are display state carried between browser sessions, exactly like the `localStorage`
+  key they replace; the CLI has no concept of a grid to have columns in. The
+  *capability* they expose (custom fields, EVM/variance fields, etc.) already has CLI
+  parity via `p27 view` and the Core field catalog — only the persisted "which columns
+  am I looking at" preference is exempt.

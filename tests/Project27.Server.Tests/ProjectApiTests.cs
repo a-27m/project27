@@ -266,4 +266,73 @@ public sealed class ProjectApiTests
         var carol = members.EnumerateArray().Single(m => m.GetProperty("userId").GetString() == "carol");
         Assert.Equal("carol", carol.GetProperty("displayName").GetString());
     }
+
+    [Fact]
+    public async Task Preferences_are_empty_until_saved_then_round_trip_per_user()
+    {
+        var (id, alice) = await CreateProject("Prefs-" + Guid.NewGuid().ToString("N"));
+
+        var empty = await alice.GetFromJsonAsync<JsonElement>($"/api/projects/{id:D}/preferences", Token);
+        Assert.Equal(JsonValueKind.Null, empty.GetProperty("gantt").ValueKind);
+
+        var saved = new { gantt = new[] { "name", "start" }, resources = new[] { "name" }, table = new Dictionary<string, string[]> { ["evm"] = ["id", "cpi"] } };
+        var put = await alice.PutAsJsonAsync($"/api/projects/{id:D}/preferences", saved, Token);
+        Assert.Equal(HttpStatusCode.NoContent, put.StatusCode);
+
+        var loaded = await alice.GetFromJsonAsync<JsonElement>($"/api/projects/{id:D}/preferences", Token);
+        var ganttKeys = loaded.GetProperty("gantt").EnumerateArray().Select(e => e.GetString()).ToList();
+        Assert.Equal(["name", "start"], ganttKeys);
+        Assert.Equal("cpi", loaded.GetProperty("table").GetProperty("evm")[1].GetString());
+
+        // A second member's preferences are independent.
+        await alice.PutAsJsonAsync($"/api/projects/{id:D}/members/bob", new { role = "reader" }, Token);
+        var bob = _server.Client("bob");
+        var bobPrefs = await bob.GetFromJsonAsync<JsonElement>($"/api/projects/{id:D}/preferences", Token);
+        Assert.Equal(JsonValueKind.Null, bobPrefs.GetProperty("gantt").ValueKind);
+    }
+
+    [Fact]
+    public async Task Readers_can_save_preferences_without_the_checkout_lock()
+    {
+        var (id, alice) = await CreateProject("PrefsReader-" + Guid.NewGuid().ToString("N"));
+        await alice.PutAsJsonAsync($"/api/projects/{id:D}/members/bob", new { role = "reader" }, Token);
+
+        var bob = _server.Client("bob");
+        var prefs = new { gantt = new List<string> { "name" } };
+        var response = await bob.PutAsJsonAsync($"/api/projects/{id:D}/preferences", prefs, Token);
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Non_members_cannot_read_or_write_preferences()
+    {
+        var (id, _) = await CreateProject("PrefsHidden-" + Guid.NewGuid().ToString("N"));
+        var bob = _server.Client("bob");
+        var prefs = new { gantt = new List<string> { "name" } };
+        Assert.Equal(HttpStatusCode.NotFound, (await bob.GetAsync($"/api/projects/{id:D}/preferences", Token)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await bob.PutAsJsonAsync($"/api/projects/{id:D}/preferences", prefs, Token)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Fields_endpoint_returns_builtins_and_custom_fields()
+    {
+        var (id, alice) = await CreateProject("Fields-" + Guid.NewGuid().ToString("N"));
+        await alice.PostAsync($"/api/projects/{id:D}/checkout", null, Token);
+        await alice.PostAsJsonAsync($"/api/projects/{id:D}/commands", new object[]
+        {
+            new Dictionary<string, object> { ["op"] = "defineCustomField", ["slot"] = "text1", ["alias"] = "Risk" },
+        }, Token);
+        await alice.DeleteAsync($"/api/projects/{id:D}/lock", Token);
+
+        var fields = await alice.GetFromJsonAsync<JsonElement>($"/api/projects/{id:D}/fields", Token);
+        var keys = fields.EnumerateArray().Select(f => f.GetProperty("key").GetString()).ToList();
+        Assert.Contains("cpi", keys);
+        Assert.Contains("name", keys);
+        Assert.Contains("text1", keys);
+        var risk = fields.EnumerateArray().Single(f => f.GetProperty("key").GetString() == "text1");
+        Assert.Equal("Risk", risk.GetProperty("caption").GetString());
+        Assert.Equal("Custom Fields", risk.GetProperty("group").GetString());
+        var name = fields.EnumerateArray().Single(f => f.GetProperty("key").GetString() == "name");
+        Assert.Equal("Identity", name.GetProperty("group").GetString());
+    }
 }

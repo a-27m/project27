@@ -42,6 +42,12 @@ public abstract class RelationalServerStore : IServerStore
             CREATE TABLE IF NOT EXISTS users(
                 user_id TEXT PRIMARY KEY,
                 display_name TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS preferences(
+                project_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                data TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(project_id, user_id));
             """, cancellationToken).ConfigureAwait(false);
 
         // Additive migration; `ADD COLUMN IF NOT EXISTS` is Postgres-only, so swallow the duplicate error.
@@ -119,6 +125,7 @@ public abstract class RelationalServerStore : IServerStore
             DELETE FROM snapshots WHERE project_id = @id;
             DELETE FROM members WHERE project_id = @id;
             DELETE FROM locks WHERE project_id = @id;
+            DELETE FROM preferences WHERE project_id = @id;
             DELETE FROM projects WHERE id = @id;
             """;
         AddParameter(command, "id", Text(id));
@@ -365,6 +372,31 @@ public abstract class RelationalServerStore : IServerStore
         AddParameter(command, "id", Text(id));
         AddParameter(command, "version", version);
         return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) > 0;
+    }
+
+    public async Task<string?> GetPreferences(Guid id, string userId, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnection(cancellationToken).ConfigureAwait(false);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT data FROM preferences WHERE project_id = @id AND user_id = @user";
+        AddParameter(command, "id", Text(id));
+        AddParameter(command, "user", userId);
+        return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as string;
+    }
+
+    public async Task SetPreferences(Guid id, string userId, string dataJson, DateTime now, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnection(cancellationToken).ConfigureAwait(false);
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO preferences(project_id, user_id, data, updated_at) VALUES (@id, @user, @data, @at)
+                ON CONFLICT(project_id, user_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at
+            """;
+        AddParameter(command, "id", Text(id));
+        AddParameter(command, "user", userId);
+        AddParameter(command, "data", dataJson);
+        AddParameter(command, "at", Text(now));
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
     // ---------------------------------------------------------------- helpers

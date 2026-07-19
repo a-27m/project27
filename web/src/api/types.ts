@@ -173,6 +173,23 @@ export interface CustomFieldSummary {
   hasFormula: boolean
 }
 
+/** Per-user, server-persisted UI state (display preferences, not project data). */
+export interface ColumnPreferences {
+  gantt?: string[]
+  resources?: string[]
+  /** Keyed by Table subview (entry, evm, variance, ...). */
+  table?: Record<string, string[]>
+}
+
+/** One field the view engine can resolve: built-ins plus the project's custom fields. */
+export interface FieldSummary {
+  key: string
+  caption: string
+  kind: string
+  /** Logical section for column pickers (Identity, Schedule, Custom Fields, ...). */
+  group: string
+}
+
 export interface ResourceSummary {
   uid: number
   name: string

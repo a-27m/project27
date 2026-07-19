@@ -81,3 +81,28 @@ export function predecessorToken(
   }
   return `${row}${PREDECESSOR_ABBREVIATION[type] ?? '?'}${lag}`
 }
+
+/** Field kinds rendered right-aligned in grids (server FieldKind names, e.g. from /fields, /view). */
+export const NUMERIC_FIELD_KINDS = new Set(['Number', 'Cost', 'Work', 'Duration', 'Percent', 'WholeNumber'])
+
+/** Formats a raw view-engine value (built-in or custom field) by its FieldKind. */
+export function formatFieldValue(kind: string, raw: unknown): string {
+  if (raw === null || raw === undefined) return ''
+  switch (kind) {
+    case 'Duration':
+      return `${Math.round((Number(raw) / 480) * 100) / 100}d`
+    case 'Work':
+      return `${Math.round((Number(raw) / 60) * 100) / 100}h`
+    case 'Percent':
+      return `${String(raw)}%`
+    case 'Date':
+      return String(raw).slice(0, 16).replace('T', ' ')
+    case 'Flag':
+      return raw === true ? 'yes' : 'no'
+    case 'Cost':
+    case 'Number':
+      return String(Math.round(Number(raw) * 100) / 100)
+    default:
+      return String(raw)
+  }
+}

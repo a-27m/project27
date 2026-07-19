@@ -1,5 +1,6 @@
 using System.Data.Common;
 using System.Security.Claims;
+using System.Text.Json;
 using Project27.Core;
 using Project27.Core.Commands;
 using Project27.Core.Persistence;
@@ -695,6 +696,52 @@ public static class ProjectEndpoints
             return await store.RemoveMember(id, userId, cancellationToken)
                 ? Results.NoContent()
                 : Problem(404, $"'{userId}' is not a member.");
+        });
+
+        // Per-user display state (column selections): independent of the document version
+        // and checkout lock (D6/D6a) and exempt from D4's CLI-parity rule (decisions.md).
+        projects.MapGet("/{id:guid}/preferences", async (Guid id, ClaimsPrincipal user, IServerStore store, CancellationToken cancellationToken) =>
+        {
+            var (_, error) = await Authorize(store, id, user, ProjectRole.Reader, cancellationToken);
+            if (error is not null)
+            {
+                return error;
+            }
+
+            var json = await store.GetPreferences(id, UserId(user), cancellationToken);
+            return Results.Ok(json is null
+                ? new ColumnPreferencesDto(null, null, null)
+                : JsonSerializer.Deserialize<ColumnPreferencesDto>(json, JsonSerializerOptions.Web));
+        });
+
+        projects.MapPut("/{id:guid}/preferences", async (Guid id, ColumnPreferencesDto request, ClaimsPrincipal user, IServerStore store, CancellationToken cancellationToken) =>
+        {
+            var (_, error) = await Authorize(store, id, user, ProjectRole.Reader, cancellationToken);
+            if (error is not null)
+            {
+                return error;
+            }
+
+            await store.SetPreferences(id, UserId(user), JsonSerializer.Serialize(request, JsonSerializerOptions.Web), DateTime.UtcNow, cancellationToken);
+            return Results.NoContent();
+        });
+
+        projects.MapGet("/{id:guid}/fields", async (Guid id, ClaimsPrincipal user, IServerStore store, CancellationToken cancellationToken) =>
+        {
+            var (_, error) = await Authorize(store, id, user, ProjectRole.Reader, cancellationToken);
+            if (error is not null)
+            {
+                return error;
+            }
+
+            var json = await store.GetDocument(id, cancellationToken)
+                ?? throw new InvalidOperationException($"Project {id:D} has no snapshot; the store is corrupt.");
+            var project = ProjectDocumentMapper.FromDocument(ProjectDocumentSerializer.Deserialize(json));
+            var fields = Core.Fields.FieldCatalog.All
+                .Concat(project.CustomFields.Select(f => Core.Fields.FieldCatalog.Resolve(project, f.Id)))
+                .Select(f => new FieldSummaryDto(f.Key, f.Caption, f.Kind.ToString(), f.Group))
+                .ToList();
+            return Results.Ok(fields);
         });
 
         projects.MapGet("/{id:guid}/events", async (Guid id, ClaimsPrincipal user, IServerStore store, ProjectEventBroker broker, HttpResponse response, CancellationToken cancellationToken) =>

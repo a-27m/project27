@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { ApiClient } from '../api/client'
-import type { Command, ProjectInfo, Schedule } from '../api/types'
+import type { Command, FieldSummary, ProjectInfo, Schedule } from '../api/types'
 import { Gantt } from '../components/Gantt'
 import { MultiTaskInspector } from '../components/MultiTaskInspector'
 import { NetworkView } from '../components/NetworkView'
@@ -9,6 +9,7 @@ import { ProjectInspector } from '../components/ProjectInspector'
 import { CalendarManager, CustomFieldsManager, HistoryDialog, RecurringTaskDialog } from '../components/Managers'
 import { TableView } from '../components/TableView'
 import { ResourcesView } from '../components/ResourcesView'
+import { DEFAULT_RESOURCE_COLUMN_KEYS, RESOURCE_COLUMNS } from '../components/resourceColumns'
 import { SegmentedPercent } from '../components/SegmentedPercent'
 import { TaskInspector } from '../components/TaskInspector'
 import { TaskSheet } from '../components/TaskSheet'
@@ -16,16 +17,13 @@ import { TimelineView } from '../components/TimelineView'
 import { UsageView } from '../components/UsageView'
 import { DropdownMenu, DropdownTrigger, type MenuGroup } from '../components/DropdownMenu'
 import { Icon } from '../components/icons/Icon'
-import {
-  AVAILABLE_COLUMNS,
-  columnsFor,
-  loadColumnKeys,
-  saveColumnKeys,
-  sheetWidth,
-} from '../components/sheetColumns'
+import { ColumnsDialog } from '../components/ColumnsDialog'
+import { DEFAULT_COLUMN_KEYS, columnsFor, columnsForProject, sheetWidth } from '../components/sheetColumns'
+import { TABLE_DEFAULT_FIELDS } from '../components/tableColumns'
 import { buildDisplayRows, displayIndexByUid } from '../lib/displayRows'
 import { fromWireDate } from '../lib/format'
 import { pruneNested, rangeBetween, siblingMove } from '../lib/outline'
+import { useColumnPreferences } from '../lib/preferences'
 import { makeScale, ticks, monthTicks } from '../lib/timescale'
 import { useOutsideClose } from '../lib/useOutsideClose'
 import { windowRange } from '../lib/virtualize'
@@ -61,7 +59,9 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
   const [dialog, setDialog] = useState<Dialog>(null)
   const [zoomIndex, setZoomIndex] = useState(3) // 24 px/day
   const [showBaselineGhosts, setShowBaselineGhosts] = useState(true)
-  const [columnKeys, setColumnKeys] = useState<string[]>(loadColumnKeys)
+  const prefs = useColumnPreferences(client, projectId)
+  const [tableSubview, setTableSubview] = useState<string>('entry')
+  const [fieldCatalog, setFieldCatalog] = useState<FieldSummary[]>([])
   const [undoStack, setUndoStack] = useState<Command[][]>([])
   const [redoStack, setRedoStack] = useState<Command[][]>([])
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false)
@@ -86,6 +86,10 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  useEffect(() => {
+    client.fields(projectId).then(setFieldCatalog).catch(() => setFieldCatalog([]))
+  }, [client, projectId])
 
   // Live refresh: readers follow check-ins; everyone follows lock changes.
   useEffect(() => {
@@ -198,11 +202,51 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
   const displayRows = useMemo(() => buildDisplayRows(tasks), [tasks])
   const displayByUid = useMemo(() => displayIndexByUid(displayRows), [displayRows])
   const window_ = windowRange(scrollTop, viewportHeight, ROW_HEIGHT, displayRows.length)
-  const columns = useMemo(() => columnsFor(columnKeys), [columnKeys])
+  const availableColumns = useMemo(
+    () => (schedule === null ? [] : columnsForProject(schedule.project)),
+    [schedule],
+  )
+  const ganttColumnKeys = useMemo(() => prefs.preferences.gantt ?? [...DEFAULT_COLUMN_KEYS], [prefs.preferences.gantt])
+  const columns = useMemo(() => columnsFor(ganttColumnKeys, availableColumns), [ganttColumnKeys, availableColumns])
+  const resourcesColumnKeys = prefs.preferences.resources ?? DEFAULT_RESOURCE_COLUMN_KEYS
+  const storedTableColumnKeys = prefs.preferences.table?.[tableSubview] ?? []
+  const tableColumnKeys =
+    storedTableColumnKeys.length > 0 ? storedTableColumnKeys : (TABLE_DEFAULT_FIELDS[tableSubview] ?? [])
   const columnContext = useMemo(
     () => ({ minutesPerDay: schedule?.project.minutesPerDay ?? 480, rowByUid }),
     [schedule, rowByUid],
   )
+
+  // "Columns…" lives in the ⋯ overflow menu (same as Gantt) for every view that has columns.
+  const columnsDialogConfig =
+    viewMode === 'gantt'
+      ? {
+          title: 'Sheet columns',
+          options: availableColumns.map((c) => ({ key: c.key, label: c.key === 'mode' ? 'Mode (manual ✋)' : c.label, group: c.group })),
+          selectedKeys: ganttColumnKeys,
+          mandatoryKey: 'name',
+          defaultKeys: [...DEFAULT_COLUMN_KEYS],
+          onChange: prefs.setGanttColumns,
+        }
+      : viewMode === 'resources'
+        ? {
+            title: 'Resource columns',
+            options: RESOURCE_COLUMNS,
+            selectedKeys: resourcesColumnKeys,
+            mandatoryKey: 'name',
+            defaultKeys: DEFAULT_RESOURCE_COLUMN_KEYS,
+            onChange: prefs.setResourcesColumns,
+          }
+        : viewMode === 'table'
+          ? {
+              title: `${tableSubview} columns`,
+              options: fieldCatalog.map((f) => ({ key: f.key, label: f.caption, group: f.group })),
+              selectedKeys: tableColumnKeys,
+              mandatoryKey: undefined,
+              defaultKeys: TABLE_DEFAULT_FIELDS[tableSubview] ?? [],
+              onChange: (keys: string[]) => prefs.setTableColumns(tableSubview, keys),
+            }
+          : null
 
   const pxPerDay = ZOOM_LEVELS[zoomIndex]
   const scale = useMemo(() => {
@@ -404,10 +448,9 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
         { label: 'Calendars', onClick: () => setDialog('calendars') },
       ],
     },
-    {
-      heading: 'VIEW',
-      items: [{ label: 'Columns…', onClick: () => setDialog('columns') }],
-    },
+    ...(viewMode === 'gantt' || viewMode === 'resources' || viewMode === 'table'
+      ? [{ heading: 'VIEW', items: [{ label: 'Columns…', onClick: () => setDialog('columns') }] }]
+      : []),
     {
       heading: 'REPORTS',
       items: [
@@ -730,7 +773,14 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
       )}
       {viewMode === 'table' && (
         <div className="view-body">
-          <TableView client={client} projectId={projectId} version={schedule?.version ?? 0} />
+          <TableView
+            client={client}
+            projectId={projectId}
+            version={schedule?.version ?? 0}
+            table={tableSubview}
+            onTableChange={setTableSubview}
+            columnKeys={storedTableColumnKeys}
+          />
         </div>
       )}
       {viewMode === 'resources' && schedule !== null && (
@@ -739,6 +789,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
             project={schedule.project}
             editable={editable}
             onCommands={(commands) => void sendCommands(commands)}
+            columnKeys={resourcesColumnKeys}
           />
         </div>
       )}
@@ -921,13 +972,14 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
           onClose={() => setDialog(null)}
         />
       )}
-      {dialog === 'columns' && (
+      {dialog === 'columns' && columnsDialogConfig !== null && (
         <ColumnsDialog
-          columnKeys={columnKeys}
-          onChange={(keys) => {
-            setColumnKeys(keys)
-            saveColumnKeys(keys)
-          }}
+          title={columnsDialogConfig.title}
+          options={columnsDialogConfig.options}
+          selectedKeys={columnsDialogConfig.selectedKeys}
+          mandatoryKey={columnsDialogConfig.mandatoryKey}
+          defaultKeys={columnsDialogConfig.defaultKeys}
+          onChange={columnsDialogConfig.onChange}
           onClose={() => setDialog(null)}
         />
       )}
@@ -1036,65 +1088,6 @@ function CheckinPopover({
       </div>
     </div>,
     document.body,
-  )
-}
-
-function ColumnsDialog({
-  columnKeys,
-  onChange,
-  onClose,
-}: {
-  columnKeys: string[]
-  onChange: (keys: string[]) => void
-  onClose: () => void
-}) {
-  const dialogRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    dialogRef.current?.focus()
-  }, [])
-  return (
-    <div
-      className="modal-backdrop"
-      role="presentation"
-      onClick={onClose}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') onClose()
-      }}
-    >
-      <div
-        className="modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Sheet columns"
-        tabIndex={-1}
-        ref={dialogRef}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <h3>Sheet columns</h3>
-        <div className="checks column-checks">
-          {AVAILABLE_COLUMNS.map((column) => (
-            <label key={column.key}>
-              <input
-                type="checkbox"
-                checked={columnKeys.includes(column.key)}
-                disabled={column.key === 'name'}
-                onChange={(event) =>
-                  onChange(
-                    event.target.checked
-                      ? AVAILABLE_COLUMNS.filter((c) => columnKeys.includes(c.key) || c.key === column.key).map((c) => c.key)
-                      : columnKeys.filter((key) => key !== column.key),
-                  )
-                }
-              />
-              {column.key === 'mode' ? 'Mode (manual ✋)' : column.label}
-            </label>
-          ))}
-        </div>
-        <div className="modal-actions">
-          <button onClick={onClose}>Close</button>
-        </div>
-      </div>
-    </div>
   )
 }
 

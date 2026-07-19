@@ -22,7 +22,8 @@ public enum FieldKind
 }
 
 /// <summary>One displayable task attribute (docs/spec/09-views-fields.md §9a).</summary>
-public sealed record FieldDefinition(string Key, string Caption, FieldKind Kind, Func<ProjectTask, object?> Accessor);
+/// <param name="Group">Logical section for column pickers (Identity, Schedule, ...); custom fields default to "Custom Fields".</param>
+public sealed record FieldDefinition(string Key, string Caption, FieldKind Kind, Func<ProjectTask, object?> Accessor, string Group = "Custom Fields");
 
 /// <summary>
 /// The built-in task field catalog. Raw values are string / int / decimal /
@@ -34,86 +35,93 @@ public static class FieldCatalog
 
     public static IReadOnlyCollection<FieldDefinition> All => Fields.Values;
 
+    private const string Identity = "Identity";
+    private const string Schedule = "Schedule";
+    private const string WorkAndCost = "Work & Cost";
+    private const string Tracking = "Tracking";
+    private const string BaselineAndVariance = "Baseline & Variance";
+    private const string EarnedValueGroup = "Earned Value";
+
     static FieldCatalog()
     {
         // Identity & outline.
-        Add("id", "ID", FieldKind.WholeNumber, t => t.RowNumber);
-        Add("uid", "Unique ID", FieldKind.WholeNumber, t => t.UniqueId);
-        Add("name", "Name", FieldKind.Text, t => t.Name);
-        Add("wbs", "WBS", FieldKind.Text, t => t.Wbs);
-        Add("outlineLevel", "Outline Level", FieldKind.WholeNumber, t => t.OutlineLevel);
-        Add("summary", "Summary", FieldKind.Flag, t => t.IsSummary);
-        Add("milestone", "Milestone", FieldKind.Flag, t => t.IsMilestone);
-        Add("critical", "Critical", FieldKind.Flag, t => t.IsCritical);
-        Add("active", "Active", FieldKind.Flag, t => t.IsActive);
-        Add("mode", "Task Mode", FieldKind.Text, t => t.Mode == TaskMode.Auto ? "auto" : "manual");
-        Add("type", "Type", FieldKind.Text, t => t.Type switch
+        Add("id", "ID", FieldKind.WholeNumber, Identity, t => t.RowNumber);
+        Add("uid", "Unique ID", FieldKind.WholeNumber, Identity, t => t.UniqueId);
+        Add("name", "Name", FieldKind.Text, Identity, t => t.Name);
+        Add("wbs", "WBS", FieldKind.Text, Identity, t => t.Wbs);
+        Add("outlineLevel", "Outline Level", FieldKind.WholeNumber, Identity, t => t.OutlineLevel);
+        Add("summary", "Summary", FieldKind.Flag, Identity, t => t.IsSummary);
+        Add("milestone", "Milestone", FieldKind.Flag, Identity, t => t.IsMilestone);
+        Add("critical", "Critical", FieldKind.Flag, Identity, t => t.IsCritical);
+        Add("active", "Active", FieldKind.Flag, Identity, t => t.IsActive);
+        Add("mode", "Task Mode", FieldKind.Text, Identity, t => t.Mode == TaskMode.Auto ? "auto" : "manual");
+        Add("type", "Type", FieldKind.Text, Identity, t => t.Type switch
         {
             TaskType.FixedUnits => "fixed-units",
             TaskType.FixedDuration => "fixed-duration",
             _ => "fixed-work",
         });
-        Add("priority", "Priority", FieldKind.WholeNumber, t => t.Priority);
+        Add("priority", "Priority", FieldKind.WholeNumber, Identity, t => t.Priority);
 
         // Scheduling.
-        Add("duration", "Duration", FieldKind.Duration, t => t.DurationMinutes);
-        Add("start", "Start", FieldKind.Date, t => t.Start);
-        Add("finish", "Finish", FieldKind.Date, t => t.Finish);
-        Add("earlyStart", "Early Start", FieldKind.Date, t => t.EarlyStart);
-        Add("earlyFinish", "Early Finish", FieldKind.Date, t => t.EarlyFinish);
-        Add("lateStart", "Late Start", FieldKind.Date, t => t.LateStart);
-        Add("lateFinish", "Late Finish", FieldKind.Date, t => t.LateFinish);
-        Add("totalSlack", "Total Slack", FieldKind.Duration, t => t.TotalSlackMinutes);
-        Add("freeSlack", "Free Slack", FieldKind.Duration, t => t.FreeSlackMinutes);
-        Add("constraint", "Constraint Type", FieldKind.Text, t => t.Constraint.ToString());
-        Add("constraintDate", "Constraint Date", FieldKind.Date, t => t.ConstraintDate);
-        Add("deadline", "Deadline", FieldKind.Date, t => t.Deadline);
-        Add("calendar", "Task Calendar", FieldKind.Text, t => t.Calendar?.Name);
-        Add("predecessors", "Predecessors", FieldKind.Text, PredecessorTokens);
-        Add("resourceNames", "Resource Names", FieldKind.Text, ResourceNames);
+        Add("duration", "Duration", FieldKind.Duration, Schedule, t => t.DurationMinutes);
+        Add("start", "Start", FieldKind.Date, Schedule, t => t.Start);
+        Add("finish", "Finish", FieldKind.Date, Schedule, t => t.Finish);
+        Add("earlyStart", "Early Start", FieldKind.Date, Schedule, t => t.EarlyStart);
+        Add("earlyFinish", "Early Finish", FieldKind.Date, Schedule, t => t.EarlyFinish);
+        Add("lateStart", "Late Start", FieldKind.Date, Schedule, t => t.LateStart);
+        Add("lateFinish", "Late Finish", FieldKind.Date, Schedule, t => t.LateFinish);
+        Add("totalSlack", "Total Slack", FieldKind.Duration, Schedule, t => t.TotalSlackMinutes);
+        Add("freeSlack", "Free Slack", FieldKind.Duration, Schedule, t => t.FreeSlackMinutes);
+        Add("constraint", "Constraint Type", FieldKind.Text, Schedule, t => t.Constraint.ToString());
+        Add("constraintDate", "Constraint Date", FieldKind.Date, Schedule, t => t.ConstraintDate);
+        Add("deadline", "Deadline", FieldKind.Date, Schedule, t => t.Deadline);
+        Add("calendar", "Task Calendar", FieldKind.Text, Schedule, t => t.Calendar?.Name);
+        Add("predecessors", "Predecessors", FieldKind.Text, Schedule, PredecessorTokens);
+        Add("resourceNames", "Resource Names", FieldKind.Text, Schedule, ResourceNames);
 
         // Work & cost.
-        Add("work", "Work", FieldKind.Work, t => t.WorkMinutes);
-        Add("cost", "Cost", FieldKind.Cost, t => t.Cost);
-        Add("fixedCost", "Fixed Cost", FieldKind.Cost, t => t.FixedCost);
+        Add("work", "Work", FieldKind.Work, WorkAndCost, t => t.WorkMinutes);
+        Add("cost", "Cost", FieldKind.Cost, WorkAndCost, t => t.Cost);
+        Add("fixedCost", "Fixed Cost", FieldKind.Cost, WorkAndCost, t => t.FixedCost);
 
         // Tracking.
-        Add("percentComplete", "% Complete", FieldKind.Percent, t => t.PercentComplete);
-        Add("actualStart", "Actual Start", FieldKind.Date, t => t.ActualStart);
-        Add("actualFinish", "Actual Finish", FieldKind.Date, t => t.ActualFinish);
-        Add("remainingDuration", "Remaining Duration", FieldKind.Duration, t => t.RemainingMinutes);
-        Add("actualWork", "Actual Work", FieldKind.Work, t => t.ActualWorkMinutes);
-        Add("remainingWork", "Remaining Work", FieldKind.Work, t => t.RemainingWorkMinutes);
-        Add("actualCost", "Actual Cost", FieldKind.Cost, t => t.ActualCost);
-        Add("levelingDelay", "Leveling Delay", FieldKind.Duration, t => t.LevelingDelayMinutes);
+        Add("percentComplete", "% Complete", FieldKind.Percent, Tracking, t => t.PercentComplete);
+        Add("actualStart", "Actual Start", FieldKind.Date, Tracking, t => t.ActualStart);
+        Add("actualFinish", "Actual Finish", FieldKind.Date, Tracking, t => t.ActualFinish);
+        Add("remainingDuration", "Remaining Duration", FieldKind.Duration, Tracking, t => t.RemainingMinutes);
+        Add("actualWork", "Actual Work", FieldKind.Work, Tracking, t => t.ActualWorkMinutes);
+        Add("remainingWork", "Remaining Work", FieldKind.Work, Tracking, t => t.RemainingWorkMinutes);
+        Add("actualCost", "Actual Cost", FieldKind.Cost, Tracking, t => t.ActualCost);
+        Add("levelingDelay", "Leveling Delay", FieldKind.Duration, Tracking, t => t.LevelingDelayMinutes);
 
         // Baseline 0 & variances.
-        Add("baselineStart", "Baseline Start", FieldKind.Date, t => t.Baseline()?.Start);
-        Add("baselineFinish", "Baseline Finish", FieldKind.Date, t => t.Baseline()?.Finish);
-        Add("baselineDuration", "Baseline Duration", FieldKind.Duration, t => t.Baseline()?.DurationMinutes);
-        Add("baselineWork", "Baseline Work", FieldKind.Work, t => t.Baseline()?.WorkMinutes);
-        Add("baselineCost", "Baseline Cost", FieldKind.Cost, t => t.Baseline()?.Cost);
-        Add("startVariance", "Start Variance", FieldKind.Duration, t => DateVariance(t, b => b.Start, t.Start));
-        Add("finishVariance", "Finish Variance", FieldKind.Duration, t => DateVariance(t, b => b.Finish, t.Finish));
-        Add("durationVariance", "Duration Variance", FieldKind.Duration, t => t.Baseline() is { } b ? t.DurationMinutes - b.DurationMinutes : null);
-        Add("workVariance", "Work Variance", FieldKind.Work, t => t.Baseline() is { } b ? t.WorkMinutes - b.WorkMinutes : null);
-        Add("costVariance", "Cost Variance", FieldKind.Cost, t => t.Baseline() is { } b ? t.Cost - b.Cost : null);
+        Add("baselineStart", "Baseline Start", FieldKind.Date, BaselineAndVariance, t => t.Baseline()?.Start);
+        Add("baselineFinish", "Baseline Finish", FieldKind.Date, BaselineAndVariance, t => t.Baseline()?.Finish);
+        Add("baselineDuration", "Baseline Duration", FieldKind.Duration, BaselineAndVariance, t => t.Baseline()?.DurationMinutes);
+        Add("baselineWork", "Baseline Work", FieldKind.Work, BaselineAndVariance, t => t.Baseline()?.WorkMinutes);
+        Add("baselineCost", "Baseline Cost", FieldKind.Cost, BaselineAndVariance, t => t.Baseline()?.Cost);
+        Add("startVariance", "Start Variance", FieldKind.Duration, BaselineAndVariance, t => DateVariance(t, b => b.Start, t.Start));
+        Add("finishVariance", "Finish Variance", FieldKind.Duration, BaselineAndVariance, t => DateVariance(t, b => b.Finish, t.Finish));
+        Add("durationVariance", "Duration Variance", FieldKind.Duration, BaselineAndVariance, t => t.Baseline() is { } b ? t.DurationMinutes - b.DurationMinutes : null);
+        Add("workVariance", "Work Variance", FieldKind.Work, BaselineAndVariance, t => t.Baseline() is { } b ? t.WorkMinutes - b.WorkMinutes : null);
+        Add("costVariance", "Cost Variance", FieldKind.Cost, BaselineAndVariance, t => t.Baseline() is { } b ? t.Cost - b.Cost : null);
 
         // Earned value.
-        Add("bac", "BAC", FieldKind.Cost, t => EarnedValue.ForTask(t).Bac);
-        Add("bcws", "BCWS", FieldKind.Cost, t => EarnedValue.ForTask(t).Bcws);
-        Add("bcwp", "BCWP", FieldKind.Cost, t => EarnedValue.ForTask(t).Bcwp);
-        Add("acwp", "ACWP", FieldKind.Cost, t => EarnedValue.ForTask(t).Acwp);
-        Add("sv", "SV", FieldKind.Cost, t => EarnedValue.ForTask(t).Sv);
-        Add("cv", "CV", FieldKind.Cost, t => EarnedValue.ForTask(t).Cv);
-        Add("spi", "SPI", FieldKind.Number, t => EarnedValue.ForTask(t).Spi);
-        Add("cpi", "CPI", FieldKind.Number, t => EarnedValue.ForTask(t).Cpi);
-        Add("eac", "EAC", FieldKind.Cost, t => EarnedValue.ForTask(t).Eac);
-        Add("vac", "VAC", FieldKind.Cost, t => EarnedValue.ForTask(t).Vac);
+        Add("bac", "BAC", FieldKind.Cost, EarnedValueGroup, t => EarnedValue.ForTask(t).Bac);
+        Add("bcws", "BCWS", FieldKind.Cost, EarnedValueGroup, t => EarnedValue.ForTask(t).Bcws);
+        Add("bcwp", "BCWP", FieldKind.Cost, EarnedValueGroup, t => EarnedValue.ForTask(t).Bcwp);
+        Add("acwp", "ACWP", FieldKind.Cost, EarnedValueGroup, t => EarnedValue.ForTask(t).Acwp);
+        Add("sv", "SV", FieldKind.Cost, EarnedValueGroup, t => EarnedValue.ForTask(t).Sv);
+        Add("cv", "CV", FieldKind.Cost, EarnedValueGroup, t => EarnedValue.ForTask(t).Cv);
+        Add("spi", "SPI", FieldKind.Number, EarnedValueGroup, t => EarnedValue.ForTask(t).Spi);
+        Add("cpi", "CPI", FieldKind.Number, EarnedValueGroup, t => EarnedValue.ForTask(t).Cpi);
+        Add("eac", "EAC", FieldKind.Cost, EarnedValueGroup, t => EarnedValue.ForTask(t).Eac);
+        Add("vac", "VAC", FieldKind.Cost, EarnedValueGroup, t => EarnedValue.ForTask(t).Vac);
     }
 
-    private static void Add(string key, string caption, FieldKind kind, Func<ProjectTask, object?> accessor)
-        => Fields.Add(key, new FieldDefinition(key, caption, kind, accessor));
+    private static void Add(string key, string caption, FieldKind kind, string group, Func<ProjectTask, object?> accessor)
+        => Fields.Add(key, new FieldDefinition(key, caption, kind, accessor, group));
 
     /// <summary>
     /// Field by key: built-ins, custom field slot ids, custom aliases, and the

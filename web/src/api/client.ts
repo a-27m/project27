@@ -1,4 +1,19 @@
-import type { Checkout, Command, CommandsResponse, Me, ProjectEvent, ProjectInfo, Schedule, SnapshotInfo, TaskDriver, Usage, VersionInfo, ViewResult } from './types'
+import type {
+  Checkout,
+  ColumnPreferences,
+  Command,
+  CommandsResponse,
+  FieldSummary,
+  Me,
+  ProjectEvent,
+  ProjectInfo,
+  Schedule,
+  SnapshotInfo,
+  TaskDriver,
+  Usage,
+  VersionInfo,
+  ViewResult,
+} from './types'
 
 export interface Credentials {
   /** Server base URL; empty string = same origin (Vite dev proxy). */
@@ -132,6 +147,18 @@ export class ApiClient {
 
   unlock(id: string): Promise<void> {
     return this.request('DELETE', `/api/projects/${id}/lock`)
+  }
+
+  getPreferences(id: string): Promise<ColumnPreferences> {
+    return this.request('GET', `/api/projects/${id}/preferences`)
+  }
+
+  setPreferences(id: string, preferences: ColumnPreferences): Promise<void> {
+    return this.request('PUT', `/api/projects/${id}/preferences`, preferences)
+  }
+
+  fields(id: string): Promise<FieldSummary[]> {
+    return this.request('GET', `/api/projects/${id}/fields`)
   }
 
   commands(id: string, batch: Command[]): Promise<CommandsResponse> {

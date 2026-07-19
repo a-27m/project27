@@ -53,6 +53,12 @@ public interface IServerStore
 
     /// <summary>Names (or renames; null clears) a stored version.</summary>
     public Task<bool> SetSnapshotLabel(Guid id, int version, string? label, CancellationToken cancellationToken);
+
+    /// <summary>The caller's stored UI preferences (opaque JSON), or null when never saved.</summary>
+    public Task<string?> GetPreferences(Guid id, string userId, CancellationToken cancellationToken);
+
+    /// <summary>Upserts the caller's UI preferences. Independent of the document version and checkout lock.</summary>
+    public Task SetPreferences(Guid id, string userId, string dataJson, DateTime now, CancellationToken cancellationToken);
 }
 
 public sealed record SnapshotInfo(int Version, string SavedBy, DateTime SavedAt, string? Label);
