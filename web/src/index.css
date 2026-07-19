@@ -126,6 +126,58 @@ input[type='radio'] {
   color: var(--danger);
 }
 
+.toast-host {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 1000;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px 14px;
+  border-radius: var(--radius-none);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  animation: toast-in 150ms ease-out;
+  max-width: 360px;
+}
+
+.toast.error {
+  border-color: var(--danger);
+}
+
+.toast-message {
+  flex: 1;
+}
+
+.toast-dismiss {
+  color: var(--muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .muted {
   color: var(--muted);
 }
@@ -241,14 +293,29 @@ input[type='radio'] {
   min-height: 0;
 }
 
+/* Three-column grid — left/right clusters shrink to make room rather than ever
+   overlapping the centered nav, unlike a flex-with-spacers approach (which only
+   centers the middle item when the two side clusters happen to have equal width). */
 .toolbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   height: 44px;
   padding: 0 12px;
   border-bottom: 1px solid var(--border);
   flex: none;
+}
+
+.toolbar-cluster {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.toolbar-right {
+  justify-self: end;
 }
 
 .toolbar h2 {
@@ -287,6 +354,10 @@ input[type='radio'] {
   font-size: 14px;
   font-weight: 600;
   color: var(--text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .project-btn:hover {
@@ -299,6 +370,7 @@ input[type='radio'] {
 .status-chip {
   display: inline-flex;
   align-items: center;
+  white-space: nowrap;
   font: var(--type-code-01);
   letter-spacing: 0.32px;
   padding: 2px 7px;
@@ -310,6 +382,19 @@ input[type='radio'] {
 
 .version-chip {
   cursor: pointer;
+}
+
+.status-chip[role='button'] {
+  cursor: pointer;
+}
+
+.status-chip-input {
+  font: var(--type-code-01);
+  padding: 1px 4px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-none);
+  background: var(--bg);
+  color: var(--text);
 }
 
 .status-chip.behind {
@@ -851,6 +936,7 @@ g:hover > .gantt-linkhandle,
 .view-switch {
   display: flex;
   gap: 0;
+  flex: none;
   border: 1px solid var(--border);
   border-radius: var(--radius-none);
   overflow: hidden;

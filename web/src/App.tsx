@@ -5,6 +5,7 @@ import { loadSession, saveSession, type Session } from './state/auth'
 import { completeSignIn, isCallbackPath, restoreSession, signOut as oidcSignOut, watchForExpiry } from './lib/oidc'
 import { loadTheme, saveTheme, type Theme } from './lib/theme'
 import { Icon } from './components/icons/Icon'
+import { useToast } from './components/toastContext'
 import { ProjectList } from './pages/ProjectList'
 import { ProjectView } from './pages/ProjectView'
 import { SignIn } from './pages/SignIn'
@@ -37,8 +38,8 @@ export default function App() {
   const [userId, setUserId] = useState<string | null>(null)
   const [userName, setUserName] = useState<string | null>(null)
   const [route, setRoute] = useState<Route>(routeFromHash)
-  const [signInError, setSignInError] = useState<string | null>(null)
   const [theme, setTheme] = useState<Theme | null>(loadTheme)
+  const { showError } = useToast()
 
   useEffect(() => {
     saveTheme(theme)
@@ -86,7 +87,7 @@ export default function App() {
           setSession({ mode: 'oidc', serverUrl })
         } catch (cause) {
           window.history.replaceState(null, '', '/')
-          setSignInError(cause instanceof Error ? cause.message : String(cause))
+          showError(cause)
         } finally {
           setResolving(false)
         }
@@ -116,7 +117,7 @@ export default function App() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [showError])
 
   // Refresh-token grant (rotation) when available; falls back to a redirect through the provider's session.
   useEffect(() => {
@@ -162,9 +163,7 @@ export default function App() {
   if (session === null || client === null) {
     return (
       <SignIn
-        error={signInError}
         onSignedIn={(next) => {
-          setSignInError(null)
           saveSession(next)
           setSession(next)
         }}

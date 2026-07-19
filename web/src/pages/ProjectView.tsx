@@ -18,6 +18,7 @@ import { UsageView } from '../components/UsageView'
 import { DropdownMenu, DropdownTrigger, type MenuGroup } from '../components/DropdownMenu'
 import { Icon } from '../components/icons/Icon'
 import { ColumnsDialog } from '../components/ColumnsDialog'
+import { useToast } from '../components/toastContext'
 import { DEFAULT_COLUMN_KEYS, columnsFor, columnsForProject, sheetWidth } from '../components/sheetColumns'
 import { TABLE_DEFAULT_FIELDS } from '../components/tableColumns'
 import { isCollapsible, visibleTasks as visibleTasksOf } from '../lib/collapse'
@@ -52,7 +53,7 @@ type Dialog = 'fields' | 'calendars' | 'recurring' | 'history' | 'columns' | 'le
 export function ProjectView({ client, projectId, userId, userDisplayName, dark, onToggleTheme, onSignOut, onBack }: Props) {
   const [schedule, setSchedule] = useState<Schedule | null>(null)
   const [info, setInfo] = useState<ProjectInfo | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { showError } = useToast()
   const [selectedUids, setSelectedUids] = useState<ReadonlySet<number>>(new Set())
   const [anchorUid, setAnchorUid] = useState<number | null>(null)
   const [scrollTop, setScrollTop] = useState(0)
@@ -82,11 +83,10 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
       const [nextInfo, nextSchedule] = await Promise.all([client.getProject(projectId), client.schedule(projectId)])
       setInfo(nextInfo)
       setSchedule(nextSchedule)
-      setError(null)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
+      showError(cause)
     }
-  }, [client, projectId])
+  }, [client, projectId, showError])
 
   useEffect(() => {
     void refresh()
@@ -131,13 +131,12 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
       try {
         const response = await client.commands(projectId, commands)
         setSchedule(response.schedule)
-        setError(null)
         onInverse(response.inverse)
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : String(cause))
+        showError(cause)
       }
     },
-    [client, projectId],
+    [client, projectId, showError],
   )
 
   const sendCommands = useCallback(
@@ -180,7 +179,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
       setRedoStack([])
       await refresh()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
+      showError(cause)
     }
   }
 
@@ -195,7 +194,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
       setCheckinOpen(false)
       await refresh()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
+      showError(cause)
     }
   }
 
@@ -473,7 +472,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
           ? `/api/projects/${projectId}/export/mspdi`
           : `/api/projects/${projectId}/export/csv`
     const fallbackName = kind === 'p27' ? 'project.p27' : kind === 'mspdi' ? 'project.xml' : 'project.csv'
-    void client.download(path, fallbackName).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
+    void client.download(path, fallbackName).catch((cause: unknown) => showError(cause))
   }
 
   function openReport(name: string) {
@@ -484,7 +483,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
         window.open(url, '_blank', 'noopener')
         setTimeout(() => URL.revokeObjectURL(url), 60_000)
       })
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
+      .catch((cause: unknown) => showError(cause))
   }
 
   const gridWidth = sheetWidth(columns)
@@ -543,8 +542,9 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
     <div className="project-view">
       {/* Top bar: workspace, identity, view switch, session */}
       <div className="toolbar">
-        <DropdownMenu
-          ariaLabel="Workspace menu"
+        <span className="toolbar-cluster toolbar-left">
+          <DropdownMenu
+            ariaLabel="Workspace menu"
           trigger={({ open, toggle }) => (
             <button className="icon-btn" onClick={toggle} title="Workspace menu" aria-label="Workspace menu" aria-haspopup="menu" aria-expanded={open}>
               <Icon name="Menu" size={12} />
@@ -591,7 +591,14 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
             v{schedule.version}
           </button>
         )}
-        {schedule !== null && <StatusDateBadge statusDate={schedule.project.statusDate} />}
+          {schedule !== null && (
+            <StatusDateBadge
+              statusDate={schedule.project.statusDate}
+              editable={editable}
+              onCommands={(commands) => void sendCommands(commands)}
+            />
+          )}
+        </span>
         <nav className="view-switch" aria-label="View">
           {(['gantt', 'table', 'network', 'timeline', 'usage', 'resources'] as const).map((mode) => (
             <button key={mode} className={viewMode === mode ? 'active' : ''} onClick={() => setViewMode(mode)}>
@@ -599,52 +606,53 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
             </button>
           ))}
         </nav>
-        <span className="spacer" />
-        {info !== null && !holdsLock && info.lock !== null && (
-          <span className="lock-banner">checked out by {info.lock.displayName}</span>
-        )}
-        {editable ? (
-          <span className="dropdown checkin-split" ref={checkinAnchorRef}>
-            <button className="primary checkin-main" onClick={() => void checkin()} title="Check in — releases your lock">
-              Check in
-            </button>
-            <button
-              className="primary checkin-caret"
-              onClick={() => setCheckinOpen((o) => !o)}
-              title="Check in with a comment…"
-              aria-haspopup="dialog"
-              aria-expanded={checkinOpen}
-            >
-              <Icon name="CaretDown" size={12} />
-            </button>
-            {checkinOpen && (
-              <CheckinPopover
-                version={schedule?.version ?? 0}
-                anchorRef={checkinAnchorRef}
-                onCheckin={(comment) => void checkin(comment)}
-                onClose={() => setCheckinOpen(false)}
-              />
-            )}
-          </span>
-        ) : (
-          (info?.role === 'editor' || info?.role === 'owner') && (
-            <button className="primary" onClick={() => void checkout()}>
-              Checkout to edit
-            </button>
-          )
-        )}
-        <DropdownMenu
-          ariaLabel="Account"
-          align="right"
-          trigger={({ open, toggle }) => (
-            <button className="avatar-btn" onClick={toggle} title={`${userDisplayName} — account`} aria-haspopup="menu" aria-expanded={open}>
-              <span className="avatar-circle">{userDisplayName.charAt(0).toUpperCase()}</span>
-              {userDisplayName}
-              <Icon name="CaretDown" size={12} />
-            </button>
+        <span className="toolbar-cluster toolbar-right">
+          {info !== null && !holdsLock && info.lock !== null && (
+            <span className="lock-banner">checked out by {info.lock.displayName}</span>
           )}
-          groups={[{ items: [{ label: 'Sign out', onClick: onSignOut }] }]}
-        />
+          {editable ? (
+            <span className="dropdown checkin-split" ref={checkinAnchorRef}>
+              <button className="primary checkin-main" onClick={() => void checkin()} title="Check in — releases your lock">
+                Check in
+              </button>
+              <button
+                className="primary checkin-caret"
+                onClick={() => setCheckinOpen((o) => !o)}
+                title="Check in with a comment…"
+                aria-haspopup="dialog"
+                aria-expanded={checkinOpen}
+              >
+                <Icon name="CaretDown" size={12} />
+              </button>
+              {checkinOpen && (
+                <CheckinPopover
+                  version={schedule?.version ?? 0}
+                  anchorRef={checkinAnchorRef}
+                  onCheckin={(comment) => void checkin(comment)}
+                  onClose={() => setCheckinOpen(false)}
+                />
+              )}
+            </span>
+          ) : (
+            (info?.role === 'editor' || info?.role === 'owner') && (
+              <button className="primary" onClick={() => void checkout()}>
+                Checkout to edit
+              </button>
+            )
+          )}
+          <DropdownMenu
+            ariaLabel="Account"
+            align="right"
+            trigger={({ open, toggle }) => (
+              <button className="avatar-btn" onClick={toggle} title={`${userDisplayName} — account`} aria-haspopup="menu" aria-expanded={open}>
+                <span className="avatar-circle">{userDisplayName.charAt(0).toUpperCase()}</span>
+                {userDisplayName}
+                <Icon name="CaretDown" size={12} />
+              </button>
+            )}
+            groups={[{ items: [{ label: 'Sign out', onClick: onSignOut }] }]}
+          />
+        </span>
       </div>
 
       {/* Context action bar: only ever shows verbs legal for the current selection */}
@@ -743,11 +751,6 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
           </>
         )}
         <span className="spacer" />
-        {error !== null && (
-          <span className="error" role="alert">
-            {error}
-          </span>
-        )}
         <span className="action-group">
           <DropdownMenu
             ariaLabel="Baseline"
@@ -1238,11 +1241,51 @@ function LevelDialog({ onCommand, onClose }: { onCommand: (command: Command) => 
   )
 }
 
-/** Amber/highlighted when statusDate differs from today; a plain muted chip when equal or unset. */
-function StatusDateBadge({ statusDate }: { statusDate: string | null }) {
+/** Amber/highlighted when statusDate differs from today; a plain muted chip when equal or unset.
+ *  Click (when editable) to reveal a native datetime picker, matching the Inspector's DateField. */
+function StatusDateBadge({
+  statusDate,
+  editable,
+  onCommands,
+}: {
+  statusDate: string | null
+  editable: boolean
+  onCommands: (commands: Command[]) => void
+}) {
+  const [editing, setEditing] = useState(false)
+
+  if (editing) {
+    return (
+      <input
+        type="datetime-local"
+        className="status-chip-input"
+        autoFocus
+        defaultValue={statusDate === null ? '' : statusDate.slice(0, 16)}
+        title="Status date — the as-of date for tracking & earned value"
+        onBlur={(event) => {
+          setEditing(false)
+          const value = event.target.value
+          const nextStatusDate = value === '' ? null : value + ':00'
+          if (nextStatusDate === statusDate) return
+          onCommands([
+            nextStatusDate === null ? { op: 'setProject', clearStatusDate: true } : { op: 'setProject', statusDate: nextStatusDate },
+          ])
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') setEditing(false)
+          if (event.key === 'Enter') event.currentTarget.blur()
+        }}
+      />
+    )
+  }
+
+  const chipProps = editable
+    ? { onClick: () => setEditing(true), role: 'button' as const, tabIndex: 0 }
+    : {}
+
   if (statusDate === null) {
     return (
-      <span className="status-chip" title="Status date — the as-of date for tracking & earned value">
+      <span className="status-chip" title="Status date — the as-of date for tracking & earned value" {...chipProps}>
         STATUS —
       </span>
     )
@@ -1255,14 +1298,14 @@ function StatusDateBadge({ statusDate }: { statusDate: string | null }) {
   const label = status.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   if (gapDays === 0) {
     return (
-      <span className="status-chip" title="Status date — the as-of date for tracking & earned value">
+      <span className="status-chip" title="Status date — the as-of date for tracking & earned value" {...chipProps}>
         STATUS {label}
       </span>
     )
   }
   const gapText = gapDays > 0 ? `${gapDays}d behind today` : `${-gapDays}d ahead of today`
   return (
-    <span className="status-chip behind" title="Status date — the as-of date for tracking & earned value">
+    <span className="status-chip behind" title="Status date — the as-of date for tracking & earned value" {...chipProps}>
       ⚑ Status {label} <span className="status-gap">· {gapText}</span>
     </span>
   )

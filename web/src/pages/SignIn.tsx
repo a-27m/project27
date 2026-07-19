@@ -1,31 +1,26 @@
 import { useState } from 'react'
 import { ApiClient } from '../api/client'
 import { beginSignIn } from '../lib/oidc'
+import { useToast } from '../components/toastContext'
 import type { Session } from '../state/auth'
 
 interface Props {
   onSignedIn: (session: Session, userName: string) => void
-  /** Surfaced from an OIDC callback that failed before a session could be established
-   *  (e.g. `App.tsx` catching a failed code exchange) — this component has no way to
-   *  produce that error itself, since the redirect unmounts and remounts it. */
-  error?: string | null
 }
 
 /** Sign-in: server URL, then dev user (Development only), a pasted bearer token (manual/testing),
  *  or SSO — redirects to the provider's OIDC authorization endpoint (Authorization Code + PKCE). */
-export function SignIn({ onSignedIn, error: externalError }: Props) {
+export function SignIn({ onSignedIn }: Props) {
   const [serverUrl, setServerUrl] = useState('')
   const [mode, setMode] = useState<'dev' | 'token' | 'sso'>('dev')
   const [devUser, setDevUser] = useState('alice')
   const [token, setToken] = useState('')
-  const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const shownError = error ?? externalError ?? null
+  const { showError } = useToast()
 
   async function signIn(event: React.FormEvent) {
     event.preventDefault()
     setBusy(true)
-    setError(null)
     const trimmedServerUrl = serverUrl.trim().replace(/\/+$/, '')
     try {
       if (mode === 'sso') {
@@ -43,7 +38,7 @@ export function SignIn({ onSignedIn, error: externalError }: Props) {
       const me = await new ApiClient(credentials).me()
       onSignedIn(session, me.name)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
+      showError(cause)
     } finally {
       setBusy(false)
     }
@@ -88,7 +83,6 @@ export function SignIn({ onSignedIn, error: externalError }: Props) {
             <input value={token} onChange={(event) => setToken(event.target.value)} type="password" />
           </label>
         )}
-        {shownError !== null && <p className="error">{shownError}</p>}
         <button type="submit" disabled={busy}>
           {busy ? 'Signing in…' : mode === 'sso' ? 'Continue' : 'Sign in'}
         </button>

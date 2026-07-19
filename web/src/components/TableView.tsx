@@ -3,6 +3,7 @@ import type { ApiClient } from '../api/client'
 import type { ViewResult } from '../api/types'
 import { NUMERIC_FIELD_KINDS, formatFieldValue } from '../lib/format'
 import { TABLES } from './tableColumns'
+import { useToast } from './toastContext'
 
 interface Props {
   client: ApiClient
@@ -21,7 +22,8 @@ export function TableView({ client, projectId, version, table, onTableChange, co
   const [sort, setSort] = useState('')
   const [groupBy, setGroupBy] = useState('')
   const [result, setResult] = useState<ViewResult | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
+  const { showError } = useToast()
 
   const fields = columnKeys.join(',')
 
@@ -30,10 +32,13 @@ export function TableView({ client, projectId, version, table, onTableChange, co
       .view(projectId, { table, fields, filter, sort, groupBy })
       .then((next) => {
         setResult(next)
-        setError(null)
+        setFailed(false)
       })
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
-  }, [client, projectId, table, fields, filter, sort, groupBy])
+      .catch((cause: unknown) => {
+        setFailed(true)
+        showError(cause)
+      })
+  }, [client, projectId, table, fields, filter, sort, groupBy, showError])
 
   useEffect(() => {
     load()
@@ -71,9 +76,8 @@ export function TableView({ client, projectId, version, table, onTableChange, co
         />
         <button type="submit" className="primary">Apply</button>
       </form>
-      {error !== null && <p className="error pad">{error}</p>}
       {result === null ? (
-        <p className="muted pad">Loading…</p>
+        <p className="muted pad">{failed ? "Couldn't load table" : 'Loading…'}</p>
       ) : (
         <div className="usage-scroll">
           {result.groups.map((group, index) => (

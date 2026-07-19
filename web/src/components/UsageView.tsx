@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ApiClient } from '../api/client'
 import type { Usage } from '../api/types'
+import { useToast } from './toastContext'
 
 interface Props {
   client: ApiClient
@@ -14,7 +15,8 @@ export function UsageView({ client, projectId, version }: Props) {
   const [usage, setUsage] = useState<Usage | null>(null)
   const [granularity, setGranularity] = useState<'day' | 'week'>('week')
   const [showCost, setShowCost] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
+  const { showError } = useToast()
 
   useEffect(() => {
     let cancelled = false
@@ -23,18 +25,21 @@ export function UsageView({ client, projectId, version }: Props) {
       .then((result) => {
         if (!cancelled) {
           setUsage(result)
-          setError(null)
+          setFailed(false)
         }
       })
       .catch((cause: unknown) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause))
+        if (!cancelled) {
+          setFailed(true)
+          showError(cause)
+        }
       })
     return () => {
       cancelled = true
     }
-  }, [client, projectId, granularity, version])
+  }, [client, projectId, granularity, version, showError])
 
-  if (error !== null) return <p className="error pad">{error}</p>
+  if (failed) return <p className="muted pad">Couldn't load usage</p>
   if (usage === null) return <p className="muted pad">Loading…</p>
 
   const columns = [...new Set(usage.rows.flatMap((row) => row.buckets.map((bucket) => bucket.date)))].sort()
