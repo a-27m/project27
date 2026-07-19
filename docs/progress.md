@@ -608,3 +608,27 @@ break" metadata, client-only storage) in `engineering-decisions.md` E35.
   `spaceAfter` and watched the sheet/Gantt gap stay aligned, confirmed the
   Network view shows only real tasks, and confirmed clearing a task's name
   in the sheet reverts instead of sending an empty name.
+
+## MCP deployment in the Helm chart (2026-07-19)
+
+`charts/project27/templates/mcp-deployment.yaml`, gated by `mcp.enabled`
+(default `true`), plus `src/Project27.Mcp/Dockerfile` (modeled on the
+server's) and a `docker-mcp` job in `ci.yaml` alongside `docker-backend`/
+`docker-web` (all three build in parallel off `dotnet`/`web`; `helm` now
+waits on all three).
+
+- `p27-mcp` is stdio-only (docs/spec/14-mcp-server.md) — there's no HTTP
+  port, so no Service, probes, or Istio/Ingress routing for it, unlike
+  server/web. The Deployment exists to get the image in-cluster for
+  exec-based MCP clients; the container just idles on stdin/stdout once
+  started. `NOTES.txt` documents the `kubectl exec -it ... -- dotnet
+  Project27.Mcp.dll` pattern to actually attach to it.
+- Defaults to remote mode against the in-cluster server
+  (`http://<fullname>-server:8080`) with no project pre-selected, matching
+  Program.cs's "chat client with nothing to point at yet" idle-start path;
+  `mcp.project`/`mcp.devUser`/`mcp.tokenSecretName` are there to pin a
+  project or a non-devAuth identity if wanted.
+- Not verified: no cluster or Docker build available in this environment
+  to confirm the image actually builds or the pod comes up healthy — the
+  Dockerfile and CI wiring are copied from the server's known-working
+  pattern but unexercised here.

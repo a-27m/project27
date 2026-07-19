@@ -56,6 +56,12 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/component: web
 {{- end -}}
 
+{{- define "project27.selectorLabels.mcp" -}}
+app.kubernetes.io/name: {{ include "project27.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: mcp
+{{- end -}}
+
 {{- define "project27.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create -}}
 {{- default (include "project27.fullname" .) .Values.serviceAccount.name -}}

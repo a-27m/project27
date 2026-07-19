@@ -79,10 +79,22 @@ jobs:
       packages: write
     secrets: inherit
 
+  docker-mcp:
+    name: Docker MCP
+    uses: ./.github/workflows/ci-docker-template.yaml
+    needs: [dotnet]
+    with:
+      service-name: 'project27-mcp'
+      dockerfile-path: './src/Project27.Mcp/Dockerfile'
+    permissions:
+      contents: write
+      packages: write
+    secrets: inherit
+
   helm:
     name: Helm
     uses: ./.github/workflows/helm.yaml
-    needs: [docker-backend, docker-web]
+    needs: [docker-backend, docker-web, docker-mcp]
     permissions:
       contents: write
       packages: write
