@@ -20,9 +20,12 @@ import { Icon } from '../components/icons/Icon'
 import { ColumnsDialog } from '../components/ColumnsDialog'
 import { DEFAULT_COLUMN_KEYS, columnsFor, columnsForProject, sheetWidth } from '../components/sheetColumns'
 import { TABLE_DEFAULT_FIELDS } from '../components/tableColumns'
+import { isCollapsible, visibleTasks as visibleTasksOf } from '../lib/collapse'
+import { loadCollapsed, saveCollapsed } from '../lib/collapseStore'
 import { buildDisplayRows, displayIndexByUid } from '../lib/displayRows'
 import { fromWireDate } from '../lib/format'
 import { pruneNested, rangeBetween, siblingMove } from '../lib/outline'
+import { dropTarget } from '../lib/rowDrag'
 import { useColumnPreferences } from '../lib/preferences'
 import { makeScale, ticks, monthTicks } from '../lib/timescale'
 import { useOutsideClose } from '../lib/useOutsideClose'
@@ -60,6 +63,8 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
   const [zoomIndex, setZoomIndex] = useState(3) // 24 px/day
   const [showBaselineGhosts, setShowBaselineGhosts] = useState(true)
   const prefs = useColumnPreferences(client, projectId)
+  // Browser-local: which summary tasks are folded. Never sent to the server.
+  const [collapsed, setCollapsed] = useState<Set<number>>(() => loadCollapsed(projectId))
   const [tableSubview, setTableSubview] = useState<string>('entry')
   const [fieldCatalog, setFieldCatalog] = useState<FieldSummary[]>([])
   const [undoStack, setUndoStack] = useState<Command[][]>([])
@@ -197,11 +202,23 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
   const tasks = useMemo(() => schedule?.tasks ?? [], [schedule])
   const indexByUid = useMemo(() => new Map(tasks.map((task, index) => [task.uid, index])), [tasks])
   const rowByUid = useMemo(() => new Map(tasks.map((task) => [task.uid, task.row])), [tasks])
+  // Collapse is a view concern: descendants of collapsed summaries are dropped before the
+  // panes render, so both the sheet and the SVG Gantt stay row-aligned for free. Every
+  // *mutation* still computes against the full `tasks` list (see the drag drop handler).
+  const visible = useMemo(() => visibleTasksOf(tasks, collapsed), [tasks, collapsed])
+  const visibleIndexByUid = useMemo(
+    () => new Map(visible.map((task, index) => [task.uid, index])),
+    [visible],
+  )
   // Sheet/Gantt panes render cosmetic spaceAfter as extra rows; displayByUid (not
   // indexByUid) is the row-position map for anything that must align with them.
-  const displayRows = useMemo(() => buildDisplayRows(tasks), [tasks])
+  const displayRows = useMemo(() => buildDisplayRows(visible), [visible])
   const displayByUid = useMemo(() => displayIndexByUid(displayRows), [displayRows])
   const window_ = windowRange(scrollTop, viewportHeight, ROW_HEIGHT, displayRows.length)
+
+  // Reset folded state when switching projects; persist it (browser-local) as it changes.
+  useEffect(() => setCollapsed(loadCollapsed(projectId)), [projectId])
+  useEffect(() => saveCollapsed(projectId, collapsed), [projectId, collapsed])
   const availableColumns = useMemo(
     () => (schedule === null ? [] : columnsForProject(schedule.project)),
     [schedule],
@@ -266,7 +283,9 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
       }
       setSelectedUids((current) => {
         if (modifiers?.range && anchorUid !== null) {
-          return new Set(rangeBetween(tasks, anchorUid, uid))
+          // Range over the visible order so a shift-select spanning a folded summary
+          // doesn't silently pull its hidden descendants into the selection.
+          return new Set(rangeBetween(visible, anchorUid, uid))
         }
         if (modifiers?.toggle) {
           const next = new Set(current)
@@ -280,7 +299,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
       setInspectorScope('task')
       setInspectorCollapsed(false)
     },
-    [anchorUid, tasks],
+    [anchorUid, visible],
   )
 
   const selected = selectedUids.size === 1 ? (tasks[indexByUid.get([...selectedUids][0]) ?? -1] ?? null) : null
@@ -335,6 +354,43 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
     if (move !== null) void sendCommands([{ op: 'moveTask', ...move }])
   }
 
+  // Fold/unfold a summary. On fold, if the keyboard anchor falls inside the now-hidden
+  // subtree, move it up to the summary so navigation stays on a visible row.
+  const toggleCollapse = useCallback(
+    (uid: number, force?: 'collapse' | 'expand') => {
+      if (!isCollapsible(tasks, uid)) return
+      let didCollapse = false
+      setCollapsed((current) => {
+        const next = new Set(current)
+        const shouldCollapse = force === undefined ? !next.has(uid) : force === 'collapse'
+        didCollapse = shouldCollapse
+        if (shouldCollapse) next.add(uid)
+        else next.delete(uid)
+        return next
+      })
+      if (!didCollapse) return
+      const start = tasks.findIndex((t) => t.uid === uid)
+      const level = tasks[start].outlineLevel
+      setAnchorUid((anchor) => {
+        if (anchor === null) return anchor
+        const at = tasks.findIndex((t) => t.uid === anchor)
+        const inSubtree = at > start && tasks[at].outlineLevel > level &&
+          tasks.slice(start + 1, at).every((t) => t.outlineLevel > level)
+        return inSubtree ? uid : anchor
+      })
+    },
+    [tasks],
+  )
+
+  // Drag-drop reorder/reparent: resolve against the full model, emit moveTask.
+  const dropRow = useCallback(
+    (draggedUid: number, aboveUid: number | null, indentHint: number): void => {
+      const move = dropTarget(tasks, draggedUid, aboveUid, indentHint, collapsed)
+      if (move !== null) void sendCommands([{ op: 'moveTask', uid: move.uid, at: move.at, ...(move.parentUid !== undefined ? { parentUid: move.parentUid } : {}) }])
+    },
+    [tasks, collapsed, sendCommands],
+  )
+
   function setPercent(percent: number): void {
     if (selectedLeaves.length === 0) return
     void sendCommands(selectedLeaves.map((uid) => ({ op: 'setTask', uid, percentComplete: percent })))
@@ -369,11 +425,13 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
           moveSelection(event.key === 'ArrowUp' ? 'up' : 'down')
           return
         }
-        const currentIndex = anchorUid !== null ? (indexByUid.get(anchorUid) ?? -1) : -1
+        // Navigate over the visible list so folded subtrees are jumped over. An anchor
+        // hidden by a collapse falls back to the top/bottom of the visible list.
+        const currentIndex = anchorUid !== null ? (visibleIndexByUid.get(anchorUid) ?? -1) : -1
         const nextIndex = event.key === 'ArrowUp'
           ? (currentIndex <= 0 ? 0 : currentIndex - 1)
-          : Math.min(tasks.length - 1, currentIndex + 1)
-        const next = tasks[nextIndex]
+          : (currentIndex < 0 ? visible.length - 1 : Math.min(visible.length - 1, currentIndex + 1))
+        const next = visible[nextIndex]
         if (next !== undefined) selectTask(next.uid, { toggle: false, range: event.shiftKey })
         return
       }
@@ -381,6 +439,15 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
       if (editable && event.altKey && event.shiftKey && (event.key === 'ArrowRight' || event.key === 'ArrowLeft')) {
         event.preventDefault()
         forSelection(event.key === 'ArrowRight' ? 'indentTask' : 'outdentTask')
+        return
+      }
+
+      // Plain Left/Right fold or unfold the selected summary (view-only, no Alt/Shift).
+      if (!event.altKey && !event.shiftKey && !meta && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+        if (selected !== null && isCollapsible(tasks, selected.uid)) {
+          event.preventDefault()
+          toggleCollapse(selected.uid, event.key === 'ArrowLeft' ? 'collapse' : 'expand')
+        }
         return
       }
 
@@ -818,6 +885,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
           </div>
           <TaskSheet
             displayRows={displayRows}
+            allTasks={tasks}
             columns={columns}
             gridWidth={gridWidth}
             context={columnContext}
@@ -825,7 +893,10 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
             window_={window_}
             editable={editable}
             selectedUids={selectedUids}
+            collapsedUids={collapsed}
             onSelect={(uid, modifiers) => selectTask(uid, modifiers)}
+            onToggleCollapse={toggleCollapse}
+            onReorder={dropRow}
             onCommands={(commands) => void sendCommands(commands)}
           />
         </div>

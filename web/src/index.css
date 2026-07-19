@@ -684,6 +684,53 @@ input[type='radio'] {
   border-radius: var(--radius-none);
 }
 
+/* Disclosure twisty for summary rows; the spacer keeps leaf names aligned under them. */
+.sheet-twisty,
+.sheet-twisty-spacer {
+  display: inline-flex;
+  width: 14px;
+  vertical-align: -2px;
+}
+
+.sheet-twisty {
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin: 0 2px 0 -2px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.sheet-twisty:hover {
+  color: var(--text);
+}
+
+/* Drag-to-reorder feedback. */
+.sheet-row.dragging {
+  opacity: 0.45;
+}
+
+.sheet-drop-indicator {
+  position: absolute;
+  height: 2px;
+  background: var(--accent);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.sheet-drop-indicator::before {
+  content: '';
+  position: absolute;
+  left: -3px;
+  top: -2px;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-round);
+  background: var(--accent);
+}
+
 /* ------------------------------------------------------------------- gantt */
 
 .gantt-header {
