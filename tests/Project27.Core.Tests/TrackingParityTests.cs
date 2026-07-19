@@ -323,7 +323,7 @@ public sealed class TrackingParityTests
         project.Recalculate();
 
         var document = ProjectDocumentMapper.ToDocument(project);
-        Assert.Equal(7, document.SchemaVersion);
+        Assert.Equal(8, document.SchemaVersion);
         var restored = ProjectDocumentMapper.FromDocument(document);
         var restoredTask = restored.Tasks.Single(t => t.Name == "Build");
         var restoredWork = restoredTask.Assignments.Single(a => a.Resource.Name == "Dev");

@@ -3,6 +3,7 @@ import type { Command, ScheduleTask } from '../api/types'
 import type { DisplayRow } from '../lib/displayRows'
 import { durationDays } from '../lib/format'
 import type { RowWindow } from '../lib/virtualize'
+import { Icon } from './icons/Icon'
 import type { ColumnContext, SheetColumn } from './sheetColumns'
 
 interface Props {
@@ -121,12 +122,21 @@ export function TaskSheet({
                       ...(isName ? { paddingLeft: 8 + task.outlineLevel * 16 } : {}),
                     }}
                     onDoubleClick={editableCell ? () => beginEdit(task, isName ? 'name' : 'duration') : undefined}
-                    title={isName ? `${task.wbs} ${task.name} (uid:${task.uid})` : undefined}
+                    title={
+                      isName
+                        ? `${task.wbs} ${task.name} (uid:${task.uid})` + (task.hasDescription ? ' — has a description' : '')
+                        : undefined
+                    }
                   >
                     {editing && edit !== null ? (
                       <EditInput edit={edit} onChange={setEdit} onCommit={commitEdit} onCancel={() => setEdit(null)} />
                     ) : (
-                      column.render(task, context)
+                      <>
+                        {column.render(task, context)}
+                        {isName && task.hasDescription && (
+                          <Icon name="Document" size={12} className="name-description-flag" />
+                        )}
+                      </>
                     )}
                   </span>
                 )

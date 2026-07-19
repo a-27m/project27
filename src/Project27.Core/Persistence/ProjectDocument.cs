@@ -9,7 +9,7 @@ namespace Project27.Core.Persistence;
 /// </summary>
 public sealed record ProjectDocument
 {
-    public int SchemaVersion { get; init; } = 7;
+    public int SchemaVersion { get; init; } = 8;
 
     public required Guid Id { get; init; }
 
@@ -223,6 +223,9 @@ public sealed record TaskDocument
 
     // Schema 6.
     public TaskFormattingDocument? Formatting { get; init; }
+
+    // Schema 8.
+    public string? Description { get; init; }
 }
 
 /// <summary>Cosmetic, non-scheduling display attributes; see <see cref="Core.TaskFormatting"/>.</summary>

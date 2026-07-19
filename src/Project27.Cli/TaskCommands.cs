@@ -173,6 +173,7 @@ internal static class TaskCommands
                 ("uid", Render.Num(task.UniqueId)),
                 ("name", task.Name),
                 ("wbs", task.Wbs),
+                ("description", task.Description ?? ""),
                 ("outline level", Render.Num(task.OutlineLevel)),
                 ("mode", task.Mode == TaskMode.Auto ? "auto" : "manual"),
                 ("flags", string.Join(", ", flags)),
@@ -235,6 +236,7 @@ internal static class TaskCommands
         var calendarOpt = new Option<string?>("--calendar") { HelpName = "name|default" }
             .Suggests(r => CompletionValues.Calendars(r).Prepend(new Candidate("default", "Use the project calendar.")));
         var wbsOpt = new Option<string?>("--wbs") { HelpName = "code|auto" };
+        var descriptionOpt = new Option<string?>("--description") { HelpName = "text|none", Description = "Free-text notes, up to 2000 characters." };
         var manualStartOpt = new Option<string?>("--manual-start") { HelpName = "date|none" };
         var manualFinishOpt = new Option<string?>("--manual-finish") { HelpName = "date|none" };
         var typeOpt = new Option<string?>("--type") { HelpName = "fixed-units|fixed-duration|fixed-work" }
@@ -257,7 +259,7 @@ internal static class TaskCommands
         var command = new Command("set", "Change task fields; recalculates and saves.")
         {
             refArg, nameOpt, durationOpt, modeOpt, activeOpt, milestoneOpt, priorityOpt, spaceAfterOpt, deadlineOpt,
-            constraintOpt, constraintDateOpt, calendarOpt, wbsOpt, manualStartOpt, manualFinishOpt,
+            constraintOpt, constraintDateOpt, calendarOpt, wbsOpt, descriptionOpt, manualStartOpt, manualFinishOpt,
             typeOpt, effortOpt, fixedCostOpt, accrualOpt, ignoreResCalOpt,
             percentOpt, actualStartOpt, actualFinishOpt, remainingOpt, fieldOpt,
         };
@@ -372,6 +374,11 @@ internal static class TaskCommands
             if (parseResult.GetValue(wbsOpt) is { } wbs)
             {
                 task.CustomWbs = string.Equals(wbs.Trim(), "auto", StringComparison.OrdinalIgnoreCase) ? null : wbs;
+            }
+
+            if (parseResult.GetValue(descriptionOpt) is { } description)
+            {
+                task.Description = None(description) ? null : description;
             }
 
             if (parseResult.GetValue(percentOpt) is { } percent)

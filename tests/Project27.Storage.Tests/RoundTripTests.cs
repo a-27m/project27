@@ -56,6 +56,7 @@ public sealed class RoundTripTests : IDisposable
         manual.ManualStart = At("2026-01-19 08:00");
         manual.ManualFinish = At("2026-01-20 17:00");
         manual.CustomWbs = "REV-1";
+        manual.Description = "Review the build output before sign-off.";
         var inactive = project.AddTask("Dropped", Duration.Parse("2d"));
         inactive.IsActive = false;
         var milestone = project.AddMilestone("Ship");
@@ -99,6 +100,7 @@ public sealed class RoundTripTests : IDisposable
             Assert.Equal(expected.Name, actual.Name);
             Assert.Equal(expected.OutlineNumber, actual.OutlineNumber);
             Assert.Equal(expected.Wbs, actual.Wbs);
+            Assert.Equal(expected.Description, actual.Description);
             Assert.Equal(expected.Mode, actual.Mode);
             Assert.Equal(expected.IsActive, actual.IsActive);
             Assert.Equal(expected.Duration, actual.Duration);

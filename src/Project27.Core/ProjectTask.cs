@@ -103,6 +103,23 @@ public sealed class ProjectTask
     /// <summary>Custom WBS code; null falls back to <see cref="OutlineNumber"/>.</summary>
     public string? CustomWbs { get; set; }
 
+    private string? _description;
+
+    /// <summary>Free-text notes, up to 2000 characters. Plain text for now; markdown rendering is a future addition.</summary>
+    public string? Description
+    {
+        get => _description;
+        set
+        {
+            if (value is not null)
+            {
+                ArgumentOutOfRangeException.ThrowIfGreaterThan(value.Length, 2000);
+            }
+
+            _description = value;
+        }
+    }
+
     public string Wbs => CustomWbs ?? OutlineNumber;
 
     public TaskMode Mode { get; set; } = TaskMode.Auto;

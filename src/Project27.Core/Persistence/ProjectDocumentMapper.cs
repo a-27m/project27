@@ -87,7 +87,7 @@ public static class ProjectDocumentMapper
     public static Project FromDocument(ProjectDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
-        if (document.SchemaVersion is not (>= 1 and <= 7))
+        if (document.SchemaVersion is not (>= 1 and <= 8))
         {
             throw new NotSupportedException($"Project document schema {document.SchemaVersion} is not supported by this build.");
         }
@@ -189,6 +189,7 @@ public static class ProjectDocumentMapper
             task.ManualStart = taskDoc.ManualStart;
             task.ManualFinish = taskDoc.ManualFinish;
             task.CustomWbs = taskDoc.CustomWbs;
+            task.Description = taskDoc.Description;
             task.IsRecurring = taskDoc.IsRecurring;
             if (taskDoc.SplitParts is { Count: > 1 } parts)
             {
@@ -354,6 +355,7 @@ public static class ProjectDocumentMapper
         ManualStart = task.ManualStart,
         ManualFinish = task.ManualFinish,
         CustomWbs = task.CustomWbs,
+        Description = task.Description,
         IsRecurring = task.IsRecurring,
         SplitParts = task.IsSplit
             ? [.. task.SplitParts.Select(p => new SplitPartDocument(p.WorkMinutes, p.GapMinutes))]

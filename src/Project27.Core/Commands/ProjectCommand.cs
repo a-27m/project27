@@ -100,6 +100,11 @@ public sealed record SetTaskCommand : ProjectCommand
 
     public bool ClearWbs { get; init; }
 
+    /// <summary>Free-text notes, up to 2000 characters.</summary>
+    public string? Description { get; init; }
+
+    public bool ClearDescription { get; init; }
+
     public DateTime? ManualStart { get; init; }
 
     public bool ClearManualStart { get; init; }

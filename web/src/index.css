@@ -665,6 +665,13 @@ input[type='radio'] {
   font-weight: 600;
 }
 
+.name-description-flag {
+  margin-left: 4px;
+  vertical-align: -1px;
+  color: var(--text-helper);
+  flex: none;
+}
+
 .sheet-row.inactive {
   color: var(--muted);
   text-decoration: line-through;
@@ -1141,6 +1148,53 @@ g:hover > .gantt-linkhandle,
 
 .inspector-value {
   font-size: 13px;
+}
+
+/* ------------------------------------------------------------- text area */
+
+.inspector-row-textarea {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.inspector-row-textarea .inspector-label {
+  flex: 0 0 auto;
+}
+
+.inspector-textarea-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.inspector-row-textarea textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  font: var(--type-body-01, inherit);
+  font-size: 13px;
+  border: 1px solid var(--border-strong-01);
+  border-radius: var(--radius-none);
+  background: var(--field-01);
+  padding: 6px 8px;
+  box-sizing: border-box;
+}
+
+.inspector-row-textarea textarea:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.inspector-row-textarea textarea[readonly] {
+  border-color: transparent;
+  background: transparent;
+}
+
+.inspector-char-count {
+  align-self: flex-end;
+  font: var(--type-label-01);
+  color: var(--text-helper);
 }
 
 /* ------------------------------------------------------- % complete slider */

@@ -250,6 +250,15 @@ public static class CommandExecutor
             task.CustomWbs = wbs;
         }
 
+        if (command.ClearDescription)
+        {
+            task.Description = null;
+        }
+        else if (command.Description is { } description)
+        {
+            task.Description = description;
+        }
+
         if (command.ClearManualStart)
         {
             task.ManualStart = null;

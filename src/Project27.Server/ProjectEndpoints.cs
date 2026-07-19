@@ -208,6 +208,26 @@ public static class ProjectEndpoints
                 .ToList());
         });
 
+        projects.MapGet("/{id:guid}/tasks/{uid:int}/description", async (Guid id, int uid, ClaimsPrincipal user, IServerStore store, CancellationToken cancellationToken) =>
+        {
+            var (_, error) = await Authorize(store, id, user, ProjectRole.Reader, cancellationToken);
+            if (error is not null)
+            {
+                return error;
+            }
+
+            var json = await store.GetDocument(id, cancellationToken)
+                ?? throw new InvalidOperationException($"Project {id:D} has no snapshot; the store is corrupt.");
+            var project = ProjectDocumentMapper.FromDocument(ProjectDocumentSerializer.Deserialize(json));
+            var task = project.Tasks.FirstOrDefault(t => t.UniqueId == uid);
+            if (task is null)
+            {
+                return Problem(404, $"No task with uid {uid}.");
+            }
+
+            return Results.Ok(new TaskDescriptionDto(task.Description));
+        });
+
         projects.MapPost("/import/mspdi", async (HttpRequest request, ClaimsPrincipal user, IServerStore store, LockingOptions locking, CancellationToken cancellationToken) =>
         {
             string xml;

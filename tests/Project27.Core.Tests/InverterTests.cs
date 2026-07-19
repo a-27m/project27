@@ -48,6 +48,24 @@ public sealed class InverterTests
     }
 
     [Fact]
+    public void Description_undo_redo_round_trips_through_a_null_baseline()
+    {
+        var project = NewProject();
+        var task = project.AddTask("A", Duration.Parse("1d"));
+        project.Recalculate();
+
+        var setCommand = new SetTaskCommand { Uid = task.UniqueId, Description = "Notes." };
+        var (_, undoSet) = CommandInverter.ApplyWithInverse(project, setCommand);
+        Assert.Equal("Notes.", task.Description);
+
+        CommandExecutor.Apply(project, undoSet!); // undo: back to no description
+        Assert.Null(task.Description);
+
+        CommandExecutor.Apply(project, setCommand); // redo
+        Assert.Equal("Notes.", task.Description);
+    }
+
+    [Fact]
     public void Space_after_undo_redo_round_trips_through_a_null_baseline()
     {
         var project = NewProject();

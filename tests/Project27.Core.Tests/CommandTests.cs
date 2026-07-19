@@ -81,6 +81,29 @@ public sealed class CommandTests
     }
 
     [Fact]
+    public void Set_task_writes_and_clears_description()
+    {
+        var project = NewProject();
+        var task = project.AddTask("T", Core.Time.Duration.Parse("1d"));
+
+        CommandExecutor.Apply(project, new SetTaskCommand { Uid = task.UniqueId, Description = "Some notes." });
+        Assert.Equal("Some notes.", task.Description);
+
+        CommandExecutor.Apply(project, new SetTaskCommand { Uid = task.UniqueId, ClearDescription = true });
+        Assert.Null(task.Description);
+    }
+
+    [Fact]
+    public void Description_rejects_text_over_2000_characters()
+    {
+        var project = NewProject();
+        var task = project.AddTask("T", Core.Time.Duration.Parse("1d"));
+
+        task.Description = new string('x', 2000);
+        Assert.Throws<ArgumentOutOfRangeException>(() => task.Description = new string('x', 2001));
+    }
+
+    [Fact]
     public void Set_link_replaces_type_and_lag()
     {
         var project = NewProject();

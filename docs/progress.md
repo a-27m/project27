@@ -24,6 +24,7 @@ expensive to re-derive; conventions live in `decisions.md` (D1–D9 + D6a).
 | 13 | Shell completion (bash/zsh/fzf) | **done** — spec 13, E36 | — |
 | — | MCP server (epic) | **done** — see below | — |
 | — | `.p27` import / CSV export | **done** — see below | — |
+| — | Task descriptions | **done** — see below | — |
 
 Specs: `docs/spec/01…04, 06, 07, 08, 09, 13, 14`. Deviations from MS Project: `docs/spec/deviations.md` (#1–#25).
 
@@ -460,6 +461,42 @@ conflict suffix + invalid-file 422, CSV content) and seven new
 wrong-mode errors, the `--file`+`--server` conflict), plus a live smoke test
 against a running server. Counts at close: Core 237, Storage 3, Interop 9,
 Cli 97, Server 31, Mcp 18 (.NET 395).
+
+## Task descriptions (2026-07-19)
+
+`ProjectTask.Description`: optional free-text notes, capped at 2000 characters
+(validated in the property setter, same style as `Priority`'s range check).
+Plain text only — markdown rendering is a deliberately deferred follow-up, not
+implemented here. Flows through the usual layers: `SetTaskCommand.Description`
++ `ClearDescription` (E20 absent-vs-clear pattern), `CommandExecutor`/
+`CommandInverter`, `TaskDocument.Description` (persistence schema bumped
+7 → 8, additive so `>= 1 and <= 8` is the only mapper change), CLI
+`task set --description <text|none>` plus `task show`/`--json`.
+
+Web (D4 parity + lazy-load requirement): the eager `GET .../schedule` payload
+only carries `ScheduleTaskDto.HasDescription` (a bool) — the task list's
+document-icon flag next to the name — never the text itself. The text is
+fetched lazily via a new `GET /api/projects/{id}/tasks/{uid}/description`
+endpoint (mirrors the existing `/drivers/{uid}` shape), called only when the
+Inspector's "Description" accordion section is expanded (children of a closed
+`AccordionSection` don't mount, so this is "free" lazy-loading, same trick
+`DriversSection` already relied on). Edits commit through the normal
+`setTask`/`description`/`clearDescription` command path. New `TextAreaField`
+in `InspectorFields.tsx` (2000-char `maxLength`, live counter) — its label
+needed an explicit `flex: 0 0 auto` override, since the shared `.inspector-row`
+`flex: 0 0 118px` label rule is a *width* under the row's default
+`flex-direction: row` but silently becomes a 118px *height* once a variant
+switches to `flex-direction: column`, which pushed the textarea down 100+px
+before the fix — worth knowing before adding another column-oriented
+`inspector-row` variant.
+
+Covered by new cases in `Project27.Core.Tests` (command apply/clear, 2000-char
+validation, undo/redo round-trip), `Project27.Storage.Tests` (round-trip byte
+parity), `Project27.Server.Tests` (lazy endpoint + `hasDescription` flag),
+`Project27.Cli.Tests` (`--description`/`none`), plus a live Playwright smoke
+test against `dotnet run --project src/Project27.Server` + `npm run dev`
+(indicator icon on the task list, lazy fetch on accordion expand, edit +
+reload persistence).
 
 ## Checkout/lock/history UI now shows display names, not user ids (2026-07-15)
 

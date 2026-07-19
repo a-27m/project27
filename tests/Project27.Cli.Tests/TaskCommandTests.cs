@@ -85,6 +85,20 @@ public sealed class TaskCommandTests : IDisposable
     }
 
     [Fact]
+    public void Set_description_and_none_clears_it()
+    {
+        Cli.Ok("task", "add", "Work", "-d", "2d", "--file", _file);
+        Assert.Equal(JsonValueKind.Null, TaskJson("1").GetProperty("description").ValueKind);
+
+        Cli.Ok("task", "set", "1", "--description", "Needs review before ship.", "--file", _file);
+        Assert.Equal("Needs review before ship.", TaskJson("1").GetProperty("description").GetString());
+        Assert.Contains("Needs review before ship.", Cli.Ok("task", "show", "1", "--file", _file).Stdout, StringComparison.Ordinal);
+
+        Cli.Ok("task", "set", "1", "--description", "none", "--file", _file);
+        Assert.Equal(JsonValueKind.Null, TaskJson("1").GetProperty("description").ValueKind);
+    }
+
+    [Fact]
     public void Constraint_requiring_date_fails_without_one()
     {
         Cli.Ok("task", "add", "Work", "--file", _file);

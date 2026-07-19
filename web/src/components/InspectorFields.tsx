@@ -62,6 +62,54 @@ export function TextField({
   )
 }
 
+export function TextAreaField({
+  label,
+  value,
+  editable,
+  loading = false,
+  maxLength,
+  onCommit,
+}: {
+  label: string
+  value: string
+  editable: boolean
+  /** Shows a placeholder and disables editing until the lazily-fetched value arrives. */
+  loading?: boolean
+  maxLength?: number
+  onCommit: (value: string) => void
+}) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const commit = () => {
+    if (draft !== null && draft !== value) onCommit(draft)
+    setDraft(null)
+  }
+  const current = draft ?? value
+  return (
+    <label className="inspector-row inspector-row-textarea">
+      <span className="inspector-label">{label}</span>
+      <div className="inspector-textarea-wrap">
+        <textarea
+          value={loading ? '' : current}
+          placeholder={loading ? 'Loading…' : undefined}
+          readOnly={!editable || loading}
+          maxLength={maxLength}
+          rows={4}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={commit}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') setDraft(null)
+          }}
+        />
+        {maxLength !== undefined && !loading && (
+          <span className="inspector-char-count">
+            {current.length}/{maxLength}
+          </span>
+        )}
+      </div>
+    </label>
+  )
+}
+
 export function StaticField({ label, value }: { label: string; value: string }) {
   return (
     <div className="inspector-row">

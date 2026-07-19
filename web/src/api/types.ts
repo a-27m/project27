@@ -103,6 +103,8 @@ export interface ScheduleTask {
   calendar: string | null
   assignments: ScheduleAssignment[]
   customValues: Record<string, unknown> | null
+  /** Whether this task has a description; the text itself is fetched lazily. */
+  hasDescription: boolean
 }
 
 export interface ScheduleAssignment {
@@ -244,6 +246,8 @@ export type Command =
       clearDeadline?: boolean
       constraint?: ConstraintType
       constraintDate?: string
+      description?: string
+      clearDescription?: boolean
     }
   | { op: 'removeTask'; uid: number }
   | { op: 'moveTask'; uid: number; parentUid?: number; at: number }

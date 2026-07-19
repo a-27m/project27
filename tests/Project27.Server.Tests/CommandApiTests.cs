@@ -141,6 +141,34 @@ public sealed class CommandApiTests
     }
 
     [Fact]
+    public async Task Description_is_settable_and_fetched_lazily()
+    {
+        var (id, alice) = await CreateProject("Desc-" + Guid.NewGuid().ToString("N"));
+        await alice.PostAsync($"/api/projects/{id:D}/checkout", null, Token);
+        await alice.PostAsJsonAsync($"/api/projects/{id:D}/commands", GoldenBatch(), Token);
+
+        var before = await alice.GetFromJsonAsync<JsonElement>($"/api/projects/{id:D}/tasks/1/description", Token);
+        Assert.Equal(JsonValueKind.Null, before.GetProperty("description").ValueKind);
+
+        var schedule = await alice.GetFromJsonAsync<JsonElement>($"/api/projects/{id:D}/schedule", Token);
+        var design = schedule.GetProperty("tasks").EnumerateArray().Single(t => t.GetProperty("name").GetString() == "Design");
+        Assert.False(design.GetProperty("hasDescription").GetBoolean());
+
+        var setCommand = new object[] { new Dictionary<string, object> { ["op"] = "setTask", ["uid"] = 1, ["description"] = "Kickoff notes." } };
+        await alice.PostAsJsonAsync($"/api/projects/{id:D}/commands", setCommand, Token);
+        await alice.DeleteAsync($"/api/projects/{id:D}/lock", Token);
+
+        var after = await alice.GetFromJsonAsync<JsonElement>($"/api/projects/{id:D}/tasks/1/description", Token);
+        Assert.Equal("Kickoff notes.", after.GetProperty("description").GetString());
+
+        var scheduleAfter = await alice.GetFromJsonAsync<JsonElement>($"/api/projects/{id:D}/schedule", Token);
+        var designAfter = scheduleAfter.GetProperty("tasks").EnumerateArray().Single(t => t.GetProperty("name").GetString() == "Design");
+        Assert.True(designAfter.GetProperty("hasDescription").GetBoolean());
+
+        Assert.Equal(HttpStatusCode.NotFound, (await alice.GetAsync($"/api/projects/{id:D}/tasks/99/description", Token)).StatusCode);
+    }
+
+    [Fact]
     public async Task Resource_ops_flow_through_the_commands_endpoint()
     {
         var (id, alice) = await CreateProject("Ops-" + Guid.NewGuid().ToString("N"));

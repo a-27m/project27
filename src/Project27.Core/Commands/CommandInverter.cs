@@ -185,6 +185,8 @@ public static class CommandInverter
             ClearCalendar = (command.Calendar is not null || command.ClearCalendar) && task.Calendar is null,
             Wbs = (command.Wbs is null && !command.ClearWbs) ? null : task.CustomWbs,
             ClearWbs = (command.Wbs is not null || command.ClearWbs) && task.CustomWbs is null,
+            Description = (command.Description is null && !command.ClearDescription) ? null : task.Description,
+            ClearDescription = (command.Description is not null || command.ClearDescription) && task.Description is null,
             ManualStart = (command.ManualStart is null && !command.ClearManualStart) ? null : task.ManualStart,
             ClearManualStart = (command.ManualStart is not null || command.ClearManualStart) && task.ManualStart is null,
             ManualFinish = (command.ManualFinish is null && !command.ClearManualFinish) ? null : task.ManualFinish,

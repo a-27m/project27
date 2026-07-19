@@ -86,7 +86,8 @@ public sealed record ScheduleTaskDto(
     DateTime? ManualFinish,
     string? Calendar,
     IReadOnlyList<ScheduleAssignmentDto> Assignments,
-    IReadOnlyDictionary<string, object?>? CustomValues);
+    IReadOnlyDictionary<string, object?>? CustomValues,
+    bool HasDescription);
 
 public sealed record ScheduleDto(int Version, ScheduleProjectDto Project, IReadOnlyList<ScheduleTaskDto> Tasks);
 
@@ -123,6 +124,8 @@ public sealed record ViewGroupDto(string? Heading, IReadOnlyList<ViewRowDto> Row
 public sealed record ViewDto(IReadOnlyList<ViewFieldDto> Fields, IReadOnlyList<ViewGroupDto> Groups);
 
 public sealed record TaskDriverDto(string Kind, string Description, bool Binding, DateTime? Date, int? PredecessorUid);
+
+public sealed record TaskDescriptionDto(string? Description);
 
 public static class ScheduleProjection
 {
@@ -248,7 +251,8 @@ public static class ScheduleProjection
                         ? null
                         : project.CustomFields.ToDictionary(
                             f => f.Id,
-                            f => Core.Fields.FieldCatalog.CustomValue(f, task)))),
+                            f => Core.Fields.FieldCatalog.CustomValue(f, task)),
+                    !string.IsNullOrEmpty(task.Description))),
             ]);
     }
 }

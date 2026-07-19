@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { ApiClient } from '../api/client'
 import type { Command, ScheduleProject, ScheduleTask, TaskDriver } from '../api/types'
 import { dateTime, durationDays, formatUnits, fromWireDate, toWireDate } from '../lib/format'
-import { AccordionSection, CheckField, DateField, SelectField, StaticField, TextField } from './InspectorFields'
+import { AccordionSection, CheckField, DateField, SelectField, StaticField, TextAreaField, TextField } from './InspectorFields'
 import { Icon } from './icons/Icon'
 import { SegmentedPercent } from './SegmentedPercent'
 
@@ -18,7 +18,7 @@ interface Props {
   onCollapse: () => void
 }
 
-type Section = 'general' | 'advanced' | 'tracking' | 'links' | 'resources' | 'custom' | 'drivers'
+type Section = 'general' | 'description' | 'advanced' | 'tracking' | 'links' | 'resources' | 'custom' | 'drivers'
 
 const CONSTRAINTS = [
   'asSoonAsPossible',
@@ -116,6 +116,21 @@ export function TaskInspector({ task, project, tasks, editable, client, projectI
           <StaticField
             label="Slack"
             value={task.totalSlackMinutes === null ? '' : durationDays(task.totalSlackMinutes, project.minutesPerDay)}
+          />
+        </AccordionSection>
+
+        <AccordionSection
+          title="Description"
+          hint={task.hasDescription ? 'set' : undefined}
+          open={isOpen('description')}
+          onToggle={() => toggle('description')}
+        >
+          <DescriptionSection
+            client={client}
+            projectId={projectId}
+            task={task}
+            editable={editable}
+            onCommit={(v) => set(v === null ? { clearDescription: true } : { description: v })}
           />
         </AccordionSection>
 
@@ -280,6 +295,58 @@ export function TaskInspector({ task, project, tasks, editable, client, projectI
         </AccordionSection>
       </div>
     </aside>
+  )
+}
+
+function DescriptionSection({
+  client,
+  projectId,
+  task,
+  editable,
+  onCommit,
+}: {
+  client: ApiClient
+  projectId: string
+  task: ScheduleTask
+  editable: boolean
+  onCommit: (value: string | null) => void
+}) {
+  const [description, setDescription] = useState<string | null>(null)
+  const [loaded, setLoaded] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    setLoaded(false)
+    client
+      .taskDescription(projectId, task.uid)
+      .then((result) => {
+        if (!cancelled) {
+          setDescription(result)
+          setLoaded(true)
+        }
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [client, projectId, task.uid])
+
+  if (error !== null) return <p className="error">{error}</p>
+  return (
+    <TextAreaField
+      label="Description"
+      value={description ?? ''}
+      editable={editable}
+      loading={!loaded}
+      maxLength={2000}
+      onCommit={(v) => {
+        const next = v === '' ? null : v
+        setDescription(next)
+        onCommit(next)
+      }}
+    />
   )
 }
 

@@ -75,6 +75,11 @@ export class ApiClient {
     return this.request('GET', `/api/projects/${id}/drivers/${uid}`)
   }
 
+  async taskDescription(id: string, uid: number): Promise<string | null> {
+    const result: { description: string | null } = await this.request('GET', `/api/projects/${id}/tasks/${uid}/description`)
+    return result.description
+  }
+
   usage(id: string, granularity: 'day' | 'week'): Promise<Usage> {
     return this.request('GET', `/api/projects/${id}/usage?granularity=${granularity}`)
   }
