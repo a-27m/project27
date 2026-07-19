@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ApiClient } from '../api/client'
 import type { Command, ScheduleProject, SnapshotInfo } from '../api/types'
+import { useToast } from './toastContext'
 
 // Custom-field and calendar management dialogs + the recurring-task dialog (12p-4).
 
@@ -299,7 +300,8 @@ export function HistoryDialog({
   onClose: () => void
 }) {
   const [history, setHistory] = useState<SnapshotInfo[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
+  const { showError } = useToast()
 
   useEffect(() => {
     let cancelled = false
@@ -309,17 +311,21 @@ export function HistoryDialog({
         if (!cancelled) setHistory(result)
       })
       .catch((cause: unknown) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause))
+        if (!cancelled) {
+          setFailed(true)
+          showError(cause)
+        }
       })
     return () => {
       cancelled = true
     }
-  }, [client, projectId])
+  }, [client, projectId, showError])
 
   return (
     <Modal label="Version history" onClose={onClose}>
-      {error !== null && <p className="error">{error}</p>}
-      {history === null ? (
+      {failed ? (
+        <p className="muted">Couldn't load version history</p>
+      ) : history === null ? (
         <p className="muted">Loading…</p>
       ) : (
         <table className="data-table">
@@ -353,7 +359,7 @@ export function HistoryDialog({
                             onReverted()
                             onClose()
                           })
-                          .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
+                          .catch((cause: unknown) => showError(cause))
                       }}
                     >
                       Revert to this

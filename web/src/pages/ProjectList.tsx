@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { ApiClient } from '../api/client'
 import type { ProjectInfo } from '../api/types'
 import { dateTime } from '../lib/format'
+import { useToast } from '../components/toastContext'
 
 interface Props {
   client: ApiClient
@@ -11,18 +12,20 @@ interface Props {
 export function ProjectList({ client, onOpen }: Props) {
   const [projects, setProjects] = useState<ProjectInfo[] | null>(null)
   const [name, setName] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
   const [importing, setImporting] = useState(false)
   const [imageTag, setImageTag] = useState<string | null>(null)
+  const { showError } = useToast()
 
   const refresh = useCallback(async () => {
     try {
       setProjects(await client.listProjects())
-      setError(null)
+      setFailed(false)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
+      setFailed(true)
+      showError(cause)
     }
-  }, [client])
+  }, [client, showError])
 
   useEffect(() => {
     void refresh()
@@ -45,7 +48,7 @@ export function ProjectList({ client, onOpen }: Props) {
       setName('')
       onOpen(created)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
+      showError(cause)
     }
   }
 
@@ -57,10 +60,9 @@ export function ProjectList({ client, onOpen }: Props) {
     try {
       const xml = await file.text()
       const created = await client.importMspdi(xml)
-      setError(null)
       onOpen(created)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
+      showError(cause)
     } finally {
       setImporting(false)
     }
@@ -73,10 +75,9 @@ export function ProjectList({ client, onOpen }: Props) {
     setImporting(true)
     try {
       const created = await client.importP27(file)
-      setError(null)
       onOpen(created)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
+      showError(cause)
     } finally {
       setImporting(false)
     }
@@ -88,7 +89,7 @@ export function ProjectList({ client, onOpen }: Props) {
       await client.deleteProject(project.id)
       await refresh()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
+      showError(cause)
     }
   }
 
@@ -127,9 +128,8 @@ export function ProjectList({ client, onOpen }: Props) {
           />
         </label>
       </div>
-      {error !== null && <p className="error">{error}</p>}
       {projects === null ? (
-        <p className="muted">Loading…</p>
+        <p className="muted">{failed ? "Couldn't load projects" : 'Loading…'}</p>
       ) : projects.length === 0 ? (
         <p className="muted">No projects yet — create one above.</p>
       ) : (

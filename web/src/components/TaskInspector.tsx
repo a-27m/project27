@@ -4,6 +4,7 @@ import type { Command, ScheduleProject, ScheduleTask, TaskDriver } from '../api/
 import { dateTime, durationDays, formatUnits, fromWireDate, toWireDate } from '../lib/format'
 import { AccordionSection, CheckField, DateField, SelectField, StaticField, TextAreaField, TextField } from './InspectorFields'
 import { Icon } from './icons/Icon'
+import { useToast } from './toastContext'
 
 interface Props {
   task: ScheduleTask
@@ -311,10 +312,12 @@ function DescriptionSection({
 }) {
   const [description, setDescription] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
+  const { showError } = useToast()
   useEffect(() => {
     let cancelled = false
     setLoaded(false)
+    setFailed(false)
     client
       .taskDescription(projectId, task.uid)
       .then((result) => {
@@ -324,20 +327,22 @@ function DescriptionSection({
         }
       })
       .catch((cause: unknown) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause))
+        if (!cancelled) {
+          setFailed(true)
+          showError(cause)
+        }
       })
     return () => {
       cancelled = true
     }
-  }, [client, projectId, task.uid])
+  }, [client, projectId, task.uid, showError])
 
-  if (error !== null) return <p className="error">{error}</p>
   return (
     <TextAreaField
       label="Description"
       value={description ?? ''}
-      editable={editable}
-      loading={!loaded}
+      editable={editable && !failed}
+      loading={!loaded && !failed}
       maxLength={2000}
       onCommit={(v) => {
         const next = v === '' ? null : v
@@ -350,7 +355,8 @@ function DescriptionSection({
 
 function DriversSection({ client, projectId, uid }: { client: ApiClient; projectId: string; uid: number }) {
   const [drivers, setDrivers] = useState<TaskDriver[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
+  const { showError } = useToast()
   useEffect(() => {
     let cancelled = false
     client
@@ -359,13 +365,16 @@ function DriversSection({ client, projectId, uid }: { client: ApiClient; project
         if (!cancelled) setDrivers(result)
       })
       .catch((cause: unknown) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause))
+        if (!cancelled) {
+          setFailed(true)
+          showError(cause)
+        }
       })
     return () => {
       cancelled = true
     }
-  }, [client, projectId, uid])
-  if (error !== null) return <p className="error">{error}</p>
+  }, [client, projectId, uid, showError])
+  if (failed) return <p className="muted">Couldn't load drivers</p>
   if (drivers === null) return <p className="muted">Loading…</p>
   return (
     <ul className="drivers-list">
