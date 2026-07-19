@@ -28,10 +28,14 @@ Server storage is SQLite on a PersistentVolumeClaim (server.persistence). The
 server Deployment is fixed at 1 replica — see values.yaml for why.
 {{- if .Values.mcp.enabled }}
 
-MCP: {{ include "project27.fullname" . }}-mcp is deployed (mcp.enabled=true).
-It speaks MCP over stdio, not HTTP -- there's no Service for it. Reach it with:
+MCP: {{ include "project27.fullname" . }}-mcp is deployed (mcp.enabled=true),
+reachable in-cluster at svc/{{ include "project27.fullname" . }}-mcp:{{ .Values.mcp.port }}.
+Every session authenticates with, and forwards downstream, its own caller's
+OIDC bearer token (auth.authority/auth.audience) -- there is no devAuth
+equivalent for it, unlike server/web. Port-forward to reach it from outside
+the cluster:
 
-  kubectl exec -it -n {{ .Release.Namespace }} deploy/{{ include "project27.fullname" . }}-mcp -- dotnet Project27.Mcp.dll
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "project27.fullname" . }}-mcp {{ .Values.mcp.port }}:{{ .Values.mcp.port }}
 
 Set mcp.enabled=false to skip deploying it.
 {{- end }}

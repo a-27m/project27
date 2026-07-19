@@ -12,8 +12,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Kestrel/JwtBearer for the http transport (docs/spec/14-mcp-server.md); stdio (the
+         default) needs neither, but the framework reference is cheap and keeps one build. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="ModelContextProtocol" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
   </ItemGroup>
 
   <ItemGroup>

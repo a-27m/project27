@@ -8,7 +8,15 @@ public abstract record SessionConnection;
 
 public sealed record LocalConnection(string BaseDirectory) : SessionConnection;
 
-public sealed record RemoteConnection(string ServerUrl, string? Token, string? DevUser) : SessionConnection;
+/// <summary>
+/// <paramref name="TokenProvider"/> is invoked fresh by <see cref="RemoteProjectSession"/> on
+/// every outbound call rather than captured once — stdio's is a constant closure over a fixed
+/// `--token`/`P27_TOKEN`, so nothing changes there, but HTTP mode's reads the caller's *live*
+/// current bearer token via `IHttpContextAccessor` each time (<see cref="McpSessionRegistry"/>),
+/// so a token refresh mid-session is actually forwarded instead of silently stuck on whatever the
+/// caller presented on the session's first call.
+/// </summary>
+public sealed record RemoteConnection(string ServerUrl, Func<string?>? TokenProvider, string? DevUser) : SessionConnection;
 
 /// <summary>
 /// Holds the one project this MCP process operates on, established either eagerly at startup
@@ -36,7 +44,7 @@ public sealed class ProjectSessionHost(SessionConnection connection) : IProjectS
             {
                 LocalConnection local => LocalProjectSession.Create(ResolveCreatePath(local, path, name), name, start),
                 RemoteConnection remote => await RemoteProjectSession.CreateAsync(
-                    remote.ServerUrl, name, start, remote.Token, remote.DevUser, cancellationToken).ConfigureAwait(false),
+                    remote.ServerUrl, name, start, remote.TokenProvider, remote.DevUser, cancellationToken).ConfigureAwait(false),
                 _ => throw new InvalidOperationException("Unknown session connection."),
             };
         }
@@ -60,7 +68,7 @@ public sealed class ProjectSessionHost(SessionConnection connection) : IProjectS
             {
                 LocalConnection local => LocalProjectSession.Open(ResolveOpenPath(local, reference)),
                 RemoteConnection remote => await RemoteProjectSession.OpenAsync(
-                    remote.ServerUrl, reference, remote.Token, remote.DevUser, cancellationToken).ConfigureAwait(false),
+                    remote.ServerUrl, reference, remote.TokenProvider, remote.DevUser, cancellationToken).ConfigureAwait(false),
                 _ => throw new InvalidOperationException("Unknown session connection."),
             };
         }

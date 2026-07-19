@@ -12,10 +12,9 @@ ARG VERSION=dev
 WORKDIR /app
 COPY --from=build /app .
 ENV IMAGE_TAG=$VERSION
-# p27-mcp speaks MCP over stdio (docs/spec/14-mcp-server.md) -- there is no
-# HTTP port to expose. A container run from this image is only useful with
-# stdin/stdout attached to an MCP client (docker run -i ...); running it
-# under a Kubernetes Deployment leaves the process idle on stdio with
-# nothing to talk to it.
+# stdio by default (docker run -i ... for a locally-attached MCP client); the Helm chart
+# overrides P27_MCP_TRANSPORT=http to run this as a network-reachable Deployment instead
+# (docs/spec/14-mcp-server.md "HTTP transport").
+EXPOSE 5241
 USER $APP_UID
 ENTRYPOINT ["dotnet", "Project27.Mcp.dll"]

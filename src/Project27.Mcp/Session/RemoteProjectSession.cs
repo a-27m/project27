@@ -52,11 +52,13 @@ public sealed class RemoteProjectSession : IProjectSession
     };
 
     private readonly HttpClient _http;
+    private readonly Func<string?>? _tokenProvider;
     private readonly bool _releaseLockOnDispose;
 
-    private RemoteProjectSession(HttpClient http, Guid projectId, bool releaseLockOnDispose)
+    private RemoteProjectSession(HttpClient http, Func<string?>? tokenProvider, Guid projectId, bool releaseLockOnDispose)
     {
         _http = http;
+        _tokenProvider = tokenProvider;
         ProjectId = projectId;
         _releaseLockOnDispose = releaseLockOnDispose;
     }
@@ -64,33 +66,37 @@ public sealed class RemoteProjectSession : IProjectSession
     public Guid ProjectId { get; }
 
     public static async Task<RemoteProjectSession> OpenAsync(
-        string serverUrl, string projectRef, string? token, string? devUser, CancellationToken cancellationToken)
+        string serverUrl, string projectRef, Func<string?>? tokenProvider, string? devUser, CancellationToken cancellationToken)
     {
-        var http = BuildClient(serverUrl, token, devUser);
-        var info = await Resolve(http, projectRef, cancellationToken).ConfigureAwait(false);
-        return await CheckoutAsync(http, info.Id, cancellationToken).ConfigureAwait(false);
+        var http = BuildClient(serverUrl, devUser);
+        var info = await Resolve(http, tokenProvider, projectRef, cancellationToken).ConfigureAwait(false);
+        return await CheckoutAsync(http, tokenProvider, info.Id, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Creates a brand-new server project (mirrors `POST /api/projects`), then checks it out.</summary>
     public static async Task<RemoteProjectSession> CreateAsync(
-        string serverUrl, string name, DateTime? start, string? token, string? devUser, CancellationToken cancellationToken)
+        string serverUrl, string name, DateTime? start, Func<string?>? tokenProvider, string? devUser, CancellationToken cancellationToken)
     {
-        var http = BuildClient(serverUrl, token, devUser);
+        var http = BuildClient(serverUrl, devUser);
         var body = JsonContent.Create(new { name, start }, options: JsonOptions);
         var info = await ReadAsync<RemoteProjectInfo>(
-            await SendAsync(http, HttpMethod.Post, "api/projects", body, cancellationToken).ConfigureAwait(false))
+            await SendAsync(http, tokenProvider, HttpMethod.Post, "api/projects", body, cancellationToken).ConfigureAwait(false))
             .ConfigureAwait(false);
-        return await CheckoutAsync(http, info.Id, cancellationToken).ConfigureAwait(false);
+        return await CheckoutAsync(http, tokenProvider, info.Id, cancellationToken).ConfigureAwait(false);
     }
 
-    private static HttpClient BuildClient(string serverUrl, string? token, string? devUser)
+    /// <summary>
+    /// `devUser` is set once, as a fixed default header — it never expires, unlike a bearer token,
+    /// so there's nothing to refresh. The bearer token is deliberately *not* set here: see
+    /// <see cref="SendAsync"/>, which re-invokes <paramref name="devUser"/>'s sibling
+    /// <c>tokenProvider</c> fresh on every request instead of baking one value in for the
+    /// `HttpClient`'s whole lifetime (docs/spec/14-mcp-server.md "HTTP transport" — a long-lived
+    /// HTTP MCP session must forward whatever token its caller is currently presenting, not the
+    /// one it happened to present on the session's first call).
+    /// </summary>
+    private static HttpClient BuildClient(string serverUrl, string? devUser)
     {
         var http = new HttpClient { BaseAddress = new Uri(serverUrl.TrimEnd('/') + "/", UriKind.Absolute) };
-        if (!string.IsNullOrEmpty(token))
-        {
-            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        }
-
         if (!string.IsNullOrEmpty(devUser))
         {
             http.DefaultRequestHeaders.Add("X-Dev-User", devUser);
@@ -99,21 +105,22 @@ public sealed class RemoteProjectSession : IProjectSession
         return http;
     }
 
-    private static async Task<RemoteProjectSession> CheckoutAsync(HttpClient http, Guid id, CancellationToken cancellationToken)
+    private static async Task<RemoteProjectSession> CheckoutAsync(
+        HttpClient http, Func<string?>? tokenProvider, Guid id, CancellationToken cancellationToken)
     {
         var checkout = await ReadAsync<RemoteCheckout>(
-            await SendAsync(http, HttpMethod.Post, $"api/projects/{id:D}/checkout", null, cancellationToken).ConfigureAwait(false))
+            await SendAsync(http, tokenProvider, HttpMethod.Post, $"api/projects/{id:D}/checkout", null, cancellationToken).ConfigureAwait(false))
             .ConfigureAwait(false);
 
         // A lock whose AcquiredAt predates RefreshedAt already existed before this call (E19).
         var acquiredHere = checkout.Lock.AcquiredAt == checkout.Lock.RefreshedAt;
-        return new RemoteProjectSession(http, id, acquiredHere);
+        return new RemoteProjectSession(http, tokenProvider, id, acquiredHere);
     }
 
     public async Task<ProjectSummary> GetProjectAsync(CancellationToken cancellationToken)
     {
         var schedule = await ReadAsync<RemoteScheduleDto>(
-            await SendAsync(_http, HttpMethod.Get, $"api/projects/{ProjectId:D}/schedule", null, cancellationToken).ConfigureAwait(false))
+            await SendAsync(_http, _tokenProvider, HttpMethod.Get, $"api/projects/{ProjectId:D}/schedule", null, cancellationToken).ConfigureAwait(false))
             .ConfigureAwait(false);
         var project = schedule.Project;
         return new ProjectSummary(
@@ -162,7 +169,7 @@ public sealed class RemoteProjectSession : IProjectSession
         }
 
         var path = $"api/projects/{ProjectId:D}/view" + (query.Count > 0 ? "?" + string.Join('&', query) : string.Empty);
-        return await ReadAsync<TaskView>(await SendAsync(_http, HttpMethod.Get, path, null, cancellationToken).ConfigureAwait(false))
+        return await ReadAsync<TaskView>(await SendAsync(_http, _tokenProvider, HttpMethod.Get, path, null, cancellationToken).ConfigureAwait(false))
             .ConfigureAwait(false);
     }
 
@@ -171,18 +178,18 @@ public sealed class RemoteProjectSession : IProjectSession
 
     public async Task<IReadOnlyList<TaskDriver>> GetTaskDriversAsync(int uid, CancellationToken cancellationToken)
         => await ReadAsync<IReadOnlyList<TaskDriver>>(
-            await SendAsync(_http, HttpMethod.Get, $"api/projects/{ProjectId:D}/drivers/{uid}", null, cancellationToken).ConfigureAwait(false))
+            await SendAsync(_http, _tokenProvider, HttpMethod.Get, $"api/projects/{ProjectId:D}/drivers/{uid}", null, cancellationToken).ConfigureAwait(false))
             .ConfigureAwait(false);
 
     public async Task<UsageResult> GetUsageAsync(bool weekly, CancellationToken cancellationToken)
         => await ReadAsync<UsageResult>(
-            await SendAsync(_http, HttpMethod.Get, $"api/projects/{ProjectId:D}/usage?granularity={(weekly ? "week" : "day")}", null, cancellationToken)
+            await SendAsync(_http, _tokenProvider, HttpMethod.Get, $"api/projects/{ProjectId:D}/usage?granularity={(weekly ? "week" : "day")}", null, cancellationToken)
                 .ConfigureAwait(false))
             .ConfigureAwait(false);
 
     public async Task<string> GetReportAsync(string name, CancellationToken cancellationToken)
     {
-        using var response = await SendAsync(_http, HttpMethod.Get, $"api/projects/{ProjectId:D}/reports/{Uri.EscapeDataString(name)}", null, cancellationToken)
+        using var response = await SendAsync(_http, _tokenProvider, HttpMethod.Get, $"api/projects/{ProjectId:D}/reports/{Uri.EscapeDataString(name)}", null, cancellationToken)
             .ConfigureAwait(false);
         return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
     }
@@ -191,7 +198,7 @@ public sealed class RemoteProjectSession : IProjectSession
     {
         var content = JsonContent.Create(commands, options: JsonOptions);
         var result = await ReadAsync<RemoteCommandsResponse>(
-            await SendAsync(_http, HttpMethod.Post, $"api/projects/{ProjectId:D}/commands", content, cancellationToken).ConfigureAwait(false))
+            await SendAsync(_http, _tokenProvider, HttpMethod.Post, $"api/projects/{ProjectId:D}/commands", content, cancellationToken).ConfigureAwait(false))
             .ConfigureAwait(false);
         return new CommandResult(result.CreatedUids);
     }
@@ -202,7 +209,7 @@ public sealed class RemoteProjectSession : IProjectSession
         {
             try
             {
-                using var response = await SendAsync(_http, HttpMethod.Delete, $"api/projects/{ProjectId:D}/lock", null, CancellationToken.None)
+                using var response = await SendAsync(_http, _tokenProvider, HttpMethod.Delete, $"api/projects/{ProjectId:D}/lock", null, CancellationToken.None)
                     .ConfigureAwait(false);
             }
             catch (ProjectSessionException)
@@ -214,15 +221,15 @@ public sealed class RemoteProjectSession : IProjectSession
         _http.Dispose();
     }
 
-    private static async Task<RemoteProjectInfo> Resolve(HttpClient http, string projectRef, CancellationToken cancellationToken)
+    private static async Task<RemoteProjectInfo> Resolve(HttpClient http, Func<string?>? tokenProvider, string projectRef, CancellationToken cancellationToken)
     {
         if (Guid.TryParse(projectRef, out var id))
         {
-            return await ReadAsync<RemoteProjectInfo>(await SendAsync(http, HttpMethod.Get, $"api/projects/{id:D}", null, cancellationToken).ConfigureAwait(false))
+            return await ReadAsync<RemoteProjectInfo>(await SendAsync(http, tokenProvider, HttpMethod.Get, $"api/projects/{id:D}", null, cancellationToken).ConfigureAwait(false))
                 .ConfigureAwait(false);
         }
 
-        var all = await ReadAsync<List<RemoteProjectInfo>>(await SendAsync(http, HttpMethod.Get, "api/projects", null, cancellationToken).ConfigureAwait(false))
+        var all = await ReadAsync<List<RemoteProjectInfo>>(await SendAsync(http, tokenProvider, HttpMethod.Get, "api/projects", null, cancellationToken).ConfigureAwait(false))
             .ConfigureAwait(false);
         var matches = all.Where(p => string.Equals(p.Name, projectRef, StringComparison.OrdinalIgnoreCase)).ToList();
         return matches.Count switch
@@ -233,10 +240,25 @@ public sealed class RemoteProjectSession : IProjectSession
         };
     }
 
+    /// <summary>
+    /// <paramref name="tokenProvider"/> is invoked fresh on every call rather than once at
+    /// <c>HttpClient</c> construction: stdio's is a constant closure (`() => token`), so this
+    /// makes no difference there, but HTTP mode's reads the caller's *current* inbound bearer
+    /// token via <c>IHttpContextAccessor</c> each time (<see cref="McpSessionRegistry"/>) — a
+    /// long-lived session must forward whatever the caller is presenting *now*, not whatever it
+    /// presented on the session's first call, or a token refresh mid-session would leave this
+    /// leg silently stuck on the stale one.
+    /// </summary>
     private static async Task<HttpResponseMessage> SendAsync(
-        HttpClient http, HttpMethod method, string path, HttpContent? content, CancellationToken cancellationToken)
+        HttpClient http, Func<string?>? tokenProvider, HttpMethod method, string path, HttpContent? content, CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(method, path) { Content = content };
+        var token = tokenProvider?.Invoke();
+        if (!string.IsNullOrEmpty(token))
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        }
+
         HttpResponseMessage response;
         try
         {

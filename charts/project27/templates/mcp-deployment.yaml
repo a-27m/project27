@@ -7,7 +7,7 @@ metadata:
     {{- include "project27.labels" . | nindent 4 }}
     app.kubernetes.io/component: mcp
 spec:
-  replicas: 1
+  replicas: {{ .Values.mcp.replicaCount }}
   selector:
     matchLabels:
       {{- include "project27.selectorLabels.mcp" . | nindent 6 }}
@@ -29,31 +29,54 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
             {{- toYaml .Values.mcp.securityContext | nindent 12 }}
-          # No ports, probes, or Service: p27-mcp speaks MCP over stdio, not
-          # HTTP (docs/spec/14-mcp-server.md). The container just idles once
-          # started; it's meant to be reached with `kubectl exec -it`.
-          stdin: true
-          tty: false
+          # http, not stdio (docs/spec/14-mcp-server.md "HTTP transport"): a Deployment behind a
+          # ClusterIP Service, sized independently of server/web since MCP sessions are
+          # stateful-per-caller rather than SQLite-backed, unlike server (fixed at 1 replica).
+          ports:
+            - name: http
+              containerPort: {{ .Values.mcp.port }}
+              protocol: TCP
           env:
+            - name: P27_MCP_TRANSPORT
+              value: http
+            - name: ASPNETCORE_URLS
+              value: "http://+:{{ .Values.mcp.port }}"
             - name: P27_SERVER
               value: {{ .Values.mcp.server | default (printf "http://%s-server:8080" (include "project27.fullname" .)) | quote }}
-            {{- if .Values.mcp.project }}
-            - name: P27_PROJECT
-              value: {{ .Values.mcp.project | quote }}
+            # Every MCP session authenticates with, and forwards downstream, its own caller's
+            # bearer token -- there is no P27_DEV_USER/P27_TOKEN fallback here, unlike stdio's
+            # single-process/single-identity mode. The MCP endpoint validates that token against
+            # the same OIDC provider the server trusts (`auth.authority`/`auth.audience` below),
+            # so devAuth (X-Dev-User, no bearer token) can't apply to it either.
+            {{- if .Values.auth.authority }}
+            - name: Auth__Authority
+              value: {{ .Values.auth.authority | quote }}
+            {{- else }}
+            - name: Auth__Authority
+              value: {{ required "auth.authority is required (OIDC) for the MCP deployment: every session authenticates with its caller's own bearer token (docs/spec/14-mcp-server.md), and there is no devAuth equivalent for it. Set auth.authority, or set mcp.enabled=false." .Values.auth.authority | quote }}
             {{- end }}
-            {{- if .Values.devAuth.enabled }}
-            - name: P27_DEV_USER
-              value: {{ .Values.mcp.devUser | default "alice" | quote }}
-            {{- else if .Values.mcp.devUser }}
-            - name: P27_DEV_USER
-              value: {{ .Values.mcp.devUser | quote }}
-            {{- else if .Values.mcp.tokenSecretName }}
-            - name: P27_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.mcp.tokenSecretName }}
-                  key: {{ .Values.mcp.tokenSecretKey }}
+            {{- if .Values.auth.audience }}
+            - name: Auth__Audience
+              value: {{ .Values.auth.audience | quote }}
             {{- end }}
+          startupProbe:
+            httpGet:
+              path: {{ .Values.mcp.probes.healthPath }}
+              port: http
+            periodSeconds: {{ .Values.mcp.probes.startup.periodSeconds }}
+            failureThreshold: {{ .Values.mcp.probes.startup.failureThreshold }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.mcp.probes.healthPath }}
+              port: http
+            periodSeconds: {{ .Values.mcp.probes.liveness.periodSeconds }}
+            failureThreshold: {{ .Values.mcp.probes.liveness.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.mcp.probes.healthPath }}
+              port: http
+            periodSeconds: {{ .Values.mcp.probes.readiness.periodSeconds }}
+            failureThreshold: {{ .Values.mcp.probes.readiness.failureThreshold }}
           resources:
             {{- toYaml .Values.mcp.resources | nindent 12 }}
 {{- end }}

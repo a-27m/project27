@@ -1,0 +1,20 @@
+{{- if .Values.mcp.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "project27.fullname" . }}-mcp
+  labels:
+    {{- include "project27.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "project27.selectorLabels.mcp" . | nindent 4 }}
+  ports:
+    # Named "http" so Istio classifies this port for L7 (HTTP) routing instead of falling back to
+    # opaque TCP passthrough, same reasoning as server-service.yaml.
+    - name: http
+      port: {{ .Values.mcp.port }}
+      targetPort: http
+      protocol: TCP
+{{- end }}

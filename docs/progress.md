@@ -609,26 +609,83 @@ break" metadata, client-only storage) in `engineering-decisions.md` E35.
   Network view shows only real tasks, and confirmed clearing a task's name
   in the sheet reverts instead of sending an empty name.
 
-## MCP deployment in the Helm chart (2026-07-19)
+## MCP HTTP transport + Helm deployment (2026-07-19)
 
-`charts/project27/templates/mcp-deployment.yaml`, gated by `mcp.enabled`
-(default `true`), plus `src/Project27.Mcp/Dockerfile` (modeled on the
-server's) and a `docker-mcp` job in `ci.yaml` alongside `docker-backend`/
-`docker-web` (all three build in parallel off `dotnet`/`web`; `helm` now
-waits on all three).
+`p27-mcp` gained a second transport (`--transport http` / `P27_MCP_TRANSPORT=http`,
+`ModelContextProtocol.AspNetCore`'s `WithHttpTransport()`/`MapMcp()`), alongside the
+original stdio transport which stays the default and is unchanged. Full design in
+docs/spec/14-mcp-server.md "HTTP transport"; short version:
 
-- `p27-mcp` is stdio-only (docs/spec/14-mcp-server.md) — there's no HTTP
-  port, so no Service, probes, or Istio/Ingress routing for it, unlike
-  server/web. The Deployment exists to get the image in-cluster for
-  exec-based MCP clients; the container just idles on stdin/stdout once
-  started. `NOTES.txt` documents the `kubectl exec -it ... -- dotnet
-  Project27.Mcp.dll` pattern to actually attach to it.
-- Defaults to remote mode against the in-cluster server
-  (`http://<fullname>-server:8080`) with no project pre-selected, matching
-  Program.cs's "chat client with nothing to point at yet" idle-start path;
-  `mcp.project`/`mcp.devUser`/`mcp.tokenSecretName` are there to pin a
-  project or a non-devAuth identity if wanted.
-- Not verified: no cluster or Docker build available in this environment
-  to confirm the image actually builds or the pod comes up healthy — the
-  Dockerfile and CI wiring are copied from the server's known-working
-  pattern but unexercised here.
+- **Auth changes going over HTTP, in two ways.** stdio's trust was implicit — the
+  process is launched by whoever holds the credentials, one process per client. HTTP
+  is a shared endpoint, so (1) it authenticates every request itself, JWT bearer
+  against the same OIDC `Auth:Authority`/`Auth:Audience` the server trusts, and (2)
+  each session forwards *that caller's own* bearer token downstream to the Project27
+  server, rather than one fixed `P27_TOKEN`/`P27_DEV_USER` for the whole process.
+  There is no local-file mode and no dev-user fallback over HTTP — both would mean
+  every caller of a shared endpoint acts as the same backend identity.
+- **Multi-session, on purpose (chose the bigger of two options over "single-tenant,
+  network-reachable stdio-shaped").** `ProjectSessionHost` (one project + checkout
+  lock + backend credential) is now per-MCP-session, not per-process. Plumbing:
+  `Session/McpSessionRegistry.cs`, a singleton keyed by the Streamable HTTP
+  transport's `Mcp-Session-Id` header (sent on every request once a session exists) —
+  not DI scope-per-session, which the SDK's docs don't guarantee across the multiple
+  HTTP requests one session spans. This was checked empirically with a throwaway
+  probe (same registration shape, real tool classes): `initialize` then three
+  separate `tools/call` POSTs sharing one session id resolved the same host each
+  time (a project created on call 1 was readable, via `get_project`, on call 3), and
+  a second session id got its own distinct, empty host — confirming the registry is
+  both necessary and sufficient, not just the cautious guess. `McpIdleSessionSweeper`
+  (a `BackgroundService`) evicts and disposes entries idle past
+  `Mcp:SessionIdleMinutes` (default 30) every minute, since the transport gives no
+  "session closed" hook to drive eviction from directly; an evicted entry's
+  still-open server-side checkout lock is then recovered the same way any other
+  abandoned checkout is, via `Locking:StaleAfterMinutes` (E19).
+- **Token-refresh fix (same day, follow-up).** The project/lock is still established
+  once per session, but the bearer token forwarded downstream no longer is:
+  `RemoteProjectSession.SendAsync` now takes a `Func<string?> tokenProvider` and
+  invokes it fresh before every outbound call, instead of `BuildClient` baking one
+  token into `HttpClient.DefaultRequestHeaders` at construction.
+  `McpSessionRegistry` hands it a closure over the live `IHttpContextAccessor`, so a
+  caller's token refresh mid-session is forwarded on the very next call — no more
+  divergence between what the inbound MCP request accepts and what the outbound
+  Project27.Server call presents. stdio is unaffected: its token is a fixed
+  `--token`/`P27_TOKEN` wrapped in a constant closure (`() => token`), so "fresh
+  every call" returns what it always returned. `RemoteConnection.Token` (string) is
+  now `RemoteConnection.TokenProvider` (`Func<string?>?`); `RemoteProjectSession`'s
+  `OpenAsync`/`CreateAsync` and `McpSessionRegistry.ExtractBearerToken` (made
+  `internal` for this) changed to match.
+- `charts/project27/templates/mcp-deployment.yaml` + new `mcp-service.yaml`: a
+  ClusterIP Service in front of the Deployment now that it's actually reachable,
+  with `/healthz` startup/liveness/readiness probes (`mcp.probes`, mirrors
+  `server.probes`) and `Auth__Authority`/`Auth__Audience` wired from the chart's
+  existing top-level `auth.*` values — no new `mcp.devUser`/`mcp.tokenSecretName`
+  knobs; those made sense for a single fixed identity, not one caller's own token
+  per session. `mcp.enabled=true` now requires `auth.authority` (fails fast, same
+  pattern as `server`'s), since devAuth has no equivalent here.
+- `docker-mcp` CI job (from the cherry-picked commit) and `src/Project27.Mcp/Dockerfile`
+  needed no changes beyond a comment/EXPOSE update — it was already building on the
+  `aspnet` runtime image, which HTTP transport now actually uses instead of coincidence.
+- Verified: `dotnet build`/`test` (0 warnings, all Mcp suites including
+  `McpSessionRegistryTests` — session reuse/isolation, idle eviction, and
+  `ExtractBearerToken_reads_the_live_header_not_a_snapshot` proving the token
+  extractor re-reads a mutated `HttpContext` rather than a captured value — green);
+  manually ran `--transport http` end-to-end — fails fast without `Auth:Authority`,
+  `/healthz` returns 200 anonymously, the MCP endpoint 401s without a bearer token
+  once authority is set; ran `--transport stdio` (the default, args unset)
+  end-to-end unchanged, including the idle-session `initialize` handshake with no
+  file/project resolved. Beyond that, built a throwaway probe (real tool classes and
+  the exact production DI/registry wiring, swapping only the auth handler for an
+  always-succeed stub and the backend for `LocalConnection` — neither substitution
+  touches what was being tested) that drove `initialize` → `create_project` →
+  `list_tasks` → `get_project` as separate HTTP POSTs sharing one `Mcp-Session-Id`:
+  confirmed the same `ProjectSessionHost` resolves every call, `IHttpContextAccessor`
+  sees the live per-call request from inside the DI factory, state genuinely
+  persists across independent requests, and a second session id is fully isolated
+  from the first. This is what the multi-session design actually rests on, so it was
+  worth proving directly rather than trusting the SDK's docs.
+- Not verified: no real OIDC provider or cluster available in this environment, so
+  a genuine bearer-token round trip through the MCP endpoint to a live Project27
+  server (as opposed to the mechanism proven above with a stubbed auth handler and
+  local backend), and an actual `helm install`/pod-health check, are both
+  unexercised here.
