@@ -17,4 +17,4 @@ ENV IMAGE_TAG=$VERSION
 # (docs/spec/14-mcp-server.md "HTTP transport").
 EXPOSE 5241
 USER $APP_UID
-ENTRYPOINT ["dotnet", "Project27.Mcp.dll"]
+ENTRYPOINT ["dotnet", "p27-mcp.dll"]
