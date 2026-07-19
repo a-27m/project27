@@ -46,6 +46,35 @@ server:
       periodSeconds: 10
       failureThreshold: 3
 
+mcp:
+  # p27-mcp speaks MCP over stdio (docs/spec/14-mcp-server.md) -- there is no
+  # port to serve or readiness endpoint to probe. This Deployment exists so
+  # the image is present in-cluster for exec-based MCP clients
+  # (`kubectl exec -it <pod> -- p27-mcp` or equivalent); the container itself
+  # just idles on stdin/stdout once started, with nothing attached to it.
+  enabled: true
+
+  resources: {}
+
+  podSecurityContext:
+    fsGroup: 1654
+
+  securityContext:
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+
+  # Remote-mode connection (Program.cs): defaults to the in-cluster server
+  # service with no project pre-selected -- the session starts idle and
+  # create_project/open_project establish it later, same as the CLI docs
+  # describe for chat clients without a project to point at yet.
+  server: ""    # falls back to the in-cluster server service if empty
+  project: ""
+  devUser: ""
+  # Name of a Secret (already present in the cluster) holding a P27_TOKEN key,
+  # for connecting as a non-devAuth user. Ignored when devAuth.enabled.
+  tokenSecretName: ""
+  tokenSecretKey: token
+
 web:
   replicaCount: 2
   resources: {}

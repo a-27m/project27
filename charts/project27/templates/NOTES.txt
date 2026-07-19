@@ -26,6 +26,15 @@ svc/{{ include "project27.fullname" . }}-server separately to reach the API.
 
 Server storage is SQLite on a PersistentVolumeClaim (server.persistence). The
 server Deployment is fixed at 1 replica — see values.yaml for why.
+{{- if .Values.mcp.enabled }}
+
+MCP: {{ include "project27.fullname" . }}-mcp is deployed (mcp.enabled=true).
+It speaks MCP over stdio, not HTTP -- there's no Service for it. Reach it with:
+
+  kubectl exec -it -n {{ .Release.Namespace }} deploy/{{ include "project27.fullname" . }}-mcp -- dotnet Project27.Mcp.dll
+
+Set mcp.enabled=false to skip deploying it.
+{{- end }}
 {{- if .Values.devAuth.enabled }}
 
 *** devAuth is ON: ASPNETCORE_ENVIRONMENT=Development, the OpenAPI endpoint is

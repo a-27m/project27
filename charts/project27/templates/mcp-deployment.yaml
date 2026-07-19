@@ -1,0 +1,59 @@
+{{- if .Values.mcp.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "project27.fullname" . }}-mcp
+  labels:
+    {{- include "project27.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "project27.selectorLabels.mcp" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "project27.selectorLabels.mcp" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "project27.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.mcp.podSecurityContext | nindent 8 }}
+      containers:
+        - name: mcp
+          image: "{{ .Values.image.registry }}/{{ .Values.image.owner }}/project27-mcp:{{ include "project27.imageTag" . }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.mcp.securityContext | nindent 12 }}
+          # No ports, probes, or Service: p27-mcp speaks MCP over stdio, not
+          # HTTP (docs/spec/14-mcp-server.md). The container just idles once
+          # started; it's meant to be reached with `kubectl exec -it`.
+          stdin: true
+          tty: false
+          env:
+            - name: P27_SERVER
+              value: {{ .Values.mcp.server | default (printf "http://%s-server:8080" (include "project27.fullname" .)) | quote }}
+            {{- if .Values.mcp.project }}
+            - name: P27_PROJECT
+              value: {{ .Values.mcp.project | quote }}
+            {{- end }}
+            {{- if .Values.devAuth.enabled }}
+            - name: P27_DEV_USER
+              value: {{ .Values.mcp.devUser | default "alice" | quote }}
+            {{- else if .Values.mcp.devUser }}
+            - name: P27_DEV_USER
+              value: {{ .Values.mcp.devUser | quote }}
+            {{- else if .Values.mcp.tokenSecretName }}
+            - name: P27_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.mcp.tokenSecretName }}
+                  key: {{ .Values.mcp.tokenSecretKey }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.mcp.resources | nindent 12 }}
+{{- end }}
