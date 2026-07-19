@@ -1197,54 +1197,50 @@ g:hover > .gantt-linkhandle,
   color: var(--text-helper);
 }
 
-/* ------------------------------------------------------- % complete slider */
+/* ------------------------------------------------------- % complete segments */
 
-.pct-slider {
-  position: relative;
-  width: 130px;
-  height: 20px;
+.pct-segments {
+  display: inline-flex;
+  align-items: stretch;
   flex: none;
-  border-radius: var(--radius-none);
-  background: var(--field-01);
+  height: 22px;
   border: 1px solid var(--border);
-  touch-action: none;
+  border-radius: var(--radius-none);
+  overflow: hidden;
 }
 
-.pct-slider-fill {
-  position: absolute;
-  inset: 0 auto 0 0;
-  border-radius: var(--radius-none) 0 0 var(--radius-none);
-  background: color-mix(in srgb, var(--interactive) 35%, transparent);
-  pointer-events: none;
-}
-
-.pct-slider-knob {
-  position: absolute;
-  top: -2px;
-  width: 2px;
-  height: 24px;
-  background: var(--interactive);
-  transform: translateX(-1px);
-  pointer-events: none;
-}
-
-.pct-slider-stop {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  z-index: 1;
-  width: 20%;
-  margin-left: -10%;
+.pct-segment {
+  flex: none;
+  width: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: none;
   border: none;
-  padding: 0;
+  border-left: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-weight: 400;
   font-family: var(--font-mono);
-  font-size: 9px;
-  line-height: 1;
+  font-size: 10px;
   cursor: pointer;
+}
+
+.pct-segment:first-child {
+  border-left: none;
+}
+
+.pct-segment sup {
+  font-size: 0.7em;
+}
+
+.pct-segment[data-active] {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+}
+
+.pct-segment:disabled {
+  cursor: default;
 }
 
 .inspector-group {

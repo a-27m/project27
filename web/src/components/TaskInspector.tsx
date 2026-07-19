@@ -4,7 +4,6 @@ import type { Command, ScheduleProject, ScheduleTask, TaskDriver } from '../api/
 import { dateTime, durationDays, formatUnits, fromWireDate, toWireDate } from '../lib/format'
 import { AccordionSection, CheckField, DateField, SelectField, StaticField, TextAreaField, TextField } from './InspectorFields'
 import { Icon } from './icons/Icon'
-import { SegmentedPercent } from './SegmentedPercent'
 
 interface Props {
   task: ScheduleTask
@@ -220,8 +219,7 @@ export function TaskInspector({ task, project, tasks, editable, client, projectI
         >
           {!task.summary && (
             <div className="inspector-row">
-              <span className="inspector-label">% done</span>
-              <SegmentedPercent value={task.percentComplete} editable={editable} onCommit={(v) => set({ percentComplete: v })} />
+              <span className="inspector-label">Complete, %</span>
               <PercentInput value={task.percentComplete} editable={editable} onCommit={(v) => set({ percentComplete: v })} />
             </div>
           )}
