@@ -63,6 +63,14 @@ spec:
             - name: Auth__Audience
               value: {{ .Values.auth.audience | quote }}
             {{- end }}
+            {{- if and .Values.mcp.enabled .Values.mcp.resourceUrl }}
+            # A caller who authenticated to Project27.Mcp via OAuth discovery (RFC 9728) forwards
+            # a bearer token whose aud is the MCP server's own resource URL, not auth.audience --
+            # accept both here since the token is the same one either way (docs/spec/14-mcp-server.md
+            # "OAuth discovery").
+            - name: Auth__AdditionalAudiences__0
+              value: {{ .Values.mcp.resourceUrl | quote }}
+            {{- end }}
             {{- if .Values.auth.clientId }}
             - name: Auth__ClientId
               value: {{ .Values.auth.clientId | quote }}

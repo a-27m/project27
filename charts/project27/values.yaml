@@ -90,6 +90,23 @@ mcp:
   # themselves.
   server: ""    # falls back to the in-cluster server service if empty
 
+  # RFC 9728 protected-resource metadata (docs/spec/14-mcp-server.md "OAuth discovery"): the
+  # exact externally-visible URL this deployment is reachable at, including mcp.pathPrefix if
+  # set -- the same address you'd hand to `claude mcp add` or Claude Desktop's custom-connector
+  # dialog, e.g. "https://mcp.example.com/mcp/". Required for OAuth auto-discovery; leave empty
+  # to keep the older manual-bearer-token-only flow (docs/spec/14-mcp-server.md "HTTP: session
+  # bootstrap"). Also injected into the server Deployment as an additional accepted JWT audience
+  # (server-deployment.yaml), since the same bearer token is forwarded downstream to it.
+  resourceUrl: ""
+
+  # OAuth client id to hand to MCP clients that don't support Dynamic Client Registration
+  # (Claude Desktop's "Advanced settings", `claude mcp add --client-id`) -- surfaced in this
+  # chart's NOTES.txt output. Defaults to the p27 CLI's own public/native Entra app registration
+  # (src/Project27.Cli/appsettings.json CliClientId) so one native-app client covers the CLI and
+  # MCP clients rather than provisioning a second registration; override if you want a dedicated
+  # one, e.g. to register different loopback/callback redirect URIs separately.
+  clientId: "cdbc8e29-1dee-4135-8e70-21a6fd332db0"
+
 web:
   replicaCount: 2
   resources: {}

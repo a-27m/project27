@@ -38,6 +38,33 @@ the cluster:
   kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "project27.fullname" . }}-mcp {{ .Values.mcp.port }}:{{ .Values.mcp.port }}
 
 Set mcp.enabled=false to skip deploying it.
+{{- if .Values.mcp.resourceUrl }}
+
+OAuth discovery is on (mcp.resourceUrl={{ .Values.mcp.resourceUrl }}): remote MCP
+clients (Claude Desktop, Claude Code, claude.ai custom connectors) can add this
+server by URL and authenticate interactively instead of needing a manually
+pasted bearer token. Since this authorization server (auth.authority) doesn't
+support Dynamic Client Registration, supply the client id yourself:
+
+  claude mcp add --transport http project27 {{ .Values.mcp.resourceUrl }} \
+    --client-id {{ .Values.mcp.clientId }}
+
+Claude Desktop / claude.ai: Settings > Connectors > Add custom connector,
+paste the URL above, then under "Advanced settings" enter the same client id
+({{ .Values.mcp.clientId }}). No client secret is needed (public/native client).
+
+This reuses the p27 CLI's own Entra app registration by default (mcp.clientId).
+Its redirect URIs must additionally include Claude's callback URLs -- see
+docs/spec/14-mcp-server.md "OAuth discovery" for the exact values and the
+Entra-specific Application ID URI requirement for mcp.resourceUrl.
+{{- else }}
+
+OAuth discovery is off (mcp.resourceUrl unset): clients must be given a
+manually-obtained bearer token (`p27 login`, then pass it as
+`claude mcp add --header "Authorization: Bearer <token>"`). Set
+mcp.resourceUrl to this deployment's external MCP URL to enable interactive
+OAuth login instead.
+{{- end }}
 {{- end }}
 {{- if .Values.devAuth.enabled }}
 

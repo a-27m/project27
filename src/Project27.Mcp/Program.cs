@@ -1,10 +1,13 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using ModelContextProtocol.AspNetCore.Authentication;
+using Project27.Mcp.Auth;
 using Project27.Mcp.Session;
 using Project27.Storage;
 
@@ -124,12 +127,41 @@ static async Task RunHttpAsync(Dictionary<string, string> arguments)
             "then forwards that token downstream (docs/spec/14-mcp-server.md).");
     var audience = builder.Configuration["Auth:Audience"];
 
-    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-        .AddJwtBearer(options =>
+    // RFC 9728 protected-resource metadata / MCP auth spec (docs/spec/14-mcp-server.md "OAuth
+    // discovery"): set when this deployment's externally-visible MCP URL is known (Helm:
+    // mcp.resourceUrl), so a client like Claude Desktop/Code can discover the authorization
+    // server itself instead of the caller minting and pasting a bearer token by hand. Optional —
+    // unset keeps the pre-existing manual-bearer-token-only behavior, so existing deployments
+    // aren't forced to adopt this before they're ready.
+    var resource = builder.Configuration["Auth:Resource"];
+    var scopes = (builder.Configuration["Auth:Scopes"] ?? string.Empty)
+        .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    var authenticationBuilder = builder.Services.AddAuthentication(options =>
+    {
+        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = string.IsNullOrEmpty(resource)
+            ? JwtBearerDefaults.AuthenticationScheme
+            : McpAuthenticationDefaults.AuthenticationScheme;
+    }).AddJwtBearer(options =>
+    {
+        options.Authority = authority;
+        // ValidAudiences (plural), not the single Audience shorthand: a token Claude obtains via
+        // OAuth discovery carries aud=resource (Entra mints for whatever resource indicator the
+        // client requested), while a token from `p27 login`/the web SPA carries aud=audience —
+        // both must validate, since the same bearer token is forwarded on to Project27.Server.
+        options.TokenValidationParameters.ValidAudiences = McpResourceMetadataFactory.ValidAudiences(audience, resource);
+    });
+
+    if (!string.IsNullOrEmpty(resource))
+    {
+        authenticationBuilder.AddMcp(options =>
         {
-            options.Authority = authority;
-            options.Audience = audience;
+            options.ResourceMetadata = McpResourceMetadataFactory.BuildResourceMetadata(resource, authority, scopes);
+            options.ResourceMetadataUri = McpResourceMetadataFactory.ResourceMetadataUri(resource);
         });
+    }
+
     builder.Services.AddAuthorization();
     builder.Services.AddHttpContextAccessor();
 
@@ -163,6 +195,20 @@ static async Task RunHttpAsync(Dictionary<string, string> arguments)
         }));
 
     var app = builder.Build();
+    // The SDK's protected-resource-metadata endpoint (below) rejects a request whose
+    // Request.Scheme doesn't literally match Auth:Resource's scheme (see
+    // McpAuthenticationHandler.IsConfiguredEndpointRequest). Behind a TLS-terminating
+    // reverse proxy -- this chart's Istio/Ingress routing always is one -- Kestrel sees
+    // plain http, so without this the metadata document would 404 for every real client.
+    // Trusting all networks/proxies is safe here: this process only listens on a ClusterIP
+    // Service, reachable exclusively from other in-cluster hops.
+    var forwardedHeadersOptions = new ForwardedHeadersOptions
+    {
+        ForwardedHeaders = ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost,
+    };
+    forwardedHeadersOptions.KnownIPNetworks.Clear();
+    forwardedHeadersOptions.KnownProxies.Clear();
+    app.UseForwardedHeaders(forwardedHeadersOptions);
     app.UseAuthentication();
     app.UseAuthorization();
     app.MapGet("/healthz", () => Results.Ok()).AllowAnonymous();

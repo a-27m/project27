@@ -99,10 +99,24 @@ public static class AuthSetup
 
         if (!string.IsNullOrEmpty(authority))
         {
+            // ValidAudiences (plural): a bearer token forwarded from Project27.Mcp's HTTP
+            // transport may carry aud=<MCP resource URL> instead of aud=Auth:Audience, when the
+            // caller authenticated via the MCP server's RFC 9728 OAuth discovery rather than
+            // `p27 login`/the web SPA (docs/spec/14-mcp-server.md "OAuth discovery"). Both must
+            // validate here since either can be forwarded downstream. Auth:AdditionalAudiences is
+            // generic (not MCP-specific) so it also covers any other caller of this API that
+            // authenticates against a different resource indicator.
+            var audience = configuration["Auth:Audience"];
+            var additionalAudiences = configuration.GetSection("Auth:AdditionalAudiences").Get<string[]>() ?? [];
+            var validAudiences = additionalAudiences.Prepend(audience)
+                .Where(a => !string.IsNullOrWhiteSpace(a))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+
             builder.AddJwtBearer(options =>
             {
                 options.Authority = authority;
-                options.Audience = configuration["Auth:Audience"];
+                options.TokenValidationParameters.ValidAudiences = validAudiences;
             });
         }
 

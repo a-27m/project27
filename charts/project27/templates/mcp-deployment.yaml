@@ -63,6 +63,12 @@ spec:
             - name: Auth__Audience
               value: {{ .Values.auth.audience | quote }}
             {{- end }}
+            {{- if .Values.mcp.resourceUrl }}
+            - name: Auth__Resource
+              value: {{ .Values.mcp.resourceUrl | quote }}
+            {{- end }}
+            - name: Auth__Scopes
+              value: {{ .Values.auth.scopes | quote }}
           startupProbe:
             httpGet:
               path: {{ .Values.mcp.probes.healthPath }}
