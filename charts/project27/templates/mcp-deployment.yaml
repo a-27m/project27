@@ -43,6 +43,10 @@ spec:
               value: "http://+:{{ .Values.mcp.port }}"
             - name: P27_SERVER
               value: {{ .Values.mcp.server | default (printf "http://%s-server:8080" (include "project27.fullname" .)) | quote }}
+            {{- if .Values.mcp.pathPrefix }}
+            - name: Mcp__PathPrefix
+              value: {{ .Values.mcp.pathPrefix | quote }}
+            {{- end }}
             # Every MCP session authenticates with, and forwards downstream, its own caller's
             # bearer token -- there is no P27_DEV_USER/P27_TOKEN fallback here, unlike stdio's
             # single-process/single-identity mode. The MCP endpoint validates that token against

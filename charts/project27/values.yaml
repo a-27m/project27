@@ -56,6 +56,13 @@ mcp:
   replicaCount: 1
   port: 5241
 
+  # Streamable HTTP endpoint is mounted here instead of at "/" -- set this when an
+  # external proxy in front of the Service addresses it by path prefix (e.g. it always
+  # sends "<dns-name>:5241/mcp" and can't be told to rewrite/strip the suffix). Leave
+  # empty to keep serving at root. /healthz is unaffected either way -- it's for
+  # in-cluster k8s probes, not the proxy.
+  pathPrefix: ""
+
   resources: {}
 
   podSecurityContext:

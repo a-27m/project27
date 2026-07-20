@@ -166,7 +166,12 @@ static async Task RunHttpAsync(Dictionary<string, string> arguments)
     app.UseAuthentication();
     app.UseAuthorization();
     app.MapGet("/healthz", () => Results.Ok()).AllowAnonymous();
-    app.MapMcp().RequireAuthorization();
+    // Configurable so a caller-side proxy that only ever sends "<host>:<port>/<prefix>"
+    // (e.g. because its addressing scheme is per-service path prefixes rather than
+    // per-service ports) can be satisfied without it rewriting paths -- /healthz stays
+    // unprefixed either way since it's k8s probing this process directly, not the proxy.
+    var mcpPathPrefix = builder.Configuration.GetValue("Mcp:PathPrefix", "");
+    app.MapMcp(mcpPathPrefix).RequireAuthorization();
 
     await app.RunAsync().ConfigureAwait(false);
 }

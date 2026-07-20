@@ -290,6 +290,14 @@ existing top-level `auth.*` values (the same OIDC provider the server uses);
 server's own required-value check — devAuth has no equivalent for MCP, so
 `devAuth.enabled` doesn't affect it either way.
 
+`mcp.pathPrefix` (empty by default, i.e. served at `/`) sets `Mcp__PathPrefix`, which
+`Program.cs` passes to `MapMcp(prefix)` instead of the parameterless `MapMcp()`. It
+exists for callers whose proxy addresses the Service directly on `mcp.port` with a
+fixed path suffix (e.g. always `<dns-name>:5241/mcp`) rather than through the chart's
+own host-based `routing.*` — a bare `Service` can't rewrite paths, so the app has to
+serve the path the proxy already sends. `/healthz` stays unprefixed regardless, since
+it's k8s probing this process directly, never the proxy.
+
 ### Sequence diagrams
 
 PlantUML, kept alongside the design they illustrate. Each one names the actual
