@@ -30,6 +30,9 @@ jobs:
     name: Generate Version for ${{ inputs.service-name }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    concurrency:
+      group: semver-tag-${{ github.run_id }}
+      cancel-in-progress: false
     outputs:
       version: ${{ steps.gitversion.outputs.semVer }}
       major: ${{ steps.gitversion.outputs.major }}
