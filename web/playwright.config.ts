@@ -10,6 +10,7 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
+  reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL: WEB_URL,
     trace: 'on-first-retry',
@@ -21,7 +22,8 @@ export default defineConfig({
       url: `${SERVER_URL}/api/version`,
       env: { ASPNETCORE_ENVIRONMENT: 'Development', ASPNETCORE_URLS: SERVER_URL },
       reuseExistingServer: !process.env.CI,
-      timeout: 60_000,
+      // Cold CI runs restore+build here, not just app startup.
+      timeout: process.env.CI ? 180_000 : 60_000,
     },
     {
       command: 'npm run dev',
