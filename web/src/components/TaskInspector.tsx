@@ -18,7 +18,7 @@ interface Props {
   onCollapse: () => void
 }
 
-type Section = 'general' | 'description' | 'advanced' | 'tracking' | 'links' | 'resources' | 'custom' | 'drivers'
+type Section = 'general' | 'description' | 'advanced' | 'tracking' | 'split' | 'links' | 'resources' | 'custom' | 'drivers'
 
 const CONSTRAINTS = [
   'asSoonAsPossible',
@@ -248,6 +248,15 @@ export function TaskInspector({ task, project, tasks, editable, client, projectI
         </AccordionSection>
 
         <AccordionSection
+          title="Split"
+          hint={task.segments.length > 1 ? `${task.segments.length} segments` : undefined}
+          open={isOpen('split')}
+          onToggle={() => toggle('split')}
+        >
+          <SplitSection task={task} editable={editable} onCommands={onCommands} />
+        </AccordionSection>
+
+        <AccordionSection
           title="Links"
           hint={task.predecessors.length > 0 ? String(task.predecessors.length) : undefined}
           open={isOpen('links')}
@@ -386,6 +395,66 @@ function DriversSection({ client, projectId, uid }: { client: ApiClient; project
       ))}
       <li className="muted">● = binding</li>
     </ul>
+  )
+}
+
+function SplitSection({
+  task,
+  editable,
+  onCommands,
+}: {
+  task: ScheduleTask
+  editable: boolean
+  onCommands: (commands: Command[]) => void
+}) {
+  const [at, setAt] = useState('')
+  const [gap, setGap] = useState('')
+  const canSplit = editable && !task.summary && !task.milestone
+  return (
+    <>
+      {task.segments.length > 1 &&
+        task.segments.map((segment, index) => (
+          <div className="inspector-row" key={index}>
+            <span className="inspector-label">Segment {index + 1}</span>
+            <span>
+              {dateTime(segment.start)} – {dateTime(segment.finish)}
+            </span>
+          </div>
+        ))}
+      {canSplit && (
+        <div className="inspector-row">
+          <input
+            placeholder="At (e.g. 2d)"
+            aria-label="Split offset from task start"
+            value={at}
+            onChange={(event) => setAt(event.target.value)}
+          />
+          <input
+            placeholder="Gap (e.g. 1d)"
+            aria-label="Split gap length"
+            value={gap}
+            onChange={(event) => setGap(event.target.value)}
+          />
+          <button
+            disabled={at.trim() === '' || gap.trim() === ''}
+            onClick={() => {
+              onCommands([{ op: 'splitTask', uid: task.uid, at, gap }])
+              setAt('')
+              setGap('')
+            }}
+          >
+            Split task
+          </button>
+        </div>
+      )}
+      {editable && task.segments.length > 1 && (
+        <div className="inspector-row">
+          <button className="danger" onClick={() => onCommands([{ op: 'unsplitTask', uid: task.uid }])}>
+            Remove all splits
+          </button>
+        </div>
+      )}
+    </>
   )
 }
 

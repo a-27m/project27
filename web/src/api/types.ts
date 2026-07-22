@@ -278,6 +278,8 @@ export type Command =
   | { op: 'link'; predecessorUid: number; successorUid: number; type?: DependencyType; lag?: CommandLag }
   | { op: 'setLink'; predecessorUid: number; successorUid: number; type?: DependencyType; lag?: CommandLag }
   | { op: 'unlink'; predecessorUid: number; successorUid: number }
+  | { op: 'splitTask'; uid: number; at: string; gap: string }
+  | { op: 'unsplitTask'; uid: number }
   | { op: 'setProject'; name?: string; start?: string; statusDate?: string; clearStatusDate?: boolean }
   | { op: 'assign'; uid: number; resource: string; units?: number; work?: string; cost?: number; unitsPer?: RateUnit }
   | {
