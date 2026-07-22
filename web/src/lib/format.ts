@@ -82,6 +82,85 @@ export function predecessorToken(
   return `${row}${PREDECESSOR_ABBREVIATION[type] ?? '?'}${lag}`
 }
 
+/** Base duration units accepted in lag text input, mirroring the CLI's Duration unit aliases. */
+const BASE_LAG_UNITS: Record<string, 'm' | 'h' | 'd' | 'w' | 'mo'> = {
+  m: 'm',
+  min: 'm',
+  mins: 'm',
+  minute: 'm',
+  minutes: 'm',
+  h: 'h',
+  hr: 'h',
+  hrs: 'h',
+  hour: 'h',
+  hours: 'h',
+  d: 'd',
+  dy: 'd',
+  dys: 'd',
+  day: 'd',
+  days: 'd',
+  w: 'w',
+  wk: 'w',
+  wks: 'w',
+  week: 'w',
+  weeks: 'w',
+  mo: 'mo',
+  mon: 'mo',
+  mons: 'mo',
+  month: 'mo',
+  months: 'mo',
+}
+
+/** Renders a lag as editable text: "3d", "50%", "2ed", "-1h"; zero lag is blank. Mirrors predecessorToken's units. */
+export function formatLagInput(kind: string, value: number, minutesPerDay: number): string {
+  if (value === 0) return ''
+  if (kind === 'percent') return `${trimNumber(value)}%`
+  if (kind === 'elapsed') return `${trimNumber(Math.round((value / 1440) * 100) / 100)}ed`
+  return `${trimNumber(Math.round((value / minutesPerDay) * 100) / 100)}d`
+}
+
+/**
+ * Parses lag text ("3d", "4eh", "50%", leading "-" for lead) into wire minutes/percent.
+ * Working weeks/months aren't convertible client-side (minutesPerWeek/daysPerMonth aren't
+ * exposed to the web app), so those unit tokens are rejected; elapsed weeks/months use fixed
+ * calendar-independent constants and are supported.
+ */
+export function parseLagInput(text: string, minutesPerDay: number): { kind: 'working' | 'elapsed' | 'percent'; value: number } | null {
+  const trimmed = text.trim()
+  if (trimmed === '' || trimmed === '0') return { kind: 'working', value: 0 }
+
+  const lead = trimmed.startsWith('-')
+  const body = lead ? trimmed.slice(1) : trimmed
+
+  if (body.endsWith('%')) {
+    const percent = Number(body.slice(0, -1))
+    if (body.length < 2 || !Number.isFinite(percent)) return null
+    return { kind: 'percent', value: lead ? -percent : percent }
+  }
+
+  const match = /^(\d+(?:\.\d+)?)\s*([a-zA-Z]+)$/.exec(body)
+  if (match === null) return null
+  const value = Number(match[1])
+  const unitToken = match[2].toLowerCase()
+  const elapsed = unitToken.length > 1 && unitToken.startsWith('e') && unitToken.slice(1) in BASE_LAG_UNITS
+  const base = BASE_LAG_UNITS[elapsed ? unitToken.slice(1) : unitToken]
+  if (base === undefined) return null
+
+  let minutes: number
+  if (base === 'm') minutes = value
+  else if (base === 'h') minutes = value * 60
+  else if (base === 'd') minutes = elapsed ? value * 1440 : value * minutesPerDay
+  else if (base === 'w') {
+    if (!elapsed) return null
+    minutes = value * 10080
+  } else {
+    if (!elapsed) return null
+    minutes = value * 43200
+  }
+
+  return { kind: elapsed ? 'elapsed' : 'working', value: lead ? -minutes : minutes }
+}
+
 /** Field kinds rendered right-aligned in grids (server FieldKind names, e.g. from /fields, /view). */
 export const NUMERIC_FIELD_KINDS = new Set(['Number', 'Cost', 'Work', 'Duration', 'Percent', 'WholeNumber'])
 

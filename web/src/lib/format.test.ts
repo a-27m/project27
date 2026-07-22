@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { dateTime, durationDays, formatFieldValue, formatUnits, fromWireDate, predecessorToken, toWireDate } from './format'
+import {
+  dateTime,
+  durationDays,
+  formatFieldValue,
+  formatLagInput,
+  formatUnits,
+  fromWireDate,
+  parseLagInput,
+  predecessorToken,
+  toWireDate,
+} from './format'
 
 describe('format', () => {
   it('renders durations in days from minutes', () => {
@@ -45,5 +55,40 @@ describe('format', () => {
     expect(formatFieldValue('Cost', 12.345)).toBe('12.35')
     expect(formatFieldValue('Text', 'hi')).toBe('hi')
     expect(formatFieldValue('Text', null)).toBe('')
+  })
+
+  it('formats lag values as editable text', () => {
+    expect(formatLagInput('working', 0, 480)).toBe('')
+    expect(formatLagInput('working', 960, 480)).toBe('2d')
+    expect(formatLagInput('working', -480, 480)).toBe('-1d')
+    expect(formatLagInput('elapsed', 2880, 480)).toBe('2ed')
+    expect(formatLagInput('percent', -50, 480)).toBe('-50%')
+  })
+
+  it('parses lag text into wire lag values', () => {
+    expect(parseLagInput('', 480)).toEqual({ kind: 'working', value: 0 })
+    expect(parseLagInput('0', 480)).toEqual({ kind: 'working', value: 0 })
+    expect(parseLagInput('2d', 480)).toEqual({ kind: 'working', value: 960 })
+    expect(parseLagInput('-2d', 480)).toEqual({ kind: 'working', value: -960 })
+    expect(parseLagInput('3h', 480)).toEqual({ kind: 'working', value: 180 })
+    expect(parseLagInput('2eh', 480)).toEqual({ kind: 'elapsed', value: 120 })
+    expect(parseLagInput('2ed', 480)).toEqual({ kind: 'elapsed', value: 2880 })
+    expect(parseLagInput('50%', 480)).toEqual({ kind: 'percent', value: 50 })
+    expect(parseLagInput('-50%', 480)).toEqual({ kind: 'percent', value: -50 })
+    expect(parseLagInput('2w', 480)).toBeNull()
+    expect(parseLagInput('not-a-lag', 480)).toBeNull()
+  })
+
+  it('round-trips lag text through format and parse', () => {
+    for (const [kind, value] of [
+      ['working', 960],
+      ['working', -960],
+      ['elapsed', 2880],
+      ['percent', 50],
+      ['percent', -25],
+    ] as const) {
+      const text = formatLagInput(kind, value, 480)
+      expect(parseLagInput(text, 480)).toEqual({ kind, value })
+    }
   })
 })

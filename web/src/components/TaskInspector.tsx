@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ApiClient } from '../api/client'
 import type { Command, ScheduleProject, ScheduleTask, TaskDriver } from '../api/types'
-import { dateTime, durationDays, formatUnits, fromWireDate, toWireDate } from '../lib/format'
+import { dateTime, durationDays, formatLagInput, formatUnits, fromWireDate, parseLagInput, toWireDate } from '../lib/format'
 import { AccordionSection, CheckField, DateField, SelectField, StaticField, TextAreaField, TextField } from './InspectorFields'
 import { Icon } from './icons/Icon'
 import { useToast } from './toastContext'
@@ -262,7 +262,14 @@ export function TaskInspector({ task, project, tasks, editable, client, projectI
           open={isOpen('links')}
           onToggle={() => toggle('links')}
         >
-          <LinksSection task={task} tasks={tasks} editable={editable} onCommands={onCommands} rowOf={rowOf} />
+          <LinksSection
+            task={task}
+            tasks={tasks}
+            editable={editable}
+            onCommands={onCommands}
+            rowOf={rowOf}
+            minutesPerDay={project.minutesPerDay}
+          />
         </AccordionSection>
 
         <AccordionSection
@@ -464,12 +471,14 @@ function LinksSection({
   editable,
   onCommands,
   rowOf,
+  minutesPerDay,
 }: {
   task: ScheduleTask
   tasks: ScheduleTask[]
   editable: boolean
   onCommands: (commands: Command[]) => void
   rowOf: (uid: number) => number
+  minutesPerDay: number
 }) {
   const [newPredecessor, setNewPredecessor] = useState('')
   return (
@@ -497,6 +506,15 @@ function LinksSection({
               <option key={type}>{type}</option>
             ))}
           </select>
+          <LagInput
+            lagKind={link.lagKind}
+            lagValue={link.lagValue}
+            minutesPerDay={minutesPerDay}
+            editable={editable}
+            onCommit={(lag) =>
+              onCommands([{ op: 'setLink', predecessorUid: link.predecessorUid, successorUid: task.uid, lag }])
+            }
+          />
           {editable && (
             <button
               className="danger"
@@ -530,6 +548,45 @@ function LinksSection({
         </div>
       )}
     </>
+  )
+}
+
+/** Editable lag text ("3d", "50%", "2eh", leading "-" for lead); commits on blur/Enter, reverts on Escape. */
+function LagInput({
+  lagKind,
+  lagValue,
+  minutesPerDay,
+  editable,
+  onCommit,
+}: {
+  lagKind: string
+  lagValue: number
+  minutesPerDay: number
+  editable: boolean
+  onCommit: (lag: { kind: 'working' | 'elapsed' | 'percent'; value: number }) => void
+}) {
+  const formatted = formatLagInput(lagKind, lagValue, minutesPerDay)
+  const [draft, setDraft] = useState<string | null>(null)
+  const commit = () => {
+    if (draft !== null && draft !== formatted) {
+      const parsed = parseLagInput(draft, minutesPerDay)
+      if (parsed !== null) onCommit(parsed)
+    }
+    setDraft(null)
+  }
+  return (
+    <input
+      aria-label="Lag"
+      placeholder="lag e.g. 3d"
+      value={draft ?? formatted}
+      readOnly={!editable}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') commit()
+        else if (event.key === 'Escape') setDraft(null)
+      }}
+    />
   )
 }
 
