@@ -196,6 +196,11 @@ export interface ResourceSummary {
   type: 'work' | 'material' | 'cost'
   maxUnits: number
   rate: string
+  initials?: string | null
+  group?: string | null
+  calendar?: string | null
+  materialLabel?: string | null
+  accrual?: 'start' | 'prorated' | 'end'
 }
 
 export interface Schedule {

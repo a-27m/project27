@@ -21,7 +21,17 @@ public sealed record ScheduleProjectDto(
     IReadOnlyList<CustomFieldSummaryDto> CustomFields,
     ProjectStatsData Stats);
 
-public sealed record ResourceSummaryDto(int Uid, string Name, ResourceType Type, decimal MaxUnits, string Rate);
+public sealed record ResourceSummaryDto(
+    int Uid,
+    string Name,
+    ResourceType Type,
+    decimal MaxUnits,
+    string Rate,
+    string? Initials,
+    string? Group,
+    string? Calendar,
+    string? MaterialLabel,
+    CostAccrual Accrual);
 
 public sealed record CustomFieldSummaryDto(string Id, string? Alias, string Kind, bool HasFormula);
 
@@ -179,7 +189,16 @@ public static class ScheduleProjection
                 [.. project.Calendars.Select(c => c.Name)],
                 [
                     .. project.Resources.Select(r => new ResourceSummaryDto(
-                        r.UniqueId, r.Name, r.Type, r.MaxUnits, r.StandardRate.ToString())),
+                        r.UniqueId,
+                        r.Name,
+                        r.Type,
+                        r.MaxUnits,
+                        r.StandardRate.ToString(),
+                        r.Initials,
+                        r.Group,
+                        r.Calendar?.Name,
+                        r.MaterialLabel,
+                        r.Accrual)),
                 ],
                 [
                     .. project.CustomFields.OrderBy(f => f.Id, StringComparer.Ordinal).Select(f => new CustomFieldSummaryDto(

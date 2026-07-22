@@ -62,6 +62,11 @@ export function ResourcesView({ project, editable, onCommands, columnKeys }: Pro
               {show('type') && <th>Type</th>}
               {show('maxUnits') && <th>Max units</th>}
               {show('rate') && <th>Rate</th>}
+              {show('initials') && <th>Initials</th>}
+              {show('group') && <th>Group</th>}
+              {show('calendar') && <th>Calendar</th>}
+              {show('materialLabel') && <th>Material label</th>}
+              {show('accrual') && <th>Accrual</th>}
               <th />
             </tr>
           </thead>
@@ -117,6 +122,88 @@ export function ResourcesView({ project, editable, onCommands, columnKeys }: Pro
                     )}
                   </td>
                 )}
+                {show('initials') && (
+                  <td>
+                    <InlineEdit
+                      value={resource.initials ?? ''}
+                      editable={editable}
+                      label={`Initials of ${resource.name}`}
+                      onCommit={(v) =>
+                        onCommands([{ op: 'setResource', resource: resource.name, initials: v || undefined }])
+                      }
+                    />
+                  </td>
+                )}
+                {show('group') && (
+                  <td>
+                    <InlineEdit
+                      value={resource.group ?? ''}
+                      editable={editable}
+                      label={`Group of ${resource.name}`}
+                      onCommit={(v) =>
+                        onCommands([{ op: 'setResource', resource: resource.name, group: v || undefined }])
+                      }
+                    />
+                  </td>
+                )}
+                {show('calendar') && (
+                  <td>
+                    {resource.type === 'work' ? (
+                      <InlineSelect
+                        value={resource.calendar ?? ''}
+                        options={['', ...project.calendars]}
+                        labels={['(project)', ...project.calendars]}
+                        editable={editable}
+                        label={`Calendar of ${resource.name}`}
+                        onCommit={(v) =>
+                          onCommands([
+                            v === ''
+                              ? { op: 'setResource', resource: resource.name, clearCalendar: true }
+                              : { op: 'setResource', resource: resource.name, calendar: v },
+                          ])
+                        }
+                      />
+                    ) : (
+                      ''
+                    )}
+                  </td>
+                )}
+                {show('materialLabel') && (
+                  <td>
+                    {resource.type === 'material' ? (
+                      <InlineEdit
+                        value={resource.materialLabel ?? ''}
+                        editable={editable}
+                        label={`Material label of ${resource.name}`}
+                        onCommit={(v) =>
+                          onCommands([{ op: 'setResource', resource: resource.name, materialLabel: v || undefined }])
+                        }
+                      />
+                    ) : (
+                      ''
+                    )}
+                  </td>
+                )}
+                {show('accrual') && (
+                  <td>
+                    <InlineSelect
+                      value={resource.accrual ?? 'prorated'}
+                      options={['start', 'prorated', 'end']}
+                      labels={['Start', 'Prorated', 'End']}
+                      editable={editable}
+                      label={`Accrual of ${resource.name}`}
+                      onCommit={(v) =>
+                        onCommands([
+                          {
+                            op: 'setResource',
+                            resource: resource.name,
+                            accrual: v as 'start' | 'prorated' | 'end',
+                          },
+                        ])
+                      }
+                    />
+                  </td>
+                )}
                 <td>
                   {editable && (
                     <button
@@ -170,5 +257,42 @@ function InlineEdit({
         else if (event.key === 'Escape') setDraft(null)
       }}
     />
+  )
+}
+
+function InlineSelect({
+  value,
+  options,
+  labels,
+  editable,
+  label,
+  onCommit,
+}: {
+  value: string
+  options: string[]
+  labels: string[]
+  editable: boolean
+  label: string
+  onCommit: (value: string) => void
+}) {
+  if (!editable) {
+    const idx = options.indexOf(value)
+    return <>{idx >= 0 ? labels[idx] : value}</>
+  }
+  return (
+    <select
+      className="inline-edit"
+      aria-label={label}
+      value={value}
+      onChange={(event) => {
+        if (event.target.value !== value) onCommit(event.target.value)
+      }}
+    >
+      {options.map((opt, i) => (
+        <option key={opt} value={opt}>
+          {labels[i]}
+        </option>
+      ))}
+    </select>
   )
 }
