@@ -22,7 +22,7 @@ jobs:
   web:
     name: Web
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     outputs:
       result: ${{ steps.test.outcome }}
 
@@ -36,6 +36,11 @@ jobs:
           node-version: 26.x
           cache: 'npm'
           cache-dependency-path: './web/package-lock.json'
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
 
       - name: Install dependencies
         working-directory: ./web
@@ -53,6 +58,23 @@ jobs:
         id: test
         working-directory: ./web
         run: npm test
+
+      - name: Install Playwright browsers
+        working-directory: ./web
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E
+        working-directory: ./web
+        run: npm run e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: web/playwright-report
+          retention-days: 7
+          if-no-files-found: ignore
 
   docker-backend:
     name: Docker Backend
