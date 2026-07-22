@@ -137,6 +137,41 @@ public sealed class MspdiRoundTripTests
     }
 
     [Fact]
+    public void Calendars_with_a_24_hour_working_day_survive()
+    {
+        var project = new Project("Alpha", At("2026-01-05 08:00"));
+        var testLab = WorkCalendar.Create24Hours("TestLab");
+        project.AddCalendar(testLab);
+
+        var xml = MspdiWriter.Write(project);
+        Assert.Contains("24:00:00", xml);
+
+        var imported = MspdiReader.Read(xml);
+        var calendar = imported.Calendars.Single(c => c.Name == "TestLab");
+        var monday = calendar.DefaultWeek[DayOfWeek.Monday]!.Value;
+        Assert.True(monday.IsWorking);
+        var interval = Assert.Single(monday.Intervals);
+        Assert.Equal(0, interval.StartMinute);
+        Assert.Equal(TimeInterval.MinutesPerDay, interval.EndMinute);
+    }
+
+    [Fact]
+    public void Calendars_with_intervals_ending_at_midnight_survive()
+    {
+        var project = new Project("Alpha", At("2026-01-05 08:00"));
+        var nightShift = WorkCalendar.CreateNightShift("Night Shift");
+        project.AddCalendar(nightShift);
+
+        var xml = MspdiWriter.Write(project);
+        var imported = MspdiReader.Read(xml);
+
+        var calendar = imported.Calendars.Single(c => c.Name == "Night Shift");
+        var tuesday = calendar.DefaultWeek[DayOfWeek.Tuesday]!.Value;
+        Assert.True(tuesday.IsWorking);
+        Assert.Contains(tuesday.Intervals, i => i.StartMinute == 23 * 60 && i.EndMinute == 24 * 60);
+    }
+
+    [Fact]
     public void Foreign_documents_are_read_leniently()
     {
         const string minimal = """

@@ -150,10 +150,15 @@ internal static class Mspdi
     public static string Num(decimal value) => value.ToString(CultureInfo.InvariantCulture);
 
     public static string TimeOfDay(int minutes)
-        => System.TimeOnly.FromTimeSpan(TimeSpan.FromMinutes(minutes)).ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+        => minutes % (24 * 60) == 0 && minutes != 0
+            ? "24:00:00"
+            : System.TimeOnly.FromTimeSpan(TimeSpan.FromMinutes(minutes % (24 * 60))).ToString("HH:mm:ss", CultureInfo.InvariantCulture);
 
     public static int MinutesOfDay(string text)
-        => (int)System.TimeOnly.ParseExact(text, "HH:mm:ss", CultureInfo.InvariantCulture).ToTimeSpan().TotalMinutes;
+    {
+        var parts = text.Split(':');
+        return int.Parse(parts[0], CultureInfo.InvariantCulture) * 60 + int.Parse(parts[1], CultureInfo.InvariantCulture);
+    }
 
     public static XElement E(string name, params object?[] content) => new(Ns + name, content);
 
