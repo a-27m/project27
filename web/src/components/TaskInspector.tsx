@@ -290,13 +290,42 @@ export function TaskInspector({ task, project, tasks, editable, client, projectI
           {project.customFields.length === 0 && <p className="muted">No custom fields defined.</p>}
           {project.customFields.map((field) => {
             const raw = task.customValues?.[field.id]
+            const label = (field.alias ?? field.id) + (field.hasFormula ? ' (formula)' : '')
+            const isEditable = editable && !field.hasFormula && !task.summary
+
+            if (field.kind === 'Flag') {
+              const checked = raw === true || String(raw).toLowerCase() === 'true'
+              return (
+                <CheckField
+                  key={field.id}
+                  label={label}
+                  checked={checked}
+                  editable={isEditable}
+                  onCommit={(v) => set({ customValues: { [field.alias ?? field.id]: v } })}
+                />
+              )
+            }
+
+            if (field.kind === 'Date') {
+              const value = raw === null || raw === undefined ? null : String(raw)
+              return (
+                <DateField
+                  key={field.id}
+                  label={label}
+                  value={value}
+                  editable={isEditable}
+                  onCommit={(v) => set({ customValues: { [field.alias ?? field.id]: v } })}
+                />
+              )
+            }
+
             const text = raw === null || raw === undefined ? '' : String(raw)
             return (
               <TextField
                 key={field.id}
-                label={(field.alias ?? field.id) + (field.hasFormula ? ' (formula)' : '')}
+                label={label}
                 value={text}
-                editable={editable && !field.hasFormula && !task.summary}
+                editable={isEditable}
                 onCommit={(v) =>
                   set({ customValues: { [field.alias ?? field.id]: v === '' ? null : v } })
                 }
