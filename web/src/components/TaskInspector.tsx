@@ -116,7 +116,12 @@ export function TaskInspector({ task, project, tasks, editable, client, projectI
             editable={editable && !task.summary}
             onCommit={(v) => set({ priority: Number(v) })}
           />
-          <StaticField label="WBS" value={task.wbs} />
+          <TextField
+            label="WBS"
+            value={task.wbs}
+            editable={editable}
+            onCommit={(v) => set(v === '' ? { clearWbs: true } : { wbs: v })}
+          />
           <StaticField
             label="Slack"
             value={task.totalSlackMinutes === null ? '' : durationDays(task.totalSlackMinutes, project.minutesPerDay)}

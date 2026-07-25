@@ -268,6 +268,8 @@ export type Command =
       clearDeadline?: boolean
       constraint?: ConstraintType
       constraintDate?: string
+      wbs?: string
+      clearWbs?: boolean
       description?: string
       clearDescription?: boolean
     }
