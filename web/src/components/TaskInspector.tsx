@@ -38,6 +38,10 @@ const CONTOURS = ['flat', 'backLoaded', 'frontLoaded', 'doublePeak', 'earlyPeak'
 const PER_OPTIONS = ['', 'hour', 'day', 'week', 'month', 'year'] as const
 const PER_LABELS = ['fixed', '/hour', '/day', '/week', '/month', '/year']
 
+/** Cost rate tables (A–E); matches setAssignment rateTable field. */
+const RATE_TABLE_OPTIONS = ['a', 'b', 'c', 'd', 'e'] as const
+const RATE_TABLE_LABELS = ['A', 'B', 'C', 'D', 'E']
+
 /** Full-field task editor (docs/spec/12-polish.md parity matrix, 12p-2). */
 export function TaskInspector({ task, project, tasks, editable, client, projectId, onCommands, onClose, onCollapse }: Props) {
   const [openSections, setOpenSections] = useState<ReadonlySet<Section>>(new Set(['general']))
@@ -732,6 +736,26 @@ function ResourcesSection({
                   : { op: 'setAssignment', uid: task.uid, resource: assignment.resource, actualCost: Number(v) },
               ])
             }
+          />
+          <TextField
+            label="Delay"
+            value={assignment.delayMinutes === 0 ? '' : `${Math.round((assignment.delayMinutes / 60) * 100) / 100}h`}
+            editable={editable}
+            onCommit={(v) =>
+              onCommands([
+                v.trim() === ''
+                  ? { op: 'setAssignment', uid: task.uid, resource: assignment.resource, delay: '0' }
+                  : { op: 'setAssignment', uid: task.uid, resource: assignment.resource, delay: v },
+              ])
+            }
+          />
+          <SelectField
+            label="Rate table"
+            value={assignment.rateTable}
+            options={RATE_TABLE_OPTIONS}
+            labels={RATE_TABLE_LABELS}
+            editable={editable}
+            onCommit={(v) => onCommands([{ op: 'setAssignment', uid: task.uid, resource: assignment.resource, rateTable: v }])}
           />
           <StaticField label="Costed" value={String(assignment.cost)} />
         </div>
