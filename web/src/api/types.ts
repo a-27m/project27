@@ -71,6 +71,7 @@ export interface ScheduleTask {
   active: boolean
   mode: TaskMode
   durationMinutes: number
+  remainingDurationMinutes: number
   estimated: boolean
   start: string | null
   finish: string | null
@@ -259,6 +260,7 @@ export type Command =
       uid: number
       name?: string
       duration?: string
+      remainingDuration?: string
       mode?: TaskMode
       active?: boolean
       milestone?: boolean

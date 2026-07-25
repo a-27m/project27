@@ -245,6 +245,12 @@ export function TaskInspector({ task, project, tasks, editable, client, projectI
             editable={editable && !task.summary}
             onCommit={(v) => set(v === null ? { clearActualFinish: true } : { actualFinish: v })}
           />
+          <TextField
+            label="Remaining duration"
+            value={durationDays(task.remainingDurationMinutes, project.minutesPerDay)}
+            editable={editable && !task.summary}
+            onCommit={(v) => set({ remainingDuration: v })}
+          />
           <StaticField label="Baseline start" value={dateTime(task.baselineStart)} />
           <StaticField label="Baseline finish" value={dateTime(task.baselineFinish)} />
           <StaticField label="Baseline cost" value={task.baselineCost === null ? '' : String(task.baselineCost)} />
