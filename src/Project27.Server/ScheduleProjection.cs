@@ -37,7 +37,14 @@ public sealed record ResourceSummaryDto(
     string? Group,
     string? Calendar,
     string? MaterialLabel,
-    CostAccrual Accrual);
+    CostAccrual Accrual,
+    IReadOnlyList<CostRateTableDto> RateTables);
+
+/// <summary>One of a resource's five cost-rate tables (A-E) with its effective-dated entries.</summary>
+public sealed record CostRateTableDto(CostRateTableId Table, IReadOnlyList<CostRateEntryDto> Entries);
+
+/// <summary>An effective-dated rate entry; <c>From</c> is null for the base entry (which cannot be removed).</summary>
+public sealed record CostRateEntryDto(DateTime? From, string StandardRate, string OvertimeRate, decimal CostPerUse);
 
 public sealed record CustomFieldSummaryDto(string Id, string? Alias, string Kind, bool HasFormula);
 
@@ -211,7 +218,18 @@ public static class ScheduleProjection
                         r.Group,
                         r.Calendar?.Name,
                         r.MaterialLabel,
-                        r.Accrual)),
+                        r.Accrual,
+                        [
+                            .. Enum.GetValues<CostRateTableId>().Select(table => new CostRateTableDto(
+                                table,
+                                [
+                                    .. r.RateTable(table).Entries.Select(entry => new CostRateEntryDto(
+                                        entry.EffectiveFrom == DateTime.MinValue ? null : entry.EffectiveFrom,
+                                        entry.StandardRate.ToString(),
+                                        entry.OvertimeRate.ToString(),
+                                        entry.CostPerUse)),
+                                ])),
+                        ])),
                 ],
                 [
                     .. project.CustomFields.OrderBy(f => f.Id, StringComparer.Ordinal).Select(f => new CustomFieldSummaryDto(

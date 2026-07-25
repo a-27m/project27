@@ -6,7 +6,7 @@ import { Gantt } from '../components/Gantt'
 import { MultiTaskInspector } from '../components/MultiTaskInspector'
 import { NetworkView } from '../components/NetworkView'
 import { ProjectInspector } from '../components/ProjectInspector'
-import { CalendarManager, CustomFieldsManager, HistoryDialog, RecurringTaskDialog } from '../components/Managers'
+import { CalendarManager, CustomFieldsManager, HistoryDialog, RecurringTaskDialog, ResourceRatesDialog } from '../components/Managers'
 import { TableView } from '../components/TableView'
 import { ResourcesView } from '../components/ResourcesView'
 import { DEFAULT_RESOURCE_COLUMN_KEYS, RESOURCE_COLUMNS } from '../components/resourceColumns'
@@ -61,6 +61,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
   const [splitX, setSplitX] = useState(620)
   const [viewMode, setViewMode] = useState<ViewMode>('gantt')
   const [dialog, setDialog] = useState<Dialog>(null)
+  const [rateResource, setRateResource] = useState<string | null>(null)
   const [zoomIndex, setZoomIndex] = useState(3) // 24 px/day
   const [showBaselineGhosts, setShowBaselineGhosts] = useState(true)
   const prefs = useColumnPreferences(client, projectId)
@@ -860,6 +861,7 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
             editable={editable}
             onCommands={(commands) => void sendCommands(commands)}
             columnKeys={resourcesColumnKeys}
+            onOpenRates={setRateResource}
           />
         </div>
       )}
@@ -1060,6 +1062,21 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
       {dialog === 'level' && (
         <LevelDialog onCommand={(command) => void sendCommands([command])} onClose={() => setDialog(null)} />
       )}
+      {rateResource !== null &&
+        schedule !== null &&
+        (() => {
+          const resource = schedule.project.resources.find((r) => r.name === rateResource)
+          return resource === undefined ? null : (
+            <ResourceRatesDialog
+              resource={resource.name}
+              isMaterial={resource.type === 'material'}
+              rateTables={resource.rateTables}
+              editable={editable}
+              onCommands={(commands) => void sendCommands(commands)}
+              onClose={() => setRateResource(null)}
+            />
+          )
+        })()}
       {viewMode !== 'gantt' && showTaskInspector && selected !== null && schedule !== null && (
         <TaskInspector
           task={selected}

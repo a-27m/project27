@@ -197,6 +197,21 @@ export interface FieldSummary {
   group: string
 }
 
+export type CostRateTableId = 'a' | 'b' | 'c' | 'd' | 'e'
+
+export interface CostRateEntry {
+  /** Effective date; null is the base entry (always present, cannot be removed). */
+  from: string | null
+  standardRate: string
+  overtimeRate: string
+  costPerUse: number
+}
+
+export interface CostRateTableSummary {
+  table: CostRateTableId
+  entries: CostRateEntry[]
+}
+
 export interface ResourceSummary {
   uid: number
   name: string
@@ -208,6 +223,7 @@ export interface ResourceSummary {
   calendar?: string | null
   materialLabel?: string | null
   accrual?: 'start' | 'prorated' | 'end'
+  rateTables: CostRateTableSummary[]
 }
 
 export interface Schedule {
@@ -325,6 +341,16 @@ export type Command =
       clearActualCost?: boolean
     }
   | { op: 'unassign'; uid: number; resource: string }
+  | {
+      op: 'setResourceRate'
+      resource: string
+      table?: CostRateTableId
+      from?: string
+      rate?: string
+      overtimeRate?: string
+      costPerUse?: number
+    }
+  | { op: 'removeResourceRate'; resource: string; table?: CostRateTableId; from: string }
   | { op: 'setBaseline'; slot?: number }
   | { op: 'clearBaseline'; slot?: number }
   | { op: 'level'; order?: LevelingOrder; granularity?: LevelingGranularity; splitInProgress?: boolean }

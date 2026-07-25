@@ -6,10 +6,11 @@ interface Props {
   editable: boolean
   onCommands: (commands: Command[]) => void
   columnKeys: string[]
+  onOpenRates: (resourceName: string) => void
 }
 
 /** Resource management: list, add, rename, rate, max units, remove (12p-3). */
-export function ResourcesView({ project, editable, onCommands, columnKeys }: Props) {
+export function ResourcesView({ project, editable, onCommands, columnKeys, onOpenRates }: Props) {
   const [name, setName] = useState('')
   const [type, setType] = useState<'work' | 'material' | 'cost'>('work')
   const [rate, setRate] = useState('')
@@ -67,6 +68,7 @@ export function ResourcesView({ project, editable, onCommands, columnKeys }: Pro
               {show('calendar') && <th>Calendar</th>}
               {show('materialLabel') && <th>Material label</th>}
               {show('accrual') && <th>Accrual</th>}
+              <th />
               <th />
             </tr>
           </thead>
@@ -204,6 +206,7 @@ export function ResourcesView({ project, editable, onCommands, columnKeys }: Pro
                     />
                   </td>
                 )}
+                <td>{resource.type !== 'cost' && <button onClick={() => onOpenRates(resource.name)}>Rates…</button>}</td>
                 <td>
                   {editable && (
                     <button

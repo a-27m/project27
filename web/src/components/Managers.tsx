@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ApiClient } from '../api/client'
-import type { Command, ScheduleProject, SnapshotInfo } from '../api/types'
+import type { Command, CostRateTableId, CostRateTableSummary, ScheduleProject, SnapshotInfo } from '../api/types'
+import { formatEffectiveFrom, RATE_TABLE_IDS, rateTableLabel } from '../lib/resourceRates'
 import { useToast } from './toastContext'
 
 // Custom-field and calendar management dialogs + the recurring-task dialog (12p-4).
@@ -372,6 +373,148 @@ export function HistoryDialog({
         </table>
       )}
       {!editable && <p className="muted">Check the project out to revert.</p>}
+    </Modal>
+  )
+}
+
+export function ResourceRatesDialog({
+  resource,
+  isMaterial,
+  rateTables,
+  editable,
+  onCommands,
+  onClose,
+}: {
+  resource: string
+  isMaterial: boolean
+  rateTables: CostRateTableSummary[]
+  editable: boolean
+  onCommands: (commands: Command[]) => void
+  onClose: () => void
+}) {
+  const [table, setTable] = useState<CostRateTableId>('a')
+  const [isBase, setIsBase] = useState(false)
+  const [from, setFrom] = useState('')
+  const [rate, setRate] = useState('')
+  const [overtimeRate, setOvertimeRate] = useState('')
+  const [costPerUse, setCostPerUse] = useState('')
+
+  const entries = rateTables.find((t) => t.table === table)?.entries ?? []
+
+  return (
+    <Modal label={`Rate tables — ${resource}`} onClose={onClose}>
+      <label className="inspector-row">
+        <span className="inspector-label">Table</span>
+        <select value={table} onChange={(event) => setTable(event.target.value as CostRateTableId)}>
+          {RATE_TABLE_IDS.map((id) => (
+            <option key={id} value={id}>
+              {rateTableLabel(id)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <table className="data-table">
+        <thead>
+          <tr>
+            <th>Effective from</th>
+            <th>Standard rate</th>
+            <th>Overtime rate</th>
+            <th>Cost per use</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {entries.map((entry) => (
+            <tr key={entry.from ?? 'base'}>
+              <td>{formatEffectiveFrom(entry.from)}</td>
+              <td>{entry.standardRate}</td>
+              <td>{entry.overtimeRate}</td>
+              <td>{entry.costPerUse}</td>
+              <td>
+                {editable && entry.from !== null && (
+                  <button
+                    className="danger"
+                    onClick={() => onCommands([{ op: 'removeResourceRate', resource, table, from: entry.from! }])}
+                  >
+                    Remove
+                  </button>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {editable && (
+        <>
+          <label className="inspector-row">
+            <span className="inspector-label">Base entry</span>
+            <input
+              type="checkbox"
+              checked={isBase}
+              onChange={(event) => {
+                setIsBase(event.target.checked)
+                if (event.target.checked) setFrom('')
+              }}
+            />
+          </label>
+          {!isBase && (
+            <label className="inspector-row">
+              <span className="inspector-label">Effective from</span>
+              <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
+            </label>
+          )}
+          <label className="inspector-row">
+            <span className="inspector-label">Standard rate</span>
+            <input
+              value={rate}
+              onChange={(event) => setRate(event.target.value)}
+              placeholder={isMaterial ? 'Rate per unit' : 'e.g. 50/h'}
+            />
+          </label>
+          <label className="inspector-row">
+            <span className="inspector-label">Overtime rate</span>
+            <input
+              value={overtimeRate}
+              onChange={(event) => setOvertimeRate(event.target.value)}
+              placeholder={isMaterial ? 'Rate per unit' : 'e.g. 75/h'}
+            />
+          </label>
+          <label className="inspector-row">
+            <span className="inspector-label">Cost per use</span>
+            <input value={costPerUse} onChange={(event) => setCostPerUse(event.target.value)} placeholder="0" />
+          </label>
+          <div className="modal-actions">
+            <button
+              className="primary"
+              disabled={
+                !editable ||
+                (!isBase && from.trim() === '') ||
+                (rate.trim() === '' && overtimeRate.trim() === '' && costPerUse.trim() === '')
+              }
+              onClick={() => {
+                onCommands([
+                  {
+                    op: 'setResourceRate',
+                    resource,
+                    table,
+                    ...(isBase ? {} : { from }),
+                    ...(rate.trim() !== '' ? { rate: rate.trim() } : {}),
+                    ...(overtimeRate.trim() !== '' ? { overtimeRate: overtimeRate.trim() } : {}),
+                    ...(costPerUse.trim() !== '' ? { costPerUse: Number(costPerUse) } : {}),
+                  },
+                ])
+                setFrom('')
+                setRate('')
+                setOvertimeRate('')
+                setCostPerUse('')
+                setIsBase(false)
+              }}
+            >
+              Set entry
+            </button>
+          </div>
+        </>
+      )}
     </Modal>
   )
 }
