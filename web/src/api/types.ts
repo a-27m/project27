@@ -133,6 +133,12 @@ export interface ScheduleProject {
   finish: string | null
   scheduleFrom: 'projectStart' | 'projectFinish'
   minutesPerDay: number
+  minutesPerWeek: number
+  daysPerMonth: number
+  weekStartsOn: string
+  dayStart: string
+  dayEnd: string
+  criticalSlackMinutes: number
   calendar: string
   totalWorkMinutes: number
   totalCost: number
@@ -284,7 +290,22 @@ export type Command =
   | { op: 'unlink'; predecessorUid: number; successorUid: number }
   | { op: 'splitTask'; uid: number; at: string; gap: string }
   | { op: 'unsplitTask'; uid: number }
-  | { op: 'setProject'; name?: string; start?: string; statusDate?: string; clearStatusDate?: boolean }
+  | {
+      op: 'setProject'
+      name?: string
+      start?: string
+      statusDate?: string
+      clearStatusDate?: boolean
+      scheduleFrom?: 'projectStart' | 'projectFinish'
+      calendar?: string
+      minutesPerDay?: number
+      minutesPerWeek?: number
+      daysPerMonth?: number
+      weekStartsOn?: string
+      dayStart?: string
+      dayEnd?: string
+      criticalSlack?: string
+    }
   | { op: 'assign'; uid: number; resource: string; units?: number; work?: string; cost?: number; unitsPer?: RateUnit }
   | {
       op: 'setAssignment'

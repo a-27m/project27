@@ -126,6 +126,50 @@ export function ProjectInspector({ project, editable, onCommands, onClose, onCol
             editable={editable}
             onCommit={(v) => set({ minutesPerDay: Number(v) * 60 })}
           />
+          <SelectField
+            label="Schedule from"
+            value={project.scheduleFrom === 'projectStart' ? 'start' : 'finish'}
+            options={['start', 'finish']}
+            editable={editable}
+            onCommit={(v) => set({ scheduleFrom: v === 'start' ? 'projectStart' : 'projectFinish' })}
+          />
+          <TextField
+            label="Minutes/week"
+            value={String(project.minutesPerWeek)}
+            editable={editable}
+            onCommit={(v) => set({ minutesPerWeek: Number(v) })}
+          />
+          <TextField
+            label="Days/month"
+            value={String(project.daysPerMonth)}
+            editable={editable}
+            onCommit={(v) => set({ daysPerMonth: parseFloat(v) })}
+          />
+          <SelectField
+            label="Week starts on"
+            value={project.weekStartsOn}
+            options={['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']}
+            editable={editable}
+            onCommit={(v) => set({ weekStartsOn: v })}
+          />
+          <TextField
+            label="Day start (HH:mm)"
+            value={project.dayStart}
+            editable={editable}
+            onCommit={(v) => set({ dayStart: v })}
+          />
+          <TextField
+            label="Day end (HH:mm)"
+            value={project.dayEnd}
+            editable={editable}
+            onCommit={(v) => set({ dayEnd: v })}
+          />
+          <TextField
+            label="Critical slack"
+            value={String(project.criticalSlackMinutes)}
+            editable={editable}
+            onCommit={(v) => set({ criticalSlack: v })}
+          />
         </AccordionSection>
 
         <AccordionSection title="Calendars" hint={`${project.calendars.length}`} open={isOpen('calendars')} onToggle={() => toggle('calendars')}>
