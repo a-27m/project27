@@ -34,9 +34,13 @@ on:
         required: false
         type: string
         default: 'linux/amd64,linux/arm64'
+      version:
+        description: 'Semantic version to tag the image with'
+        required: true
+        type: string
 
 permissions:
-  contents: write
+  contents: read
   packages: write
 
 jobs:
@@ -67,20 +71,10 @@ jobs:
           echo "Service (lowercase): $SERVICE_NAME_LOWER"
           echo "Image: $IMAGE_NAME"
 
-  semver:
-    name: Version
-    if: github.ref == 'refs/heads/main'
-    needs: [setup]
-    uses: ./.github/workflows/semver-tag.yaml
-    permissions:
-      contents: write
-    with:
-      service-name: ${{ needs.setup.outputs.service-name }}
-
   build-docker:
     name: Docker Build
     if: github.ref == 'refs/heads/main'
-    needs: [setup, semver]
+    needs: [setup]
     uses: ./.github/workflows/build-docker.yaml
     permissions:
       contents: read
@@ -91,4 +85,4 @@ jobs:
       dockerfile-path: ${{ inputs.dockerfile-path }}
       build-context: ${{ inputs.build-context }}
       platforms: ${{ inputs.platforms }}
-      image-tag: ${{ needs.semver.outputs.version }}
+      image-tag: ${{ inputs.version }}

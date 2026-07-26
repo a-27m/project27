@@ -76,40 +76,52 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+  semver:
+    name: Version
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/semver-tag.yaml
+    permissions:
+      contents: write
+    with:
+      service-name: project27
+
   docker-backend:
     name: Docker Backend
     uses: ./.github/workflows/ci-docker-template.yaml
-    needs: [dotnet]
+    needs: [dotnet, semver]
     with:
       service-name: 'project27-server'
       dockerfile-path: './src/Project27.Server/Dockerfile'
+      version: ${{ needs.semver.outputs.version }}
     permissions:
-      contents: write
+      contents: read
       packages: write
     secrets: inherit
 
   docker-web:
     name: Docker Web
     uses: ./.github/workflows/ci-docker-template.yaml
-    needs: [web]
+    needs: [web, semver]
     with:
       service-name: 'project27-web'
       dockerfile-path: './web/Dockerfile'
       build-context: './web'
+      version: ${{ needs.semver.outputs.version }}
     permissions:
-      contents: write
+      contents: read
       packages: write
     secrets: inherit
 
   docker-mcp:
     name: Docker MCP
     uses: ./.github/workflows/ci-docker-template.yaml
-    needs: [dotnet]
+    needs: [dotnet, semver]
     with:
       service-name: 'project27-mcp'
       dockerfile-path: './src/Project27.Mcp/Dockerfile'
+      version: ${{ needs.semver.outputs.version }}
     permissions:
-      contents: write
+      contents: read
       packages: write
     secrets: inherit
 
