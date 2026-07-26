@@ -6,7 +6,8 @@ import { Gantt } from '../components/Gantt'
 import { MultiTaskInspector } from '../components/MultiTaskInspector'
 import { NetworkView } from '../components/NetworkView'
 import { ProjectInspector } from '../components/ProjectInspector'
-import { CalendarManager, CustomFieldsManager, HistoryDialog, RecurringTaskDialog, ResourceRatesDialog } from '../components/Managers'
+import { CustomFieldsManager, HistoryDialog, RecurringTaskDialog, ResourceRatesDialog } from '../components/Managers'
+import { CalendarManager } from '../components/CalendarManager'
 import { TableView } from '../components/TableView'
 import { ResourcesView } from '../components/ResourcesView'
 import { DEFAULT_RESOURCE_COLUMN_KEYS, RESOURCE_COLUMNS } from '../components/resourceColumns'
@@ -1026,9 +1027,11 @@ export function ProjectView({ client, projectId, userId, userDisplayName, dark, 
       )}
       {dialog === 'calendars' && schedule !== null && (
         <CalendarManager
+          client={client}
+          projectId={projectId}
           project={schedule.project}
           editable={editable}
-          onCommands={(commands) => void sendCommands(commands)}
+          onCommands={(commands) => sendCommands(commands)}
           onClose={() => setDialog(null)}
         />
       )}

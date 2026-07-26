@@ -1,4 +1,5 @@
 using Project27.Core;
+using Project27.Core.Time;
 
 namespace Project27.Server;
 
@@ -150,6 +151,35 @@ public sealed record ViewDto(IReadOnlyList<ViewFieldDto> Fields, IReadOnlyList<V
 public sealed record TaskDriverDto(string Kind, string Description, bool Binding, DateTime? Date, int? PredecessorUid);
 
 public sealed record TaskDescriptionDto(string? Description);
+
+// Calendar-detail projection (Task 9, web parity): the client otherwise only
+// receives calendar names via ScheduleProjectDto.Calendars.
+
+public sealed record CalendarRecurrenceDto(string Kind, int Every, string EndMode, int? Occurrences);
+
+public sealed record CalendarExceptionDto(
+    string Name,
+    DateOnly Start,
+    DateOnly? End,
+    bool DayOff,
+    IReadOnlyList<string> Intervals,
+    CalendarRecurrenceDto? Recurrence);
+
+public sealed record WorkWeekDto(string Name, DateOnly Start, DateOnly End, IReadOnlyDictionary<string, string> Days);
+
+public sealed record CalendarDetailDto(
+    string Name,
+    string? Base,
+    bool IsProjectDefault,
+    int DirectTaskCount,
+    int DirectResourceCount,
+    IReadOnlyDictionary<string, string> Weekly,
+    IReadOnlyList<CalendarExceptionDto> Exceptions,
+    IReadOnlyList<WorkWeekDto> WorkWeeks);
+
+public sealed record CalendarDayCellDto(DateOnly Date, bool Working, Core.Time.CalendarRuleSource Source, string? RuleName);
+
+public sealed record CalendarMonthDto(int Year, int Month, IReadOnlyList<CalendarDayCellDto> Days);
 
 public static class ScheduleProjection
 {
@@ -304,6 +334,85 @@ public static class ScheduleProjection
                             f => f.Id,
                             f => Core.Fields.FieldCatalog.CustomValue(f, task)),
                     !string.IsNullOrEmpty(task.Description))),
+            ]);
+    }
+
+    private static readonly DayOfWeek[] WeekdayOrder =
+    [
+        DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday,
+        DayOfWeek.Friday, DayOfWeek.Saturday, DayOfWeek.Sunday,
+    ];
+
+    private static string DayKey(DayOfWeek day) => day.ToString().ToLowerInvariant();
+
+    private static string FormatDay(DaySchedule? day)
+        => day is not { } schedule ? "inherit" : schedule.IsWorking ? string.Join(",", schedule.Intervals) : "off";
+
+    private static Dictionary<string, string> FormatWeek(WeeklyPattern pattern)
+        => WeekdayOrder.ToDictionary(DayKey, day => FormatDay(pattern[day]));
+
+    private static CalendarRecurrenceDto? ToRecurrenceDto(CalendarException exception)
+    {
+        if (exception.Recurrence is not { } recurrence)
+        {
+            return null;
+        }
+
+        var (kind, every) = recurrence switch
+        {
+            DailyRecurrence d => ("daily", d.EveryDays),
+            WeeklyRecurrence w => ("weekly", w.EveryWeeks),
+            MonthlyDayRecurrence m => ("monthly", m.EveryMonths),
+            MonthlyWeekdayRecurrence m => ("monthly", m.EveryMonths),
+            YearlyDateRecurrence => ("yearly", 1),
+            YearlyWeekdayRecurrence => ("yearly", 1),
+            _ => ("unknown", 1),
+        };
+        var endMode = exception.Occurrences is not null ? "count" : exception.End is not null ? "date" : "never";
+        return new CalendarRecurrenceDto(kind, every, endMode, exception.Occurrences);
+    }
+
+    /// <summary>Detail for one calendar: its own weekly pattern, exceptions and work weeks (not the base's).</summary>
+    public static CalendarDetailDto CalendarDetail(Project project, WorkCalendar calendar)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+        ArgumentNullException.ThrowIfNull(calendar);
+        return new CalendarDetailDto(
+            calendar.Name,
+            calendar.BaseCalendar?.Name,
+            ReferenceEquals(calendar, project.Calendar),
+            project.Tasks.Count(t => ReferenceEquals(t.Calendar, calendar)),
+            project.Resources.Count(r => ReferenceEquals(r.Calendar, calendar)),
+            FormatWeek(calendar.DefaultWeek),
+            [
+                .. calendar.Exceptions.Select(e => new CalendarExceptionDto(
+                    e.Name,
+                    e.Start,
+                    e.End,
+                    !e.Schedule.IsWorking,
+                    [.. e.Schedule.IsWorking ? e.Schedule.Intervals.Select(i => i.ToString()) : []],
+                    ToRecurrenceDto(e))),
+            ],
+            [
+                .. calendar.WorkWeeks.Select(w => new WorkWeekDto(w.Name, w.Start, w.End, FormatWeek(w.Pattern))),
+            ]);
+    }
+
+    /// <summary>Resolved day-by-day schedule for one month, with provenance for the calendar's month preview.</summary>
+    public static CalendarMonthDto CalendarMonth(WorkCalendar calendar, int year, int month)
+    {
+        ArgumentNullException.ThrowIfNull(calendar);
+        var days = DateTime.DaysInMonth(year, month);
+        return new CalendarMonthDto(
+            year,
+            month,
+            [
+                .. Enumerable.Range(1, days).Select(d =>
+                {
+                    var date = new DateOnly(year, month, d);
+                    var resolved = calendar.ResolveDetailed(date);
+                    return new CalendarDayCellDto(date, resolved.Schedule.IsWorking, resolved.Source, resolved.RuleName);
+                }),
             ]);
     }
 }

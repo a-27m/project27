@@ -149,6 +149,56 @@ export interface ScheduleProject {
   stats: ProjectStats
 }
 
+// Calendar-detail projection (Task 9): calendar names come from ScheduleProject.calendars;
+// everything else (weekly pattern, exceptions, work weeks) is fetched per-calendar on demand.
+
+export interface CalendarRecurrence {
+  kind: 'daily' | 'weekly' | 'monthly' | 'yearly' | 'unknown'
+  every: number
+  endMode: 'never' | 'count' | 'date'
+  occurrences: number | null
+}
+
+export interface CalendarException {
+  name: string
+  start: string
+  end: string | null
+  dayOff: boolean
+  intervals: string[]
+  recurrence: CalendarRecurrence | null
+}
+
+export interface CalendarWorkWeek {
+  name: string
+  start: string
+  end: string
+  days: Record<string, string>
+}
+
+export interface CalendarDetail {
+  name: string
+  base: string | null
+  isProjectDefault: boolean
+  directTaskCount: number
+  directResourceCount: number
+  weekly: Record<string, string>
+  exceptions: CalendarException[]
+  workWeeks: CalendarWorkWeek[]
+}
+
+export interface CalendarDayCell {
+  date: string
+  working: boolean
+  source: 'exception' | 'workWeek' | 'weeklyPattern' | 'none'
+  ruleName: string | null
+}
+
+export interface CalendarMonth {
+  year: number
+  month: number
+  days: CalendarDayCell[]
+}
+
 export interface DateStat {
   current: string | null
   baseline: string | null
@@ -275,6 +325,16 @@ export interface CommandLag {
   value: number
 }
 
+export interface CommandRecurrence {
+  kind: 'daily' | 'weekly' | 'monthlyDay' | 'monthlyWeekday' | 'yearlyDate' | 'yearlyWeekday'
+  every?: number
+  day?: number
+  month?: number
+  days?: string[]
+  ordinal?: string
+  weekday?: string
+}
+
 export type Command =
   | { op: 'addTask'; name: string; duration?: string; parentUid?: number; at?: number; milestone?: boolean }
   | {
@@ -351,6 +411,27 @@ export type Command =
       costPerUse?: number
     }
   | { op: 'removeResourceRate'; resource: string; table?: CostRateTableId; from: string }
+  | {
+      op: 'addCalendarException'
+      calendar: string
+      name: string
+      from: string
+      to?: string
+      intervals?: { start: string; end: string }[]
+      recurrence?: CommandRecurrence
+      times?: number
+    }
+  | { op: 'removeCalendarException'; calendar: string; name: string }
+  | {
+      op: 'addWorkWeek'
+      calendar: string
+      name: string
+      from: string
+      to: string
+      days?: Record<string, { start: string; end: string }[]>
+    }
+  | { op: 'removeWorkWeek'; calendar: string; name: string }
+  | { op: 'setCalendarBase'; calendar: string; baseCalendar?: string | null }
   | { op: 'setBaseline'; slot?: number }
   | { op: 'clearBaseline'; slot?: number }
   | { op: 'level'; order?: LevelingOrder; granularity?: LevelingGranularity; splitInProgress?: boolean }

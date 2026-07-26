@@ -1,5 +1,18 @@
 namespace Project27.Core.Time;
 
+/// <summary>Which layer of calendar resolution produced a <see cref="ResolvedDay"/>.</summary>
+public enum CalendarRuleSource
+{
+    /// <summary>No rule matched; the day is non-working by default.</summary>
+    None,
+    Exception,
+    WorkWeek,
+    WeeklyPattern,
+}
+
+/// <summary>A resolved day schedule plus which rule produced it (see <see cref="WorkCalendar.ResolveDetailed"/>).</summary>
+public readonly record struct ResolvedDay(DaySchedule Schedule, CalendarRuleSource Source, string? RuleName);
+
 /// <summary>
 /// A working-time calendar, optionally derived from a base calendar. Day resolution
 /// order (walking the base chain most-derived first): exceptions, then work weeks that
@@ -117,14 +130,20 @@ public sealed partial class WorkCalendar
 
         if (!_dayCache.TryGetValue(day, out var schedule))
         {
-            schedule = Resolve(day);
+            schedule = ResolveDetailed(day).Schedule;
             _dayCache[day] = schedule;
         }
 
         return schedule;
     }
 
-    private DaySchedule Resolve(DateOnly date)
+    /// <summary>
+    /// Like <see cref="GetDaySchedule"/> but also reports which rule won and its name —
+    /// for UI that explains *why* a day resolved the way it did (e.g. a calendar's month
+    /// preview). Not cached; callers resolving many days should prefer <see cref="GetDaySchedule"/>
+    /// when provenance isn't needed.
+    /// </summary>
+    public ResolvedDay ResolveDetailed(DateOnly date)
     {
         for (var c = this; c is not null; c = c._baseCalendar)
         {
@@ -132,7 +151,7 @@ public sealed partial class WorkCalendar
             {
                 if (exception.AppliesTo(date))
                 {
-                    return exception.Schedule;
+                    return new ResolvedDay(exception.Schedule, CalendarRuleSource.Exception, exception.Name);
                 }
             }
         }
@@ -143,7 +162,7 @@ public sealed partial class WorkCalendar
             {
                 if (workWeek.Covers(date) && workWeek.Pattern[date.DayOfWeek] is { } fromWorkWeek)
                 {
-                    return fromWorkWeek;
+                    return new ResolvedDay(fromWorkWeek, CalendarRuleSource.WorkWeek, workWeek.Name);
                 }
             }
         }
@@ -152,11 +171,11 @@ public sealed partial class WorkCalendar
         {
             if (c._defaultWeek[date.DayOfWeek] is { } fromDefaultWeek)
             {
-                return fromDefaultWeek;
+                return new ResolvedDay(fromDefaultWeek, CalendarRuleSource.WeeklyPattern, null);
             }
         }
 
-        return DaySchedule.NonWorking;
+        return new ResolvedDay(DaySchedule.NonWorking, CalendarRuleSource.None, null);
     }
 
     private void Touch() => _version = Interlocked.Increment(ref s_clock);

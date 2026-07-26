@@ -116,6 +116,41 @@ public static class ProjectEndpoints
             return Results.Ok(ScheduleProjection.From(project, access!.Project.Version));
         });
 
+        projects.MapGet("/{id:guid}/calendars/{name}", async (Guid id, string name, ClaimsPrincipal user, IServerStore store, CancellationToken cancellationToken) =>
+        {
+            var (_, error) = await Authorize(store, id, user, ProjectRole.Reader, cancellationToken);
+            if (error is not null)
+            {
+                return error;
+            }
+
+            var json = await store.GetDocument(id, cancellationToken)
+                ?? throw new InvalidOperationException($"Project {id:D} has no snapshot; the store is corrupt.");
+            var project = ProjectDocumentMapper.FromDocument(ProjectDocumentSerializer.Deserialize(json));
+            var calendar = project.Calendars.FirstOrDefault(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
+            return calendar is null ? Problem(404, $"No calendar named '{name}'.") : Results.Ok(ScheduleProjection.CalendarDetail(project, calendar));
+        });
+
+        projects.MapGet("/{id:guid}/calendars/{name}/month", async (Guid id, string name, int year, int month, ClaimsPrincipal user, IServerStore store, CancellationToken cancellationToken) =>
+        {
+            var (_, error) = await Authorize(store, id, user, ProjectRole.Reader, cancellationToken);
+            if (error is not null)
+            {
+                return error;
+            }
+
+            if (month is < 1 or > 12)
+            {
+                return Problem(422, $"Month must be 1-12, got {month}.");
+            }
+
+            var json = await store.GetDocument(id, cancellationToken)
+                ?? throw new InvalidOperationException($"Project {id:D} has no snapshot; the store is corrupt.");
+            var project = ProjectDocumentMapper.FromDocument(ProjectDocumentSerializer.Deserialize(json));
+            var calendar = project.Calendars.FirstOrDefault(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
+            return calendar is null ? Problem(404, $"No calendar named '{name}'.") : Results.Ok(ScheduleProjection.CalendarMonth(calendar, year, month));
+        });
+
         projects.MapGet("/{id:guid}/usage", async (Guid id, string? granularity, ClaimsPrincipal user, IServerStore store, CancellationToken cancellationToken) =>
         {
             var (access, error) = await Authorize(store, id, user, ProjectRole.Reader, cancellationToken);

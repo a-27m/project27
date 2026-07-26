@@ -1,4 +1,6 @@
 import type {
+  CalendarDetail,
+  CalendarMonth,
   Checkout,
   ColumnPreferences,
   Command,
@@ -97,6 +99,14 @@ export class ApiClient {
 
   usage(id: string, granularity: 'day' | 'week'): Promise<Usage> {
     return this.request('GET', `/api/projects/${id}/usage?granularity=${granularity}`)
+  }
+
+  calendarDetail(id: string, calendar: string): Promise<CalendarDetail> {
+    return this.request('GET', `/api/projects/${id}/calendars/${encodeURIComponent(calendar)}`)
+  }
+
+  calendarMonth(id: string, calendar: string, year: number, month: number): Promise<CalendarMonth> {
+    return this.request('GET', `/api/projects/${id}/calendars/${encodeURIComponent(calendar)}/month?year=${year}&month=${month}`)
   }
 
   history(id: string): Promise<SnapshotInfo[]> {
