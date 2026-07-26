@@ -78,7 +78,8 @@ jobs:
 
   semver:
     name: Version
-    if: github.ref == 'refs/heads/main'
+    if: success() && github.ref == 'refs/heads/main'
+    needs: [dotnet, web]
     uses: ./.github/workflows/semver-tag.yaml
     permissions:
       contents: write
