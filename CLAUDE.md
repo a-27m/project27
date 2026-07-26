@@ -62,15 +62,15 @@ Cross-cutting rules that are expensive to discover by reading code:
 The docs are the source of truth and are kept current — read them rather than
 re-deriving from code.
 
-- `docs/engineering-decisions.md` — E1–E34, the rationale trace. **Read before changing
+- `docs/engineering-decisions.md` — the rationale trace. **Read before changing
   engine, scheduling, or serialization code**; it records why the non-obvious choices are
   non-obvious and which approaches already failed.
-- `docs/decisions.md` — D1–D9, product/architecture decisions locked with the owner.
+- `docs/decisions.md` — product/architecture decisions locked with the owner.
   Binding until explicitly revisited; record amendments there.
 - `docs/progress.md` — current state, phase log, and the "engine facts that bite" list
   (summary durations, calendar presets, the effort triangle, xUnit v3 quirks). Update it
   when you finish a major task.
-- `docs/spec/` — per-phase specs (01–14) plus `deviations.md`, the numbered list of
+- `docs/spec/` — per-phase specs plus `deviations.md`, the numbered list of
   intentional divergences from MS Project. The initial implementation is finished, all
   roadmap phases are complete, so next major tasks are better called "epics" but should
   be documented like phases were.

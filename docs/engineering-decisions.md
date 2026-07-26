@@ -589,7 +589,7 @@ look like a regression).
 
 ---
 
-### E36. Shell completion resolved in-process; System.CommandLine's own completion measured and rejected
+### E37. Shell completion resolved in-process; System.CommandLine's own completion measured and rejected
 
 **Chose:** a `__complete` command (kubectl/cobra shape) whose candidates come from
 `Completion/CompletionEngine.cs` walking the tree `CliRoot.Build()` returns, plus
